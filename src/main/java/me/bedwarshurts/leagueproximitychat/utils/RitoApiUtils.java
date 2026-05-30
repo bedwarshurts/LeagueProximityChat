@@ -3,6 +3,7 @@ package me.bedwarshurts.leagueproximitychat.utils;
 import javax.net.ssl.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.URI;
 import java.net.URL;
 import java.security.cert.X509Certificate;
 
@@ -34,7 +35,7 @@ public class RitoApiUtils {
     public static String fetchAPI(String endpoint) {
         disableSSLChecks();
         try {
-            URL url = new URL(endpoint);
+            URL url = new URI(endpoint).toURL();
             HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(2000);

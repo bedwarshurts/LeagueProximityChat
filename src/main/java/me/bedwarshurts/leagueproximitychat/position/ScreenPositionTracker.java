@@ -123,26 +123,24 @@ public class ScreenPositionTracker {
 
     private boolean checkDeathState() {
         String localSummonerName = RitoApiUtils.getLocalSummonerName();
+        if (localSummonerName == null) return false;
 
-        if (localSummonerName != null) {
-            String playerListJson = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
-            if (playerListJson != null) {
-                int nameIdx = playerListJson.indexOf("\"" + localSummonerName + "\"");
-                if (nameIdx != -1) {
-                    int blockStart = playerListJson.lastIndexOf("\"championName\":", nameIdx);
-                    if (blockStart != -1) {
-                        int blockEnd = playerListJson.indexOf("\"championName\":", blockStart + 15);
-                        if (blockEnd == -1) {
-                            blockEnd = playerListJson.length();
-                        }
+        String playerListJson = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
+        if (playerListJson == null) return false;
 
-                        String playerBlock = playerListJson.substring(blockStart, blockEnd).replaceAll("\\s+", "");
-                        return playerBlock.contains("\"isDead\":true");
-                    }
-                }
-            }
+        int nameIdx = playerListJson.indexOf("\"" + localSummonerName + "\"");
+        if (nameIdx == -1) return false;
+
+        int blockStart = playerListJson.lastIndexOf("\"championName\":", nameIdx);
+        if (blockStart == -1) return false;
+
+        int blockEnd = playerListJson.indexOf("\"championName\":", blockStart + 15);
+        if (blockEnd == -1) {
+            blockEnd = playerListJson.length();
         }
-        return false;
+
+        String playerBlock = playerListJson.substring(blockStart, blockEnd).replaceAll("\\s+", "");
+        return playerBlock.contains("\"isDead\":true");
     }
 
     private Point locateSelfHealthBar(Mat screen) {
@@ -155,7 +153,7 @@ public class ScreenPositionTracker {
         Mat mask = new Mat();
         Core.inRange(hsv, lowerYellow, upperYellow, mask);
 
-        int hudTopY = (int)(screen.height() * 0.75);
+        int hudTopY = (int) (screen.height() * 0.75);
         Imgproc.rectangle(mask, new Point(0, hudTopY), new Point(screen.width(), screen.height()), new Scalar(0), -1);
 
         Imgproc.rectangle(mask, new Point(screen.width() * 0.85, 0), new Point(screen.width(), screen.height() * 0.10), new Scalar(0), -1);
@@ -189,8 +187,8 @@ public class ScreenPositionTracker {
 
             if (rect.height >= minHeight && rect.height <= maxHeight && rect.width >= minWidth) {
 
-                double extent = pixelArea / (double)(rect.width * rect.height);
-                double aspectRatio = rect.width / (double)rect.height;
+                double extent = pixelArea / (double) (rect.width * rect.height);
+                double aspectRatio = rect.width / (double) rect.height;
 
                 if (extent > 0.75 && aspectRatio > 2.5) {
 
@@ -235,8 +233,8 @@ public class ScreenPositionTracker {
     }
 
     private Point locateChampionViaTemplate(Mat minimap) {
-        int borderMarginX = (int)(minimap.width() * 0.08);
-        int borderMarginY = (int)(minimap.height() * 0.08);
+        int borderMarginX = (int) (minimap.width() * 0.08);
+        int borderMarginY = (int) (minimap.height() * 0.08);
 
         if (isScaleLocked && lockedCoreTemplate != null) {
             Mat result = new Mat();
@@ -250,7 +248,7 @@ public class ScreenPositionTracker {
                 if (centerX > borderMarginX && centerX < minimap.width() - borderMarginX &&
                         centerY > borderMarginY && centerY < minimap.height() - borderMarginY) {
 
-                    Rect matchRect = new Rect((int)mmr.maxLoc.x, (int)mmr.maxLoc.y, lockedCoreTemplate.width(), lockedCoreTemplate.height());
+                    Rect matchRect = new Rect((int) mmr.maxLoc.x, (int) mmr.maxLoc.y, lockedCoreTemplate.width(), lockedCoreTemplate.height());
                     Mat matchPatch = new Mat(minimap, matchRect);
                     MatOfDouble stdDev = new MatOfDouble();
                     MatOfDouble mean = new MatOfDouble();
@@ -288,10 +286,10 @@ public class ScreenPositionTracker {
             Mat resizedTemplate = new Mat();
             Imgproc.resize(championTemplate, resizedTemplate, new org.opencv.core.Size(targetWidth, targetHeight), 0, 0, Imgproc.INTER_LINEAR);
 
-            int cx = (int)(resizedTemplate.width() * 0.15);
-            int cy = (int)(resizedTemplate.height() * 0.15);
-            int cw = (int)(resizedTemplate.width() * 0.70);
-            int ch = (int)(resizedTemplate.height() * 0.70);
+            int cx = (int) (resizedTemplate.width() * 0.15);
+            int cy = (int) (resizedTemplate.height() * 0.15);
+            int cw = (int) (resizedTemplate.width() * 0.70);
+            int ch = (int) (resizedTemplate.height() * 0.70);
 
             if (cw <= 0 || ch <= 0) {
                 resizedTemplate.release();

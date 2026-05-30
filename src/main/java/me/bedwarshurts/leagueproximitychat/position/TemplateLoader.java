@@ -6,12 +6,14 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.Scanner;
 
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.opencv.core.Mat;
 import org.opencv.core.CvType;
+import org.opencv.imgcodecs.Imgcodecs;
 
 public class TemplateLoader {
 
@@ -47,7 +49,7 @@ public class TemplateLoader {
             String latestPatch = getLatestDataDragonVersion();
 
             String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestPatch + "/img/champion/" + rawName + ".png";
-            BufferedImage originalIcon = ImageIO.read(new URL(ddragonUrl));
+            BufferedImage originalIcon = ImageIO.read(new URI(ddragonUrl).toURL());
 
             int minimapIconSize = 24;
             BufferedImage resizedIcon = new BufferedImage(minimapIconSize, minimapIconSize, BufferedImage.TYPE_3BYTE_BGR);
@@ -60,8 +62,8 @@ public class TemplateLoader {
             fullMat.put(0, 0, pixels);
 
             System.out.println("Successfully generated OpenCV template for " + rawName);
+            Imgcodecs.imwrite("debug_template.png", fullMat);
             return fullMat;
-
         } catch (Exception e) {
             System.err.println("Failed to automate template loading. Ensure the game is actively running in a match.");
             e.printStackTrace();
