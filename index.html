@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>League of Legends Proximity Chat</title>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 30px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h2 {
+            color: #f0f0f0;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            box-sizing: border-box;
+            background-color: #1e1e1e;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        input[type="text"]:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .status {
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+            background: #1e1e1e;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .success {
+            border-left: 5px solid #28a745;
+            color: #28a745;
+        }
+        .error {
+            border-left: 5px solid #dc3545;
+            color: #dc3545;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.2s, filter 0.2s;
+        }
+        button:hover {
+            filter: brightness(0.92);
+        }
+    </style>
+</head>
+<body>
+
+<h2>League Proximity Chat</h2>
+
+<div class="input-group" id="setup-area">
+    <label for="token-input">LiveKit Token:</label>
+    <input type="text" id="token-input" placeholder="Enter your token here">
+</div>
+
+<div id="lk-status" class="status error">LiveKit Audio Server: Disconnected</div>
+<div id="ws-status" class="status error">Yowaimo Local Position Tracker: Disconnected</div>
+
+<button id="start-btn" style="background-color:#007bff;">Connect & Join Voice</button>
+<button id="mute-btn" style="display:none; margin-top:12px; background-color:#dc3545;">Mute Microphone</button>
+
+<div id="hidden-audio-container" style="display: none;"></div>
+
+<script>
+    const LIVEKIT_URL = 'wss://league-proximity-chat-3q7it5ix.livekit.cloud';
+
+    const room = new LivekitClient.Room({
+        adaptiveStream: true,
+        dynacast: true,
+        audioCaptureDefaults: {
+            echoCancellation: false,
+            noiseSuppression: true,
+            voiceIsolation: true,
+            autoGainControl: true
+        }
+    });
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const remoteAudioNodes = {};
+    const remotePositions = {};
+    const localPosition = { x: 0, y: 0, isDead: false };
+
+    let micMuted = false;
+    let connected = false;
+    let trackerSocket = null;
+
+    function updateListenerPosition() {
+        const now = audioCtx.currentTime;
+
+        audioCtx.listener.positionX.setTargetAtTime(localPosition.x, now, 0.1);
+        audioCtx.listener.positionY.setTargetAtTime(0, now, 0.1);
+        audioCtx.listener.positionZ.setTargetAtTime(localPosition.y, now, 0.1);
+
+        console.log(`[LOCAL POSITION] X: ${localPosition.x.toFixed(1)} | Y: ${localPosition.y.toFixed(1)} | Dead: ${localPosition.isDead}`);
+    }
+
+    function updateRemoteAudio(identity) {
+        const nodeData = remoteAudioNodes[identity];
+        const remotePos = remotePositions[identity];
+
+        if (!nodeData || !remotePos) {
+            return;
+        }
+
+        const dx = remotePos.x - localPosition.x;
+        const dy = remotePos.y - localPosition.y;
+        const distance = Math.hypot(dx, dy);
+
+        const maxHearingDistance = 12.2;
+
+        const normalized = Math.min(distance / maxHearingDistance, 1);
+        let volume = distance > maxHearingDistance ? 0 : Math.sqrt(1 - normalized);
+
+        if (remotePos.isDead) {
+            volume = 0;
+        }
+
+        const now = audioCtx.currentTime;
+
+        nodeData.panner.positionX.setTargetAtTime(remotePos.x, now, 0.1);
+        nodeData.panner.positionY.setTargetAtTime(0, now, 0.1);
+        nodeData.panner.positionZ.setTargetAtTime(remotePos.y, now, 0.1);
+
+        nodeData.gain.gain.setTargetAtTime(volume, now, 0.1);
+
+        console.log(`[PROXIMITY AUDIO] ${identity} | Local(${localPosition.x.toFixed(1)}, ${localPosition.y.toFixed(1)}) | Remote(${remotePos.x.toFixed(1)}, ${remotePos.y.toFixed(1)}, Dead:${remotePos.isDead}) | Dist: ${distance.toFixed(1)}px | Vol: ${(volume * 100).toFixed(0)}%`);
+    }
+
+    function cleanupRemoteAudio(identity) {
+        const nodeData = remoteAudioNodes[identity];
+        if (!nodeData) return;
+
+        console.log("[AUDIO CLEANUP]", identity);
+
+        try {
+            nodeData.source.disconnect();
+            nodeData.panner.disconnect();
+            nodeData.gain.disconnect();
+
+            if (nodeData.hiddenElement) {
+                nodeData.hiddenElement.remove();
+            }
+        } catch (error) {
+            console.warn('Audio cleanup warning:', error);
+        }
+
+        delete remoteAudioNodes[identity];
+        delete remotePositions[identity];
+    }
+
+    async function ensurePlaybackUnlocked() {
+        try {
+            if (typeof room.canPlaybackAudio === 'boolean' && !room.canPlaybackAudio) {
+                console.log("[AUDIO PLAYBACK] unlocking via room.startAudio()");
+                await room.startAudio();
+            }
+        } catch (error) {
+            console.warn("[AUDIO PLAYBACK] startAudio failed:", error);
+        }
+    }
+
+    document.getElementById('start-btn').addEventListener('click', async () => {
+        const userToken = document.getElementById('token-input').value.trim();
+
+        if (!userToken) {
+            alert("Please paste your unique LiveKit token before connecting!");
+            return;
+        }
+
+        try {
+            await audioCtx.resume();
+            console.log("[AUDIO CONTEXT] resumed");
+        } catch (error) {
+            console.warn('AudioContext resume failed:', error);
+        }
+
+        document.getElementById('setup-area').style.display = 'none';
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('mute-btn').style.display = 'block';
+
+        await connectToLiveKit(userToken);
+        connectToLocalJavaTracker();
+    });
+
+    document.getElementById('mute-btn').addEventListener('click', async () => {
+        if (!connected) return;
+
+        try {
+            micMuted = !micMuted;
+            await room.localParticipant.setMicrophoneEnabled(!micMuted);
+
+            const muteBtn = document.getElementById('mute-btn');
+            if (micMuted) {
+                muteBtn.innerText = 'Unmute Microphone';
+                muteBtn.style.backgroundColor = '#28a745';
+            } else {
+                muteBtn.innerText = 'Mute Microphone';
+                muteBtn.style.backgroundColor = '#dc3545';
+            }
+
+            console.log("[MIC TOGGLE]", micMuted ? "muted" : "unmuted");
+        } catch (error) {
+            console.error('Failed to toggle microphone:', error);
+        }
+    });
+
+    async function connectToLiveKit(token) {
+        try {
+            console.log("[LIVEKIT] connecting...");
+
+            // 1. SET UP LISTENERS FIRST (Fixes the Reconnection Race Condition Bug)
+            room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, async () => {
+                await ensurePlaybackUnlocked();
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackSubscribed, async (track, publication, participant) => {
+                if (track.kind !== 'audio') return;
+
+                const hiddenElement = track.attach();
+                hiddenElement.volume = 0;
+                document.getElementById('hidden-audio-container').appendChild(hiddenElement);
+
+                const mediaStream = new MediaStream([track.mediaStreamTrack]);
+                const source = audioCtx.createMediaStreamSource(mediaStream);
+                const panner = audioCtx.createPanner();
+                const gain = audioCtx.createGain();
+
+                panner.panningModel = 'HRTF';
+                panner.distanceModel = 'linear';
+                panner.refDistance = 100;
+                panner.maxDistance = 100000;
+                panner.rolloffFactor = 0;
+                panner.coneInnerAngle = 360;
+
+                source.connect(panner);
+                panner.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                remoteAudioNodes[participant.identity] = {
+                    source,
+                    panner,
+                    gain,
+                    hiddenElement
+                };
+
+                console.log("[AUDIO NODE CREATED]", participant.identity);
+
+                await ensurePlaybackUnlocked();
+                updateRemoteAudio(participant.identity);
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                cleanupRemoteAudio(participant.identity);
+            });
+
+            room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+                cleanupRemoteAudio(participant.identity);
+            });
+
+            room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+                const decoded = new TextDecoder().decode(payload);
+                try {
+                    const data = JSON.parse(decoded);
+                    remotePositions[participant.identity] = {
+                        x: Number(data.x),
+                        y: Number(data.y),
+                        isDead: Boolean(data.isDead)
+                    };
+                    updateRemoteAudio(participant.identity);
+                } catch (error) {
+                    console.error("[LIVEKIT RECEIVE ERROR]", error, decoded);
+                }
+            });
+
+            // 2. NOW CONNECT TO THE ROOM
+            await room.connect(LIVEKIT_URL, token);
+            connected = true;
+
+            document.getElementById('lk-status').className = 'status success';
+            document.getElementById('lk-status').innerText = 'LiveKit Audio Server: Connected';
+
+            console.log("[LIVEKIT] connected", {
+                identity: room.localParticipant.identity,
+                name: room.localParticipant.name
+            });
+
+            // 3. ENABLE MICROPHONE LAST
+            await ensurePlaybackUnlocked();
+            await room.localParticipant.setMicrophoneEnabled(true);
+            console.log("[LIVEKIT] microphone enabled");
+
+        } catch (error) {
+            console.error("LiveKit initialization failed:", error);
+            document.getElementById('lk-status').className = 'status error';
+            document.getElementById('lk-status').innerText = 'LiveKit Connection Failed!';
+        }
+    }
+
+    function connectToLocalJavaTracker() {
+        if (trackerSocket && trackerSocket.readyState === WebSocket.OPEN) return;
+
+        trackerSocket = new WebSocket('ws://localhost:8887');
+
+        trackerSocket.onopen = () => {
+            document.getElementById('ws-status').className = 'status success';
+            document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Connected';
+        };
+
+        trackerSocket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                localPosition.x = Number(data.x);
+                localPosition.y = Number(data.y);
+                localPosition.isDead = Boolean(data.isDead);
+
+                updateListenerPosition();
+
+                if (room.state === LivekitClient.ConnectionState.Connected) {
+                    const payload = new TextEncoder().encode(JSON.stringify({
+                        x: localPosition.x,
+                        y: localPosition.y,
+                        isDead: localPosition.isDead
+                    }));
+                    room.localParticipant.publishData(payload, LivekitClient.DataPacket_Kind.LOSSY);
+                }
+            } catch (error) {
+                console.warn("[TRACKER PARSE ERROR]", error, event.data);
+            }
+        };
+
+        trackerSocket.onclose = () => {
+            document.getElementById('ws-status').className = 'status error';
+            document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Disconnected';
+            trackerSocket = null;
+            setTimeout(connectToLocalJavaTracker, 2000);
+        };
+
+        trackerSocket.onerror = (error) => {
+            document.getElementById('ws-status').className = 'status error';
+            document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Connection Error';
+        };
+    }
+</script>
+
+</body>
+</html>

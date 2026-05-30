@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotChats">
+    <option name="panelChat">
+      <chat>
+        <option name="activeSessionId" value="ed96857b-5ad3-4d7b-a2d6-086a4b1c3bed" />
+        <option name="sessions">
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="205a2c7b-10d4-48da-84c0-4daa99f14d20" />
+            <option name="modeId" value="Agent" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="gpt-5.2-codex" />
+            <option name="status" value="Completed" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="ab349b2e-3d13-43fc-a68b-eb3af66d3a61" />
+            <option name="modeId" value="Agent" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="auto" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="330f2c99-2b01-432d-bc72-99d50b295e2e" />
+            <option name="modeId" value="Agent" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="gpt-5.2-codex" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="81d64b02-3ea9-4cb2-9f69-39eb70f52868" />
+            <option name="modeId" value="Agent" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="gpt-5.2-codex" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="5abdab41-04cd-464f-81e3-8e04caeae25e" />
+            <option name="modeId" value="Ask" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="gpt-5.2-codex" />
+            <option name="status" value="Completed" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="ed96857b-5ad3-4d7b-a2d6-086a4b1c3bed" />
+            <option name="modeId" value="Ask" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="gpt-5.2-codex" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="e8efdc05-1c49-4f2e-a8b8-cff9a63d7763" />
+            <option name="modeId" value="Ask" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="gpt-5.2-codex" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+        </option>
+        <option name="type" value="PANEL" />
+      </chat>
+    </option>
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_C:/Users/proma/Documents/Projects/LeagueProximityChat" value="3EOsMeQJgDJK60K5w4ADywaFJPF" />
+    </persistenceIdMap>
+  </component>
+  <component name="CopilotUserSelectedModel">
+    <selectedModels>
+      <entry key="agent-panel" value="GPT-5.2-Codex" />
+      <entry key="chat-panel" value="GPT-5.2-Codex" />
+    </selectedModels>
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="322" />
+    <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Class" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.2223356286462735E-5" />
+      <entry key="MS500" value="0.10409697136006862" />
+      <entry key="S2" value="0.5680148485538792" />
+      <entry key="S5" value="0.8008762415505537" />
+      <entry key="S10" value="0.993628721290494" />
+      <entry key="S30" value="2.4271431875523803" />
+      <entry key="S60" value="4.122286159200208" />
+      <entry key="M2" value="5.709327260013926" />
+      <entry key="M5" value="7.438426894550529" />
+      <entry key="M10" value="8.782234271669767" />
+      <entry key="M15" value="9.804522494947811" />
+      <entry key="M30" value="12.447724557028055" />
+      <entry key="H1" value="16.547092811671085" />
+      <entry key="H2" value="22.816518036642563" />
+      <entry key="H4" value="31.045886304115204" />
+      <entry key="D1" value="46.216884961096305" />
+      <entry key="W1" value="50.26716897044788" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="1.0000000216658853" />
+      <entry key="MS500" value="1.030806187026946" />
+      <entry key="S2" value="1.7124119843714687" />
+      <entry key="S5" value="2.8122344051004147" />
+      <entry key="S10" value="3.6380568565019797" />
+      <entry key="S30" value="4.4651887025399315" />
+      <entry key="S60" value="4.720736824457391" />
+      <entry key="M2" value="4.85726512796357" />
+      <entry key="M5" value="4.959185279846899" />
+      <entry key="M10" value="5.194681410273745" />
+      <entry key="M15" value="5.625398629987072" />
+      <entry key="M30" value="7.347049279298074" />
+      <entry key="H1" value="10.204036966342203" />
+      <entry key="H2" value="14.260770791668376" />
+      <entry key="H4" value="19.591976580904745" />
+      <entry key="D1" value="29.737965793007767" />
+      <entry key="W1" value="32.4986677670788" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="1.8527220818648337E-5" />
+      <entry key="MS500" value="0.17708109730854055" />
+      <entry key="S2" value="1.4876760312029047" />
+      <entry key="S5" value="3.0248223808534167" />
+      <entry key="S10" value="4.239566815477499" />
+      <entry key="S30" value="6.720752193887816" />
+      <entry key="S60" value="8.745076655429449" />
+      <entry key="M2" value="10.51249274495998" />
+      <entry key="M5" value="12.373579851884594" />
+      <entry key="M10" value="13.96349240734244" />
+      <entry key="M15" value="15.420003404913606" />
+      <entry key="M30" value="19.788477422003787" />
+      <entry key="H1" value="26.74702925714942" />
+      <entry key="H2" value="37.074497922334785" />
+      <entry key="H4" value="50.635926445133954" />
+      <entry key="D1" value="75.95434759787123" />
+      <entry key="W1" value="82.76575773236449" />
+    </decayedShown>
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3EOsMeQJgDJK60K5w4ADywaFJPF" />
+  <component name="ProjectSessionTemplates">
+    <option name="panelTemplate">
+      <template>
+        <option name="modeId" value="Ask" />
+        <option name="model">
+          <model>
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="gpt-5.2-codex" />
+          </model>
+        </option>
+        <option name="targetType" value="LOCAL" />
+      </template>
+    </option>
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Application.LeagueProximityChat.executor": "Run",
+    "Application.Main.executor": "Run",
+    "Application.Unnamed.executor": "Run",
+    "Application.me.bedwarshurts.leagueproximitychat.LeagueProximityChat.executor": "Run",
+    "Maven.leagueproximitychat [clean,install].executor": "Run",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "master",
+    "junie.onboarding.icon.badge.shown": "true",
+    "kotlin-language-version-configured": "true",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "onboarding.tips.debug.path": "C:/Users/proma/Documents/Projects/LeagueProximityChat/src/main/java/org/example/Main.java",
+    "project.structure.last.edited": "Modules",
+    "project.structure.proportion": "0.0",
+    "project.structure.side.proportion": "0.0",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RunManager" selected="Maven.leagueproximitychat [clean,install]">
+    <configuration name="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" />
+      <module name="LeagueProximityChat" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="me.bedwarshurts.leagueproximitychat.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="leagueproximitychat [clean,install]" type="MavenRunConfiguration" factoryName="Maven" nameIsGenerated="true">
+      <MavenSettings>
+        <option name="myGeneralSettings" />
+        <option name="myRunnerSettings" />
+        <option name="myRunnerParameters">
+          <MavenRunnerParameters>
+            <option name="cmdOptions" />
+            <option name="profiles">
+              <set />
+            </option>
+            <option name="goals">
+              <list>
+                <option value="clean" />
+                <option value="install" />
+              </list>
+            </option>
+            <option name="multimoduleDir" />
+            <option name="pomFileName" />
+            <option name="profilesMap">
+              <map />
+            </option>
+            <option name="projectsCmdOptionValues">
+              <list />
+            </option>
+            <option name="resolveToWorkspace" value="false" />
+            <option name="workingDirPath" value="$PROJECT_DIR$" />
+          </MavenRunnerParameters>
+        </option>
+      </MavenSettings>
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Application.me.bedwarshurts.leagueproximitychat.LeagueProximityChat" />
+      <item itemvalue="Maven.leagueproximitychat [clean,install]" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Application.me.bedwarshurts.leagueproximitychat.LeagueProximityChat" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-37e91769500f-intellij.indexing.shared.core-IU-261.24374.151" />
+        <option value="bundled-js-predefined-d6986cc7102b-31caf2ab9e3c-JavaScript-IU-261.24374.151" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="" />
+      <created>1780060907106</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1780060907106</updated>
+      <workItem from="1780060911263" duration="12868000" />
+      <workItem from="1780075071429" duration="9792000" />
+      <workItem from="1780088900691" duration="1302000" />
+      <workItem from="1780095732183" duration="671000" />
+      <workItem from="1780101052439" duration="10357000" />
+      <workItem from="1780145101507" duration="12851000" />
+      <workItem from="1780166544402" duration="1181000" />
+      <workItem from="1780167773190" duration="177000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="github-copilot-workspace">
+    <instructionFileLocations>
+      <option value=".github/instructions" />
+    </instructionFileLocations>
+    <promptFileLocations>
+      <option value=".github/prompts" />
+    </promptFileLocations>
+  </component>
+</project>
