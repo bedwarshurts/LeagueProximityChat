@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="" />
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="initial files">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/AutoTemplateLoader.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/AutoTemplateLoader.java" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -103,67 +106,79 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "bedwarshurts"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/bedwarshurts/LeagueProximityChat.git",
+    "accountId": "a43b4a3e-8d4f-4780-a4a2-8d5f97327af8"
+  }
+}]]></component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.2223356286462735E-5" />
-      <entry key="MS500" value="0.10409697136006862" />
-      <entry key="S2" value="0.5680148485538792" />
-      <entry key="S5" value="0.8008762415505537" />
-      <entry key="S10" value="0.993628721290494" />
-      <entry key="S30" value="2.4271431875523803" />
-      <entry key="S60" value="4.122286159200208" />
-      <entry key="M2" value="5.709327260013926" />
-      <entry key="M5" value="7.438426894550529" />
-      <entry key="M10" value="8.782234271669767" />
-      <entry key="M15" value="9.804522494947811" />
-      <entry key="M30" value="12.447724557028055" />
-      <entry key="H1" value="16.547092811671085" />
-      <entry key="H2" value="22.816518036642563" />
-      <entry key="H4" value="31.045886304115204" />
-      <entry key="D1" value="46.216884961096305" />
-      <entry key="W1" value="50.26716897044788" />
+      <entry key="MS100" value="1.1182651592232742" />
+      <entry key="MS500" value="1.7480010063923017" />
+      <entry key="S2" value="2.4546960582826296" />
+      <entry key="S5" value="2.7534111627881845" />
+      <entry key="S10" value="2.942666977036003" />
+      <entry key="S30" value="3.9783432629721296" />
+      <entry key="S60" value="5.654397972679751" />
+      <entry key="M2" value="7.589639344704427" />
+      <entry key="M5" value="9.818672361711409" />
+      <entry key="M10" value="11.40895552238735" />
+      <entry key="M15" value="12.52490023225175" />
+      <entry key="M30" value="15.269159485264513" />
+      <entry key="H1" value="19.428108988080815" />
+      <entry key="H2" value="25.73441156371376" />
+      <entry key="H4" value="33.990010797424596" />
+      <entry key="D1" value="49.2030191303853" />
+      <entry key="W1" value="53.265014468949914" />
     </decayedCancelled>
     <decayedSelected>
-      <entry key="MS100" value="1.0000000216658853" />
-      <entry key="MS500" value="1.030806187026946" />
-      <entry key="S2" value="1.7124119843714687" />
-      <entry key="S5" value="2.8122344051004147" />
-      <entry key="S10" value="3.6380568565019797" />
-      <entry key="S30" value="4.4651887025399315" />
-      <entry key="S60" value="4.720736824457391" />
-      <entry key="M2" value="4.85726512796357" />
-      <entry key="M5" value="4.959185279846899" />
-      <entry key="M10" value="5.194681410273745" />
-      <entry key="M15" value="5.625398629987072" />
-      <entry key="M30" value="7.347049279298074" />
-      <entry key="H1" value="10.204036966342203" />
-      <entry key="H2" value="14.260770791668376" />
-      <entry key="H4" value="19.591976580904745" />
-      <entry key="D1" value="29.737965793007767" />
-      <entry key="W1" value="32.4986677670788" />
+      <entry key="MS100" value="3.453058446646731E-113" />
+      <entry key="MS500" value="3.317552471651368E-23" />
+      <entry key="S2" value="4.07866893000177E-6" />
+      <entry key="S5" value="0.015842203785853052" />
+      <entry key="S10" value="0.27305587255198466" />
+      <entry key="S30" value="1.8835066750248755" />
+      <entry key="S60" value="3.0660092650531525" />
+      <entry key="M2" value="3.914476103203696" />
+      <entry key="M5" value="4.5490747050493505" />
+      <entry key="M10" value="4.975254311783573" />
+      <entry key="M15" value="5.465847971674845" />
+      <entry key="M30" value="7.242109303923824" />
+      <entry key="H1" value="10.130901304944546" />
+      <entry key="H2" value="14.209573091047186" />
+      <entry key="H4" value="19.556776307968754" />
+      <entry key="D1" value="29.72905424525718" />
+      <entry key="W1" value="32.497276324842076" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="1.8527220818648337E-5" />
-      <entry key="MS500" value="0.17708109730854055" />
-      <entry key="S2" value="1.4876760312029047" />
-      <entry key="S5" value="3.0248223808534167" />
-      <entry key="S10" value="4.239566815477499" />
-      <entry key="S30" value="6.720752193887816" />
-      <entry key="S60" value="8.745076655429449" />
-      <entry key="M2" value="10.51249274495998" />
-      <entry key="M5" value="12.373579851884594" />
-      <entry key="M10" value="13.96349240734244" />
-      <entry key="M15" value="15.420003404913606" />
-      <entry key="M30" value="19.788477422003787" />
-      <entry key="H1" value="26.74702925714942" />
-      <entry key="H2" value="37.074497922334785" />
-      <entry key="H4" value="50.635926445133954" />
-      <entry key="D1" value="75.95434759787123" />
-      <entry key="W1" value="82.76575773236449" />
+      <entry key="MS100" value="1.0660854168169847" />
+      <entry key="MS500" value="1.7318856946942154" />
+      <entry key="S2" value="2.4488689501147944" />
+      <entry key="S5" value="2.7632963132332087" />
+      <entry key="S10" value="3.184907160861218" />
+      <entry key="S30" value="5.788997074556859" />
+      <entry key="S60" value="8.6565528109551" />
+      <entry key="M2" value="11.460395690527426" />
+      <entry key="M5" value="14.345653711403838" />
+      <entry key="M10" value="16.37132932887654" />
+      <entry key="M15" value="17.981095611489234" />
+      <entry key="M30" value="22.505054223903095" />
+      <entry key="H1" value="29.55493511914711" />
+      <entry key="H2" value="39.941201746901484" />
+      <entry key="H4" value="53.5448531338427" />
+      <entry key="D1" value="78.9315702017177" />
+      <entry key="W1" value="85.76221176794483" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -191,6 +206,7 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "Application.LeagueProximityChat.executor": "Run",
     "Application.Main.executor": "Run",
     "Application.Unnamed.executor": "Run",
@@ -201,6 +217,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "codeWithMe.voiceChat.enabledByDefault": "false",
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
     "git-widget-placeholder": "master",
@@ -296,12 +313,25 @@
       <workItem from="1780101052439" duration="10357000" />
       <workItem from="1780145101507" duration="12851000" />
       <workItem from="1780166544402" duration="1181000" />
-      <workItem from="1780167773190" duration="177000" />
+      <workItem from="1780167773190" duration="759000" />
     </task>
+    <task id="LOCAL-00001" summary="initial files">
+      <option name="closed" value="true" />
+      <created>1780168057754</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1780168057754</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="initial files" />
+    <option name="LAST_COMMIT_MESSAGE" value="initial files" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

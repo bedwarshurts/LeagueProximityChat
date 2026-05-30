@@ -59,14 +59,8 @@ public class AutoTemplateLoader {
             Mat fullMat = new Mat(minimapIconSize, minimapIconSize, CvType.CV_8UC3);
             fullMat.put(0, 0, pixels);
 
-            int cropSize = 24;
-            int offset = (minimapIconSize - cropSize) / 2;
-            org.opencv.core.Rect cropRegion = new org.opencv.core.Rect(offset, offset, cropSize, cropSize);
-
-            Mat template = new Mat(fullMat, cropRegion).clone();
-
-            System.out.println("Successfully generated and center-cropped OpenCV template for " + rawName);
-            return template;
+            System.out.println("Successfully generated OpenCV template for " + rawName);
+            return fullMat;
 
         } catch (Exception e) {
             System.err.println("Failed to automate template loading. Ensure the game is actively running in a match.");
