@@ -13,7 +13,7 @@ import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.opencv.core.Mat;
 import org.opencv.core.CvType;
 
-public class AutoTemplateLoader {
+public class TemplateLoader {
 
     public static Mat autoLoadChampionTemplate() {
         try {

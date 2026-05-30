@@ -1,6 +1,6 @@
 package me.bedwarshurts.leagueproximitychat;
 
-import me.bedwarshurts.leagueproximitychat.position.HybridPositionTracker;
+import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
 import nu.pattern.OpenCV;
@@ -12,7 +12,7 @@ public class LeagueProximityChat {
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
 
-        HybridPositionTracker tracker = new HybridPositionTracker();
+        ScreenPositionTracker tracker = new ScreenPositionTracker();
         CoordinateServer server = new CoordinateServer(new InetSocketAddress("127.0.0.1", 8887));
         server.start();
 
@@ -29,7 +29,7 @@ public class LeagueProximityChat {
 
                 long startTime = System.currentTimeMillis();
 
-                HybridPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
+                ScreenPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
 
                 System.out.printf("Current Map Position: X: %.2f%% | Y: %.2f%% | Dead: %b\n", pos.x, pos.y, pos.isDead);
                 server.broadcastCoordinates(pos.x, pos.y, pos.isDead);

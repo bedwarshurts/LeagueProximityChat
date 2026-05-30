@@ -13,7 +13,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 
-public class HybridPositionTracker {
+public class ScreenPositionTracker {
 
     private Robot robot;
     private float userMinimapScale;
@@ -37,14 +37,14 @@ public class HybridPositionTracker {
         }
     }
 
-    public HybridPositionTracker() {
+    public ScreenPositionTracker() {
         try {
             this.robot = new Robot();
 
             LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
             this.userMinimapScale = settings.minimapScale;
 
-            this.championTemplate = AutoTemplateLoader.autoLoadChampionTemplate();
+            this.championTemplate = TemplateLoader.autoLoadChampionTemplate();
 
             if (this.championTemplate == null) {
                 System.err.println("[TRACKER] CRITICAL: Failed to load champion template.");
