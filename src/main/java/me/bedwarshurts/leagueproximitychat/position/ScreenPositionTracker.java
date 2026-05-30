@@ -12,6 +12,7 @@ import org.opencv.imgproc.Moments;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
+import java.util.ArrayList;
 
 public class ScreenPositionTracker {
 
@@ -37,18 +38,14 @@ public class ScreenPositionTracker {
         }
     }
 
-    public ScreenPositionTracker() {
+    public ScreenPositionTracker(Mat championTemplate) {
         try {
             this.robot = new Robot();
 
             LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
             this.userMinimapScale = settings.minimapScale;
 
-            this.championTemplate = TemplateLoader.autoLoadChampionTemplate();
-
-            if (this.championTemplate == null) {
-                System.err.println("[TRACKER] CRITICAL: Failed to load champion template.");
-            }
+            this.championTemplate = championTemplate;
 
         } catch (AWTException e) {
             System.err.println("[TRACKER] Failed to initialize Java Robot API");
@@ -175,7 +172,7 @@ public class ScreenPositionTracker {
             Imgcodecs.imwrite("debug_health_mask.png", mask);
         }
 
-        java.util.List<MatOfPoint> contours = new java.util.ArrayList<>();
+        java.util.List<MatOfPoint> contours = new ArrayList<>();
         Mat hierarchy = new Mat();
         Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
