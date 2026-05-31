@@ -4,9 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="improve code structure">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="improve code structure and remove some deprecated code">
       <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/TemplateLoader.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/TemplateLoader.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/utils/RitoApiUtils.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/utils/RitoApiUtils.java" afterDir="false" />
@@ -320,7 +321,7 @@
       <workItem from="1780166544402" duration="1181000" />
       <workItem from="1780167773190" duration="1071000" />
       <workItem from="1780168877426" duration="5096000" />
-      <workItem from="1780179335412" duration="1224000" />
+      <workItem from="1780179335412" duration="8746000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -354,7 +355,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780176547248</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="improve code structure and remove some deprecated code">
+      <option name="closed" value="true" />
+      <created>1780180722458</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1780180722459</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -365,7 +374,8 @@
     <MESSAGE value="REMOVE redudant code" />
     <MESSAGE value="clearer file names" />
     <MESSAGE value="improve code structure" />
-    <option name="LAST_COMMIT_MESSAGE" value="improve code structure" />
+    <MESSAGE value="improve code structure and remove some deprecated code" />
+    <option name="LAST_COMMIT_MESSAGE" value="improve code structure and remove some deprecated code" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

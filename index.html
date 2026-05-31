@@ -239,7 +239,6 @@
         try {
             console.log("[LIVEKIT] connecting...");
 
-            // 1. SET UP LISTENERS FIRST (Fixes the Reconnection Race Condition Bug)
             room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, async () => {
                 await ensurePlaybackUnlocked();
             });
@@ -303,7 +302,6 @@
                 }
             });
 
-            // 2. NOW CONNECT TO THE ROOM
             await room.connect(LIVEKIT_URL, token);
             connected = true;
 
@@ -315,7 +313,6 @@
                 name: room.localParticipant.name
             });
 
-            // 3. ENABLE MICROPHONE LAST
             await ensurePlaybackUnlocked();
             await room.localParticipant.setMicrophoneEnabled(true);
             console.log("[LIVEKIT] microphone enabled");

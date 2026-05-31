@@ -17,9 +17,15 @@ public class RitoApiUtils {
         try {
             TrustManager[] trustAllCerts = new TrustManager[]{
                     new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() { return null; }
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) { }
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) { }
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return null;
+                        }
+
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                        }
+
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                        }
                     }
             };
             SSLContext sc = SSLContext.getInstance("SSL");
@@ -56,20 +62,23 @@ public class RitoApiUtils {
     }
 
     public static String getLocalSummonerName() {
-        if (cachedSummonerName == null) {
-            String activePlayerJson = fetchAPI("https://127.0.0.1:2999/liveclientdata/activeplayer");
-            if (activePlayerJson != null) {
-                String marker = "\"summonerName\":";
-                int idx = activePlayerJson.indexOf(marker);
-                if (idx != -1) {
-                    int start = activePlayerJson.indexOf("\"", idx + marker.length()) + 1;
-                    int end = activePlayerJson.indexOf("\"", start);
-                    if (start > 0 && end > start) {
-                        cachedSummonerName = activePlayerJson.substring(start, end);
-                    }
-                }
-            }
+        if (cachedSummonerName != null) return cachedSummonerName;
+
+        String activePlayerJson = fetchAPI("https://127.0.0.1:2999/liveclientdata/activeplayer");
+        if (activePlayerJson == null) return "Couldn't get name";
+
+        String marker = "\"summonerName\":";
+        int idx = activePlayerJson.indexOf(marker);
+        if (idx == -1) return "Couldn't get name";
+
+        int start = activePlayerJson.indexOf("\"", idx + marker.length()) + 1;
+        int end = activePlayerJson.indexOf("\"", start);
+        if (start > 0 && end > start) {
+            cachedSummonerName = activePlayerJson.substring(start, end);
+        } else {
+            cachedSummonerName = "Couldn't get name";
         }
+
         return cachedSummonerName;
     }
 }

@@ -48,3 +48,5 @@ build/
 /debug_screen.png
 /debug_template_match.png
 /debug_template.png
+/debug_ally_centers.png
+/debug_ally_mask.png

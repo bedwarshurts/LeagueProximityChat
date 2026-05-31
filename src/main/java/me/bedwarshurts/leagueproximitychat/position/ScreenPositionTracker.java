@@ -48,7 +48,7 @@ public class ScreenPositionTracker {
             this.championTemplate = championTemplate;
 
         } catch (AWTException e) {
-            System.err.println("[TRACKER] Failed to initialize Java Robot API");
+            System.err.println("[MINIMAP TRACKER] Failed to initialize Java Robot API");
             e.printStackTrace();
         }
     }
@@ -104,7 +104,6 @@ public class ScreenPositionTracker {
             float invertedY = 100f - ((finalY / minimapBounds.height) * 100f);
 
             return new TrackResult((finalX / minimapBounds.width) * 100f, invertedY, isDead);
-
         } else if (championTemplate != null) {
             Point champMapCenter = locateChampionViaTemplate(minimapMat);
 
@@ -236,55 +235,68 @@ public class ScreenPositionTracker {
         int borderMarginX = (int) (minimap.width() * 0.08);
         int borderMarginY = (int) (minimap.height() * 0.08);
 
+        java.util.List<Point> allyCenters = findAllyLocations(minimap);
+
+        if (allyCenters.isEmpty()) return null;
+
         if (isScaleLocked && lockedCoreTemplate != null) {
-            Mat result = new Mat();
-            Imgproc.matchTemplate(minimap, lockedCoreTemplate, result, Imgproc.TM_CCOEFF_NORMED);
-            Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
+            double bestScore = -1.0;
+            Point bestAllyCenter = null;
 
-            if (mmr.maxVal > 0.32) {
-                double centerX = mmr.maxLoc.x + (lockedCoreTemplate.width() / 2.0);
-                double centerY = mmr.maxLoc.y + (lockedCoreTemplate.height() / 2.0);
+            int cw = lockedCoreTemplate.width();
+            int ch = lockedCoreTemplate.height();
 
-                if (centerX > borderMarginX && centerX < minimap.width() - borderMarginX &&
-                        centerY > borderMarginY && centerY < minimap.height() - borderMarginY) {
+            for (Point ally : allyCenters) {
+                int searchRadiusX = (int) (cw * 0.8);
+                int searchRadiusY = (int) (ch * 0.8);
+                int startX = (int) Math.max(0, ally.x - searchRadiusX);
+                int startY = (int) Math.max(0, ally.y - searchRadiusY);
+                int roiW = Math.min(minimap.width() - startX, searchRadiusX * 2);
+                int roiH = Math.min(minimap.height() - startY, searchRadiusY * 2);
 
-                    Rect matchRect = new Rect((int) mmr.maxLoc.x, (int) mmr.maxLoc.y, lockedCoreTemplate.width(), lockedCoreTemplate.height());
-                    Mat matchPatch = new Mat(minimap, matchRect);
-                    MatOfDouble stdDev = new MatOfDouble();
-                    MatOfDouble mean = new MatOfDouble();
-                    Core.meanStdDev(matchPatch, mean, stdDev);
-                    double[] patchDev = stdDev.toArray();
-                    matchPatch.release();
+                if (roiW < cw || roiH < ch) continue;
 
-                    if (patchDev[0] > 15.0 || patchDev[1] > 15.0 || patchDev[2] > 15.0) {
-                        result.release();
-                        drawDebugBox(minimap, centerX, centerY, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 255, 0)); // green Box
-                        return new Point(centerX, centerY);
-                    }
+                Mat localRoi = new Mat(minimap, new Rect(startX, startY, roiW, roiH));
+                Mat result = new Mat();
+                Imgproc.matchTemplate(localRoi, lockedCoreTemplate, result, Imgproc.TM_CCOEFF_NORMED);
+                Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
+
+                if (mmr.maxVal > bestScore) {
+                    bestScore = mmr.maxVal;
+                    bestAllyCenter = new Point(startX + mmr.maxLoc.x + (cw / 2.0), startY + mmr.maxLoc.y + (ch / 2.0));
+                }
+
+                localRoi.release();
+                result.release();
+            }
+
+            if (bestScore > 0.15 && bestAllyCenter != null) {
+                if (bestAllyCenter.x > borderMarginX && bestAllyCenter.x < minimap.width() - borderMarginX &&
+                        bestAllyCenter.y > borderMarginY && bestAllyCenter.y < minimap.height() - borderMarginY) {
+
+                    drawDebugBox(minimap, bestAllyCenter.x, bestAllyCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 255, 0));
+                    return bestAllyCenter;
                 }
             }
 
-            result.release();
-            System.out.println("[TRACKER] Target occluded or hidden. Waiting for reappearance...");
+            System.out.printf("[MINIMAP TRACKER] Target occluded among allies. Score: %.2f\n", bestScore);
             return null;
         }
 
-        System.out.println("[TRACKER] Calibrating HUD Scale... Please ensure your champion is visible.");
+        System.out.println("[MINIMAP TRACKER] Calibrating HUD Scale... Please ensure your champion is visible.");
 
-        double bestScore = 0;
-        Point bestCenter = null;
-        Mat bestTemplate = null;
+        double globalBestScore = 0;
+        Point globalBestCenter = null;
+        Mat globalBestTemplate = null;
+        int globalBestSize = 0;
 
-        for (double scale = 0.20; scale <= 2.50; scale += 0.05) {
-            int targetWidth = (int) (championTemplate.width() * scale);
-            int targetHeight = (int) (championTemplate.height() * scale);
-
-            if (targetWidth < 8 || targetHeight < 8 || targetWidth > minimap.width() || targetHeight > minimap.height()) {
+        for (int targetSize = 1; targetSize <= 120; targetSize++) {
+            if (targetSize > minimap.width() || targetSize > minimap.height()) {
                 continue;
             }
 
             Mat resizedTemplate = new Mat();
-            Imgproc.resize(championTemplate, resizedTemplate, new org.opencv.core.Size(targetWidth, targetHeight), 0, 0, Imgproc.INTER_LINEAR);
+            Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
 
             int cx = (int) (resizedTemplate.width() * 0.15);
             int cy = (int) (resizedTemplate.height() * 0.15);
@@ -302,17 +314,26 @@ public class ScreenPositionTracker {
             Imgproc.matchTemplate(minimap, coreTemplate, result, Imgproc.TM_CCOEFF_NORMED);
             Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
 
-            if (mmr.maxVal > bestScore) {
-                double centerX = mmr.maxLoc.x + (coreTemplate.width() / 2.0);
-                double centerY = mmr.maxLoc.y + (coreTemplate.height() / 2.0);
+            if (mmr.maxVal > globalBestScore) {
+                double matchCenterX = mmr.maxLoc.x + (coreTemplate.width() / 2.0);
+                double matchCenterY = mmr.maxLoc.y + (coreTemplate.height() / 2.0);
 
-                if (centerX > borderMarginX && centerX < minimap.width() - borderMarginX &&
-                        centerY > borderMarginY && centerY < minimap.height() - borderMarginY) {
+                boolean isNearAlly = false;
+                for (Point ally : allyCenters) {
+                    if (Math.hypot(ally.x - matchCenterX, ally.y - matchCenterY) < 30) {
+                        isNearAlly = true;
+                        break;
+                    }
+                }
 
-                    bestScore = mmr.maxVal;
-                    bestCenter = new Point(centerX, centerY);
-                    if (bestTemplate != null) bestTemplate.release();
-                    bestTemplate = coreTemplate.clone();
+                if (isNearAlly && matchCenterX > borderMarginX && matchCenterX < minimap.width() - borderMarginX &&
+                        matchCenterY > borderMarginY && matchCenterY < minimap.height() - borderMarginY) {
+
+                    globalBestScore = mmr.maxVal;
+                    globalBestCenter = new Point(matchCenterX, matchCenterY);
+                    if (globalBestTemplate != null) globalBestTemplate.release();
+                    globalBestTemplate = coreTemplate.clone();
+                    globalBestSize = targetSize;
                 }
             }
 
@@ -321,16 +342,17 @@ public class ScreenPositionTracker {
             result.release();
         }
 
-        if (bestScore > 0.65) {
-            System.out.printf("[TRACKER] EXACT SCALE LOCKED! Match: %.2f%%\n", (bestScore * 100));
-            this.lockedCoreTemplate = bestTemplate;
+        if (globalBestScore > 0.65) {
+            System.out.printf("[MINIMAP TRACKER] EXACT SCALE LOCKED! Match: %.2f%%\n", (globalBestScore * 100));
+            System.out.printf("[MINIMAP TRACKER] EXACT SCALE LOCKED at %dpx! Match: %.2f%%\n", globalBestSize, (globalBestScore * 100));
+            this.lockedCoreTemplate = globalBestTemplate;
             this.isScaleLocked = true;
 
-            drawDebugBox(minimap, bestCenter.x, bestCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 165, 255)); // orange Box
-            return bestCenter;
+            drawDebugBox(minimap, globalBestCenter.x, globalBestCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 165, 255));
+            return globalBestCenter;
         }
 
-        if (bestTemplate != null) bestTemplate.release();
+        if (globalBestTemplate != null) globalBestTemplate.release();
         return null;
     }
 
@@ -343,6 +365,67 @@ public class ScreenPositionTracker {
             Imgcodecs.imwrite("debug_template_match.png", debugMap);
             debugMap.release();
         }
+    }
+
+    private java.util.List<Point> findAllyLocations(Mat minimap) {
+        java.util.List<Point> centers = new java.util.ArrayList<>();
+        Mat hsv = new Mat();
+        Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
+
+        Scalar lowerBlue = new Scalar(95, 100, 150);
+        Scalar upperBlue = new Scalar(115, 255, 255);
+
+        Mat mask = new Mat();
+        Core.inRange(hsv, lowerBlue, upperBlue, mask);
+
+        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(3, 3));
+        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_DILATE, kernel);
+        kernel.release();
+
+        if (WindowUtils.isWindowFocused("League of Legends")) {
+            Imgcodecs.imwrite("debug_ally_mask.png", mask);
+        }
+
+        java.util.List<MatOfPoint> contours = new java.util.ArrayList<>();
+        Mat hierarchy = new Mat();
+        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+
+        System.out.println("[ALLY_FINDER] Found " + contours.size() + " raw blue contours.");
+
+        Mat debugDrawMap = null;
+        if (WindowUtils.isWindowFocused("League of Legends")) {
+            debugDrawMap = minimap.clone();
+        }
+
+        for (MatOfPoint contour : contours) {
+            float[] radius = new float[1];
+            Point center = new Point();
+            MatOfPoint2f contour2f = new MatOfPoint2f(contour.toArray());
+
+            Imgproc.minEnclosingCircle(contour2f, center, radius);
+
+            if (radius[0] > 6 && radius[0] < 45) {
+                centers.add(center);
+                System.out.printf("[ALLY_FINDER] Valid Ally -> Center: (%.1f, %.1f), Radius: %.1f\n", center.x, center.y, radius[0]);
+
+                if (debugDrawMap != null) {
+                    Imgproc.circle(debugDrawMap, center, (int)radius[0], new Scalar(0, 255, 255), 2);
+                    Imgproc.circle(debugDrawMap, center, 2, new Scalar(0, 0, 255), -1);
+                }
+            }
+        }
+
+        if (debugDrawMap != null) {
+            Imgcodecs.imwrite("debug_ally_centers.png", debugDrawMap);
+            debugDrawMap.release();
+        }
+
+        System.out.println("[ALLY_FINDER] Total valid allies identified for search: " + centers.size());
+
+        hsv.release();
+        mask.release();
+        hierarchy.release();
+        return centers;
     }
 
     private Mat captureScreen(Rectangle bounds) {

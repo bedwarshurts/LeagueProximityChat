@@ -51,18 +51,11 @@ public class TemplateLoader {
             String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestPatch + "/img/champion/" + rawName + ".png";
             BufferedImage originalIcon = ImageIO.read(new URI(ddragonUrl).toURL());
 
-            int minimapIconSize = 24;
-            BufferedImage resizedIcon = new BufferedImage(minimapIconSize, minimapIconSize, BufferedImage.TYPE_3BYTE_BGR);
-            Graphics2D g2d = resizedIcon.createGraphics();
-            g2d.drawImage(originalIcon, 0, 0, minimapIconSize, minimapIconSize, null);
-            g2d.dispose();
-
-            byte[] pixels = ((DataBufferByte) resizedIcon.getRaster().getDataBuffer()).getData();
-            Mat fullMat = new Mat(minimapIconSize, minimapIconSize, CvType.CV_8UC3);
+            byte[] pixels = ((DataBufferByte) originalIcon.getRaster().getDataBuffer()).getData();
+            Mat fullMat = new Mat(originalIcon.getHeight(), originalIcon.getWidth(), CvType.CV_8UC3);
             fullMat.put(0, 0, pixels);
 
-            System.out.println("Successfully generated OpenCV template for " + rawName);
-            Imgcodecs.imwrite("debug_template.png", fullMat);
+            System.out.println("Successfully generated Raw 120x120 OpenCV template for " + rawName);
             return fullMat;
         } catch (Exception e) {
             System.err.println("Failed to automate template loading. Ensure the game is actively running in a match.");
