@@ -157,11 +157,11 @@ public class ScreenPositionTracker {
 
         Imgproc.rectangle(mask, new Point(screen.width() * 0.85, 0), new Point(screen.width(), screen.height() * 0.10), new Scalar(0), -1);
 
-        Mat openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new org.opencv.core.Size(3, 3));
+        Mat openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
         Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, openKernel);
         openKernel.release();
 
-        Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new org.opencv.core.Size(11, 1));
+        Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(11, 1));
         Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, closeKernel);
         closeKernel.release();
 
