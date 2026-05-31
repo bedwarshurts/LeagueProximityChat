@@ -9,7 +9,7 @@ target/
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/
-.idea/
+/.idea
 *.iws
 *.iml
 *.ipr
@@ -43,6 +43,7 @@ build/
 ### PROJECT FILES ###
 /exe
 /target
+/debug
 /debug_camera_mask.png
 /debug_health_mask.png
 /debug_minimap.png
@@ -51,3 +52,4 @@ build/
 /debug_template.png
 /debug_ally_centers.png
 /debug_ally_mask.png
+/.idea/

@@ -86,8 +86,8 @@ public class ScreenPositionTracker {
         Mat minimapMat = captureScreen(minimapBounds);
 
         if (WindowUtils.isWindowFocused("League of Legends")) {
-            Imgcodecs.imwrite("debug_screen.png", fullScreenMat);
-            Imgcodecs.imwrite("debug_minimap.png", minimapMat);
+            Imgcodecs.imwrite("debug/debug_screen.png", fullScreenMat);
+            Imgcodecs.imwrite("debug/debug_minimap.png", minimapMat);
         }
 
         Point healthBarCenter = locateSelfHealthBar(fullScreenMat);
@@ -166,7 +166,7 @@ public class ScreenPositionTracker {
         closeKernel.release();
 
         if (WindowUtils.isWindowFocused("League of Legends")) {
-            Imgcodecs.imwrite("debug_health_mask.png", mask);
+            Imgcodecs.imwrite("debug/debug_health_mask.png", mask);
         }
 
         java.util.List<MatOfPoint> contours = new ArrayList<>();
@@ -219,7 +219,7 @@ public class ScreenPositionTracker {
         Imgproc.threshold(gray, thresholded, 240, 255, Imgproc.THRESH_BINARY);
 
         if (WindowUtils.isWindowFocused("League of Legends")) {
-            Imgcodecs.imwrite("debug_camera_mask.png", thresholded);
+            Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
         }
 
         Moments moments = Imgproc.moments(thresholded);
@@ -290,7 +290,7 @@ public class ScreenPositionTracker {
         Mat globalBestTemplate = null;
         int globalBestSize = 0;
 
-        for (int targetSize = 1; targetSize <= 120; targetSize++) {
+        for (int targetSize = 120; targetSize >= 1; targetSize--) {
             if (targetSize > minimap.width() || targetSize > minimap.height()) {
                 continue;
             }
@@ -362,7 +362,7 @@ public class ScreenPositionTracker {
             Point topLeft = new Point(centerX - (width / 2.0), centerY - (height / 2.0));
             Point bottomRight = new Point(topLeft.x + width, topLeft.y + height);
             Imgproc.rectangle(debugMap, topLeft, bottomRight, color, 2);
-            Imgcodecs.imwrite("debug_template_match.png", debugMap);
+            Imgcodecs.imwrite("debug/debug_template_match.png", debugMap);
             debugMap.release();
         }
     }
@@ -383,7 +383,7 @@ public class ScreenPositionTracker {
         kernel.release();
 
         if (WindowUtils.isWindowFocused("League of Legends")) {
-            Imgcodecs.imwrite("debug_ally_mask.png", mask);
+            Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
         }
 
         java.util.List<MatOfPoint> contours = new java.util.ArrayList<>();
@@ -416,7 +416,7 @@ public class ScreenPositionTracker {
         }
 
         if (debugDrawMap != null) {
-            Imgcodecs.imwrite("debug_ally_centers.png", debugDrawMap);
+            Imgcodecs.imwrite("debug/debug_ally_centers.png", debugDrawMap);
             debugDrawMap.release();
         }
 
