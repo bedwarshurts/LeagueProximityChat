@@ -4,13 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="improve code structure and remove some deprecated code">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="improve minimap detection by masking for the ally color(blue)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/TemplateLoader.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/TemplateLoader.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/utils/RitoApiUtils.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/utils/RitoApiUtils.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -242,7 +239,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Application.me.bedwarshurts.leagueproximitychat.LeagueProximityChat">
+  <component name="RunManager" selected="Maven.leagueproximitychat [clean,install]">
     <configuration name="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
       <option name="MAIN_CLASS_NAME" value="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" />
       <module name="LeagueProximityChat" />
@@ -321,7 +318,7 @@
       <workItem from="1780166544402" duration="1181000" />
       <workItem from="1780167773190" duration="1071000" />
       <workItem from="1780168877426" duration="5096000" />
-      <workItem from="1780179335412" duration="8746000" />
+      <workItem from="1780179335412" duration="8907000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -363,7 +360,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780180722459</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="improve minimap detection by masking for the ally color(blue)">
+      <option name="closed" value="true" />
+      <created>1780191686382</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1780191686382</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -375,7 +380,8 @@
     <MESSAGE value="clearer file names" />
     <MESSAGE value="improve code structure" />
     <MESSAGE value="improve code structure and remove some deprecated code" />
-    <option name="LAST_COMMIT_MESSAGE" value="improve code structure and remove some deprecated code" />
+    <MESSAGE value="improve minimap detection by masking for the ally color(blue)" />
+    <option name="LAST_COMMIT_MESSAGE" value="improve minimap detection by masking for the ally color(blue)" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

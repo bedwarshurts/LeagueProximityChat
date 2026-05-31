@@ -1,7 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.position;
 
 import javax.imageio.ImageIO;
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.InputStreamReader;
@@ -13,7 +12,6 @@ import java.util.Scanner;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.opencv.core.Mat;
 import org.opencv.core.CvType;
-import org.opencv.imgcodecs.Imgcodecs;
 
 public class TemplateLoader {
 
@@ -59,13 +57,13 @@ public class TemplateLoader {
             return fullMat;
         } catch (Exception e) {
             System.err.println("Failed to automate template loading. Ensure the game is actively running in a match.");
-            e.printStackTrace();
+            System.err.println("Stacktrace: " + e.getMessage());
             return null;
         }
     }
 
     private static String getLatestDataDragonVersion() throws Exception {
-        URL url = new URL("https://ddragon.leagueoflegends.com/api/versions.json");
+        URL url = new URI("https://ddragon.leagueoflegends.com/api/versions.json").toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
 

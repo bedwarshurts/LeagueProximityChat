@@ -49,7 +49,7 @@ public class ScreenPositionTracker {
 
         } catch (AWTException e) {
             System.err.println("[MINIMAP TRACKER] Failed to initialize Java Robot API");
-            e.printStackTrace();
+            System.err.println("Stacktrace: " + e.getMessage());
         }
     }
 
