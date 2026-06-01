@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="correct game window name">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="if player not found return last known location. Also make the template matching a bit strictier">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
     </list>
@@ -243,7 +243,7 @@
       <recent name="C:\Users\proma\Documents\Projects\LeagueProximityChat\src\main\resources" />
     </key>
   </component>
-  <component name="RunManager" selected="Maven.leagueproximitychat [clean,install]">
+  <component name="RunManager" selected="Application.me.bedwarshurts.leagueproximitychat.LeagueProximityChat">
     <configuration name="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
       <option name="MAIN_CLASS_NAME" value="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" />
       <module name="LeagueProximityChat" />
@@ -332,7 +332,7 @@
       <workItem from="1780316221272" duration="52000" />
       <workItem from="1780323516004" duration="1137000" />
       <workItem from="1780327738771" duration="2244000" />
-      <workItem from="1780337051343" duration="1441000" />
+      <workItem from="1780337051343" duration="2064000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -478,7 +478,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780324245708</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="if player not found return last known location. Also make the template matching a bit strictier">
+      <option name="closed" value="true" />
+      <created>1780338653821</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1780338653821</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -502,7 +510,8 @@
     <MESSAGE value="dynamic crisp loading" />
     <MESSAGE value="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established" />
     <MESSAGE value="correct game window name" />
-    <option name="LAST_COMMIT_MESSAGE" value="correct game window name" />
+    <MESSAGE value="if player not found return last known location. Also make the template matching a bit strictier" />
+    <option name="LAST_COMMIT_MESSAGE" value="if player not found return last known location. Also make the template matching a bit strictier" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

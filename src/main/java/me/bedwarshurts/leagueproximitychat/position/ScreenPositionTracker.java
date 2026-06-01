@@ -451,7 +451,7 @@ public class ScreenPositionTracker {
                 result.release();
             }
 
-            if (bestScore > 0.45 && bestAllyCenter != null) {
+            if (bestScore > 0.40 && bestAllyCenter != null) {
                 if (bestAllyCenter.x > borderMarginX && bestAllyCenter.x < minimap.width() - borderMarginX &&
                         bestAllyCenter.y > borderMarginY && bestAllyCenter.y < minimap.height() - borderMarginY) {
 
