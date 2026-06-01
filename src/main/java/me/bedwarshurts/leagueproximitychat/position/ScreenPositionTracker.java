@@ -146,7 +146,7 @@ public class ScreenPositionTracker {
         );
         Mat minimapMat = new Mat(fullScreenMat, minimapRoi).clone();
 
-        if (WindowUtils.isWindowFocused("League of Legends")) {
+        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
             Imgcodecs.imwrite("debug/debug_screen.png", fullScreenMat);
             Imgcodecs.imwrite("debug/debug_minimap.png", minimapMat);
         }
@@ -293,7 +293,7 @@ public class ScreenPositionTracker {
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, closeKernel);
             closeKernel.release();
 
-            if (WindowUtils.isWindowFocused("League of Legends")) {
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                 Imgcodecs.imwrite("debug/debug_health_mask.png", mask);
             }
 
@@ -388,14 +388,14 @@ public class ScreenPositionTracker {
                 width = bounds.width;
                 height = bounds.height;
 
-                if (WindowUtils.isWindowFocused("League of Legends")) {
+                if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                     Mat debugMask = Mat.zeros(thresholded.size(), CvType.CV_8UC1);
                     Imgproc.drawContours(debugMask, List.of(cameraContour), -1, new Scalar(255), 1);
                     Imgcodecs.imwrite("debug/debug_camera_mask.png", debugMask);
                     debugMask.release();
                 }
             } else {
-                if (WindowUtils.isWindowFocused("League of Legends")) {
+                if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                     Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
                 }
             }
@@ -532,7 +532,7 @@ public class ScreenPositionTracker {
     }
 
     private void drawDebugBox(Mat minimap, double centerX, double centerY, int width, int height, Scalar color) {
-        if (WindowUtils.isWindowFocused("League of Legends")) {
+        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
             Mat debugMap = minimap.clone();
             Point topLeft = new Point(centerX - (width / 2.0), centerY - (height / 2.0));
             Point bottomRight = new Point(topLeft.x + width, topLeft.y + height);
@@ -560,14 +560,14 @@ public class ScreenPositionTracker {
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_DILATE, kernel);
             kernel.release();
 
-            if (WindowUtils.isWindowFocused("League of Legends")) {
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                 Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
             }
 
             Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
             Mat debugDrawMap = null;
-            if (WindowUtils.isWindowFocused("League of Legends")) {
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                 debugDrawMap = minimap.clone();
             }
 

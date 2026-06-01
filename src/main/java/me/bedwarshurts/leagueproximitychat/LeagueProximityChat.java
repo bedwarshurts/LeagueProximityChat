@@ -8,10 +8,12 @@ import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
 import nu.pattern.OpenCV;
 import org.opencv.core.Mat;
 
+import java.awt.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 
 public class LeagueProximityChat {
 
@@ -52,7 +54,7 @@ public class LeagueProximityChat {
             System.out.println("Starting position tracking");
         }
 
-        if (!WindowUtils.isWindowFocused("League of Legends (TM) Client") && !WindowUtils.isWindowFocused("League of Legends")) {
+        if (!WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
             if (!wasPaused) System.out.println("League of Legends lost focus. Pausing tracking...");
             wasPaused = true;
             Thread.sleep(1000);
@@ -102,7 +104,18 @@ public class LeagueProximityChat {
         });
 
         server.start();
-        System.out.println("Local Web Server running! Go to: http://localhost:8000");
+        System.out.println("Local Web Server running on port 8000!");
+
+        try {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(new URI("http://localhost:8000"));
+            } else {
+                System.out.println("Please manually go to: http://localhost:8000");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to open browser: " + e.getMessage());
+            System.out.println("Please manually go to: http://localhost:8000");
+        }
     }
 
     public static void main(String[] args) {
@@ -117,8 +130,6 @@ public class LeagueProximityChat {
 
         server = new CoordinateServer(new InetSocketAddress("127.0.0.1", 8887));
         server.start();
-
-        System.out.println("Please input your token and click 'Connect & Join Voice'");
 
         while (true) {
             try {

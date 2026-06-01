@@ -4,10 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="dynamic crisp loading">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/index.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/websocket/CoordinateServer.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/websocket/CoordinateServer.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -329,7 +330,9 @@
       <workItem from="1780251242981" duration="383000" />
       <workItem from="1780253796157" duration="4313000" />
       <workItem from="1780267198481" duration="9880000" />
-      <workItem from="1780282024850" duration="1839000" />
+      <workItem from="1780282024850" duration="2545000" />
+      <workItem from="1780316221272" duration="52000" />
+      <workItem from="1780323516004" duration="551000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -459,7 +462,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780282504169</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established">
+      <option name="closed" value="true" />
+      <created>1780284070868</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1780284070868</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -481,7 +492,8 @@
     <MESSAGE value="fix missing script line" />
     <MESSAGE value="remove unneeded data throttle" />
     <MESSAGE value="dynamic crisp loading" />
-    <option name="LAST_COMMIT_MESSAGE" value="dynamic crisp loading" />
+    <MESSAGE value="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established" />
+    <option name="LAST_COMMIT_MESSAGE" value="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

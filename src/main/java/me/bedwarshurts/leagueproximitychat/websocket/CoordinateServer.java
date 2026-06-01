@@ -34,7 +34,6 @@ public class CoordinateServer extends WebSocketServer {
 
     @Override
     public void onStart() {
-        System.out.println("Coordinate WebSocket Server started successfully.");
     }
 
     public void broadcastCoordinates(float x, float y, boolean isDead) {
