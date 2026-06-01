@@ -13,6 +13,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.ArrayList;
+import java.util.List;
 
 public class ScreenPositionTracker {
 
@@ -24,7 +25,16 @@ public class ScreenPositionTracker {
     private Mat lockedCoreTemplate = null;
     private boolean isScaleLocked = false;
 
-    private static final float SCREEN_TO_MAP_RATIO = 0.05f;
+    private float lastKnownX = 50f;
+    private float lastKnownY = 50f;
+
+    private float healthBarCalibrateX = 0.0f;
+    private float healthBarCalibrateY = 0.0f;
+    private int calibrationFrames = 0;
+    private static final int MAX_CALIBRATION_FRAMES = 30;
+
+    private Rect cachedGameCrop = null;
+    private int cachedResolutionWidth = -1;
 
     public static class TrackResult {
         public float x;
@@ -38,15 +48,34 @@ public class ScreenPositionTracker {
         }
     }
 
+    public static class TemplateMatch {
+        public Point center;
+        public double score;
+
+        public TemplateMatch(Point center, double score) {
+            this.center = center;
+            this.score = score;
+        }
+    }
+
+    public static class CameraBox {
+        public Point center;
+        public int width;
+        public int height;
+
+        public CameraBox(Point center, int width, int height) {
+            this.center = center;
+            this.width = width;
+            this.height = height;
+        }
+    }
+
     public ScreenPositionTracker(Mat championTemplate) {
         try {
             this.robot = new Robot();
-
             LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
             this.userMinimapScale = settings.minimapScale;
-
             this.championTemplate = championTemplate;
-
         } catch (AWTException e) {
             System.err.println("[MINIMAP TRACKER] Failed to initialize Java Robot API");
             System.err.println("Stacktrace: " + e.getMessage());
@@ -55,11 +84,45 @@ public class ScreenPositionTracker {
 
     public TrackResult trackPlayerPosition() {
         boolean isDead = checkDeathState();
-
         Rectangle gameBounds = WindowUtils.getGameWindowBounds("League of Legends (TM) Client");
 
         if (gameBounds == null) {
-            return new TrackResult(50f, 50f, isDead);
+            return new TrackResult(lastKnownX, lastKnownY, isDead);
+        }
+
+        Mat fullScreenMat = captureScreen(gameBounds);
+
+        if (fullScreenMat.width() != cachedResolutionWidth) {
+            cachedGameCrop = null;
+            cachedResolutionWidth = fullScreenMat.width();
+        }
+
+        if (cachedGameCrop == null) {
+            Mat gray = new Mat();
+            Mat mask = new Mat();
+            Mat nonZero = new Mat();
+            try {
+                Imgproc.cvtColor(fullScreenMat, gray, Imgproc.COLOR_BGR2GRAY);
+                Imgproc.threshold(gray, mask, 10, 255, Imgproc.THRESH_BINARY);
+                Core.findNonZero(mask, nonZero);
+
+                if (nonZero.total() > 0) {
+                    Rect trueGameRect = Imgproc.boundingRect(nonZero);
+                    if (trueGameRect.width > fullScreenMat.width() * 0.5 && trueGameRect.height > fullScreenMat.height() * 0.5) {
+                        cachedGameCrop = trueGameRect;
+                    }
+                }
+            } finally {
+                gray.release();
+                mask.release();
+                nonZero.release();
+            }
+        }
+
+        if (cachedGameCrop != null) {
+            Mat croppedScreen = new Mat(fullScreenMat, cachedGameCrop).clone();
+            fullScreenMat.release();
+            fullScreenMat = croppedScreen;
         }
 
         float normalizedScale = userMinimapScale;
@@ -73,17 +136,15 @@ public class ScreenPositionTracker {
         double clampedScale = Math.clamp(normalizedScale, 0.0, 3.0);
         double currentMapPercent = MIN_MAP_PERCENT + ((MAX_MAP_PERCENT - MIN_MAP_PERCENT) * clampedScale);
 
-        int perfectMapSize = (int) (gameBounds.height * currentMapPercent);
+        int perfectMapSize = (int) (fullScreenMat.height() * currentMapPercent);
 
-        Rectangle minimapBounds = new Rectangle(
-                gameBounds.x + gameBounds.width - perfectMapSize,
-                gameBounds.y + gameBounds.height - perfectMapSize,
+        Rect minimapRoi = new Rect(
+                fullScreenMat.width() - perfectMapSize,
+                fullScreenMat.height() - perfectMapSize,
                 perfectMapSize,
                 perfectMapSize
         );
-
-        Mat fullScreenMat = captureScreen(gameBounds);
-        Mat minimapMat = captureScreen(minimapBounds);
+        Mat minimapMat = new Mat(fullScreenMat, minimapRoi).clone();
 
         if (WindowUtils.isWindowFocused("League of Legends")) {
             Imgcodecs.imwrite("debug/debug_screen.png", fullScreenMat);
@@ -92,32 +153,96 @@ public class ScreenPositionTracker {
 
         Point healthBarCenter = locateSelfHealthBar(fullScreenMat);
 
+        TemplateMatch champMatch = null;
+        if (healthBarCenter == null || calibrationFrames < MAX_CALIBRATION_FRAMES) {
+            champMatch = (championTemplate != null) ? locateChampionViaTemplate(minimapMat) : null;
+        }
+
+        Point champMapCenter = (champMatch != null) ? champMatch.center : null;
+        double champScore = (champMatch != null) ? champMatch.score : 0.0;
+
+        CameraBox cameraBox = null;
         if (healthBarCenter != null) {
-            float offsetX = (float) (healthBarCenter.x - (gameBounds.width / 2.0));
-            float offsetY = (float) (healthBarCenter.y - (gameBounds.height / 2.0));
+            cameraBox = locateMinimapCameraBox(minimapMat);
+        }
 
-            Point cameraMapCenter = locateMinimapCameraBox(minimapMat);
+        if (healthBarCenter != null && champMapCenter != null && calibrationFrames < MAX_CALIBRATION_FRAMES) {
+            if (champScore > 0.70) {
+                float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
+                float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
 
-            float finalX = (float) cameraMapCenter.x + (offsetX * SCREEN_TO_MAP_RATIO);
-            float finalY = (float) cameraMapCenter.y + (offsetY * SCREEN_TO_MAP_RATIO);
+                float trueX = ((float) champMapCenter.x / perfectMapSize) * 100f;
+                float trueY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
-            float invertedY = 100f - ((finalY / minimapBounds.height) * 100f);
+                float targetOffsetX = trueX - rawHpX;
+                float targetOffsetY = trueY - rawHpY;
 
-            return new TrackResult((finalX / minimapBounds.width) * 100f, invertedY, isDead);
-        } else if (championTemplate != null) {
-            Point champMapCenter = locateChampionViaTemplate(minimapMat);
+                this.healthBarCalibrateX += (targetOffsetX - this.healthBarCalibrateX) * 0.15f;
+                this.healthBarCalibrateY += (targetOffsetY - this.healthBarCalibrateY) * 0.15f;
 
-            if (champMapCenter != null) {
-                float finalX = (float) champMapCenter.x;
-                float finalY = (float) champMapCenter.y;
+                this.calibrationFrames++;
 
-                float invertedY = 100f - ((finalY / minimapBounds.height) * 100f);
-
-                return new TrackResult((finalX / minimapBounds.width) * 100f, invertedY, isDead);
+                if (this.calibrationFrames >= MAX_CALIBRATION_FRAMES) {
+                    System.out.printf("[TRACKER] Calibration fully locked! Final Offsets -> X: %.2f, Y: %.2f\n", healthBarCalibrateX, healthBarCalibrateY);
+                }
+            } else {
+                System.out.printf("[TRACKER] Calibration Paused - Waiting for clear icon visibility (Score: %.2f)\n", champScore);
             }
         }
 
-        return new TrackResult(50f, 50f, isDead);
+        if (healthBarCenter != null) {
+            float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
+            float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
+
+            this.lastKnownX = rawHpX + this.healthBarCalibrateX;
+            this.lastKnownY = rawHpY + this.healthBarCalibrateY;
+
+            if (calibrationFrames == 0) {
+                this.lastKnownX -= 0.32f;
+                this.lastKnownY -= 2.28f;
+            }
+
+            System.out.printf("[ACTIVE TRACKER] HEALTHBAR -> X: %.2f%% | Y: %.2f%%\n", lastKnownX, lastKnownY);
+
+            fullScreenMat.release();
+            minimapMat.release();
+            return new TrackResult(lastKnownX, lastKnownY, isDead);
+
+        } else if (champMapCenter != null) {
+            this.lastKnownX = ((float) champMapCenter.x / perfectMapSize) * 100f;
+            this.lastKnownY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
+
+            System.out.printf("[ACTIVE TRACKER] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%\n", lastKnownX, lastKnownY);
+
+            fullScreenMat.release();
+            minimapMat.release();
+            return new TrackResult(lastKnownX, lastKnownY, isDead);
+        }
+
+        fullScreenMat.release();
+        minimapMat.release();
+        return new TrackResult(lastKnownX, lastKnownY, isDead);
+    }
+
+    private float calculateProjectedX(double healthBarX, CameraBox cameraBox, int perfectMapSize, int screenWidth) {
+        float cameraCenterX = (float) cameraBox.center.x;
+        float PERSPECTIVE_COMPENSATION_X = 0.68f;
+        float dynamicRatioX = (cameraBox.width > 0) ? (((float) cameraBox.width * PERSPECTIVE_COMPENSATION_X) / screenWidth) : 0.021f;
+
+        float offsetX = (float) healthBarX - (screenWidth / 2.0f);
+        float finalX = cameraCenterX + (offsetX * dynamicRatioX);
+        return (finalX / perfectMapSize) * 100f;
+    }
+
+    private float calculateProjectedY(double healthBarY, CameraBox cameraBox, int perfectMapSize, int screenHeight) {
+        float feetY = (float) (healthBarY + (screenHeight * 0.074f));
+        float cameraCenterY = (float) cameraBox.center.y;
+        float PERSPECTIVE_COMPENSATION_Y = 0.75f;
+        float dynamicRatioY = (cameraBox.height > 0) ? (((float) cameraBox.height * PERSPECTIVE_COMPENSATION_Y) / screenHeight) : 0.021f;
+
+        float offsetY = feetY - (screenHeight / 2.0f);
+        float finalY = cameraCenterY + (offsetY * dynamicRatioY);
+        return 100f - ((finalY / perfectMapSize) * 100f);
     }
 
     private boolean checkDeathState() {
@@ -144,94 +269,149 @@ public class ScreenPositionTracker {
 
     private Point locateSelfHealthBar(Mat screen) {
         Mat hsv = new Mat();
-        Imgproc.cvtColor(screen, hsv, Imgproc.COLOR_BGR2HSV);
-
-        Scalar lowerYellow = new Scalar(22, 140, 200);
-        Scalar upperYellow = new Scalar(26, 255, 255);
-
         Mat mask = new Mat();
-        Core.inRange(hsv, lowerYellow, upperYellow, mask);
-
-        int hudTopY = (int) (screen.height() * 0.75);
-        Imgproc.rectangle(mask, new Point(0, hudTopY), new Point(screen.width(), screen.height()), new Scalar(0), -1);
-
-        Imgproc.rectangle(mask, new Point(screen.width() * 0.85, 0), new Point(screen.width(), screen.height() * 0.10), new Scalar(0), -1);
-
-        Mat openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
-        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, openKernel);
-        openKernel.release();
-
-        Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(11, 1));
-        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, closeKernel);
-        closeKernel.release();
-
-        if (WindowUtils.isWindowFocused("League of Legends")) {
-            Imgcodecs.imwrite("debug/debug_health_mask.png", mask);
-        }
-
-        java.util.List<MatOfPoint> contours = new ArrayList<>();
         Mat hierarchy = new Mat();
-        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+        java.util.List<MatOfPoint> contours = new ArrayList<>();
+        Point resultPoint = null;
 
-        Rect bestBar = null;
-        double bestDistance = Double.MAX_VALUE;
+        try {
+            Imgproc.cvtColor(screen, hsv, Imgproc.COLOR_BGR2HSV);
 
-        double minHeight = screen.height() * 0.003;
-        double maxHeight = screen.height() * 0.020;
-        double minWidth = screen.width() * 0.008;
+            Scalar lowerYellow = new Scalar(22, 140, 200);
+            Scalar upperYellow = new Scalar(26, 255, 255);
+            Core.inRange(hsv, lowerYellow, upperYellow, mask);
 
-        for (MatOfPoint contour : contours) {
-            Rect rect = Imgproc.boundingRect(contour);
-            double pixelArea = Imgproc.contourArea(contour);
+            int hudTopY = (int) (screen.height() * 0.75);
+            Imgproc.rectangle(mask, new Point(0, hudTopY), new Point(screen.width(), screen.height()), new Scalar(0), -1);
+            Imgproc.rectangle(mask, new Point(screen.width() * 0.85, 0), new Point(screen.width(), screen.height() * 0.10), new Scalar(0), -1);
 
-            if (rect.height >= minHeight && rect.height <= maxHeight && rect.width >= minWidth) {
+            Mat openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
+            Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, openKernel);
+            openKernel.release();
 
-                double extent = pixelArea / (double) (rect.width * rect.height);
-                double aspectRatio = rect.width / (double) rect.height;
+            Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(11, 1));
+            Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, closeKernel);
+            closeKernel.release();
 
-                if (extent > 0.75 && aspectRatio > 2.5) {
+            if (WindowUtils.isWindowFocused("League of Legends")) {
+                Imgcodecs.imwrite("debug/debug_health_mask.png", mask);
+            }
 
-                    double centerX = rect.x + (rect.width / 2.0);
-                    double centerY = rect.y + (rect.height / 2.0);
+            Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
-                    double distToCenter = Math.pow(centerX - (screen.width() / 2.0), 2) + Math.pow(centerY - (screen.height() / 2.0), 2);
+            Rect bestBar = null;
+            double bestDistance = Double.MAX_VALUE;
 
-                    if (distToCenter < bestDistance) {
-                        bestDistance = distToCenter;
-                        bestBar = rect;
+            double minHeight = screen.height() * 0.003;
+            double maxHeight = screen.height() * 0.020;
+            double minWidth = screen.width() * 0.008;
+
+            for (MatOfPoint contour : contours) {
+                Rect rect = Imgproc.boundingRect(contour);
+                double pixelArea = Imgproc.contourArea(contour);
+
+                if (rect.height >= minHeight && rect.height <= maxHeight && rect.width >= minWidth) {
+                    double extent = pixelArea / (double) (rect.width * rect.height);
+                    double aspectRatio = rect.width / (double) rect.height;
+
+                    if (extent > 0.75 && aspectRatio > 2.5) {
+                        double centerX = rect.x + (rect.width / 2.0);
+                        double centerY = rect.y + (rect.height / 2.0);
+                        double distToCenter = Math.pow(centerX - (screen.width() / 2.0), 2) + Math.pow(centerY - (screen.height() / 2.0), 2);
+
+                        if (distToCenter < bestDistance) {
+                            bestDistance = distToCenter;
+                            bestBar = rect;
+                        }
                     }
                 }
             }
+
+            if (bestBar != null) {
+                resultPoint = new Point(bestBar.x + (bestBar.width / 2.0), bestBar.y + (bestBar.height / 2.0));
+            }
+        } finally {
+            hsv.release();
+            mask.release();
+            hierarchy.release();
+            for (MatOfPoint contour : contours) {
+                contour.release();
+            }
         }
 
-        if (bestBar != null) {
-            return new Point(bestBar.x + (bestBar.width / 2.0), bestBar.y + (bestBar.height / 2.0));
-        }
-
-        return null;
+        return resultPoint;
     }
 
-    private Point locateMinimapCameraBox(Mat minimap) {
+    private CameraBox locateMinimapCameraBox(Mat minimap) {
         Mat gray = new Mat();
-        Imgproc.cvtColor(minimap, gray, Imgproc.COLOR_BGR2GRAY);
-
         Mat thresholded = new Mat();
-        Imgproc.threshold(gray, thresholded, 240, 255, Imgproc.THRESH_BINARY);
+        Mat hierarchy = new Mat();
+        java.util.List<MatOfPoint> contours = new ArrayList<>();
 
-        if (WindowUtils.isWindowFocused("League of Legends")) {
-            Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
+        Point center = new Point(minimap.width() / 2.0, minimap.height() / 2.0);
+        int width = 0;
+        int height = 0;
+
+        try {
+            Imgproc.cvtColor(minimap, gray, Imgproc.COLOR_BGR2GRAY);
+            Imgproc.threshold(gray, thresholded, 240, 255, Imgproc.THRESH_BINARY);
+
+            Imgproc.findContours(thresholded, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+
+            MatOfPoint cameraContour = null;
+            double maxBoundingArea = 0;
+
+            for (MatOfPoint contour : contours) {
+                Rect rect = Imgproc.boundingRect(contour);
+                double area = rect.width * rect.height;
+
+                if (rect.width > 30 && rect.height > 30) {
+                    if (area > maxBoundingArea) {
+                        maxBoundingArea = area;
+                        cameraContour = contour;
+                    }
+                }
+            }
+
+            if (cameraContour != null) {
+                Moments moments = Imgproc.moments(cameraContour);
+                if (moments.get_m00() > 0) {
+                    center.x = moments.get_m10() / moments.get_m00();
+                    center.y = moments.get_m01() / moments.get_m00();
+                } else {
+                    Rect bounds = Imgproc.boundingRect(cameraContour);
+                    center.x = bounds.x + (bounds.width / 2.0);
+                    center.y = bounds.y + (bounds.height / 2.0);
+                }
+
+                Rect bounds = Imgproc.boundingRect(cameraContour);
+                width = bounds.width;
+                height = bounds.height;
+
+                if (WindowUtils.isWindowFocused("League of Legends")) {
+                    Mat debugMask = Mat.zeros(thresholded.size(), CvType.CV_8UC1);
+                    Imgproc.drawContours(debugMask, List.of(cameraContour), -1, new Scalar(255), 1);
+                    Imgcodecs.imwrite("debug/debug_camera_mask.png", debugMask);
+                    debugMask.release();
+                }
+            } else {
+                if (WindowUtils.isWindowFocused("League of Legends")) {
+                    Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
+                }
+            }
+        } finally {
+            gray.release();
+            thresholded.release();
+            hierarchy.release();
+            for (MatOfPoint contour : contours) {
+                contour.release();
+            }
         }
 
-        Moments moments = Imgproc.moments(thresholded);
-        if (moments.get_m00() > 0) {
-            int x = (int) (moments.get_m10() / moments.get_m00());
-            int y = (int) (moments.get_m01() / moments.get_m00());
-            return new Point(x, y);
-        }
-        return new Point(minimap.width() / 2.0, minimap.height() / 2.0);
+        return new CameraBox(center, width, height);
     }
 
-    private Point locateChampionViaTemplate(Mat minimap) {
+    private TemplateMatch locateChampionViaTemplate(Mat minimap) {
         int borderMarginX = (int) (minimap.width() * 0.08);
         int borderMarginY = (int) (minimap.height() * 0.08);
 
@@ -275,22 +455,19 @@ public class ScreenPositionTracker {
                         bestAllyCenter.y > borderMarginY && bestAllyCenter.y < minimap.height() - borderMarginY) {
 
                     drawDebugBox(minimap, bestAllyCenter.x, bestAllyCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 255, 0));
-                    return bestAllyCenter;
+                    return new TemplateMatch(bestAllyCenter, bestScore);
                 }
             }
 
-            System.out.printf("[MINIMAP TRACKER] Target occluded among allies. Score: %.2f\n", bestScore);
             return null;
         }
-
-        System.out.println("[MINIMAP TRACKER] Calibrating HUD Scale... Please ensure your champion is visible.");
 
         double globalBestScore = 0;
         Point globalBestCenter = null;
         Mat globalBestTemplate = null;
         int globalBestSize = 0;
 
-        for (int targetSize = 120; targetSize >= 1; targetSize--) {
+        for (int targetSize = 120; targetSize >= 12; targetSize--) {
             if (targetSize > minimap.width() || targetSize > minimap.height()) {
                 continue;
             }
@@ -309,7 +486,6 @@ public class ScreenPositionTracker {
             }
 
             Mat coreTemplate = new Mat(resizedTemplate, new Rect(cx, cy, cw, ch));
-
             Mat result = new Mat();
             Imgproc.matchTemplate(minimap, coreTemplate, result, Imgproc.TM_CCOEFF_NORMED);
             Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
@@ -343,13 +519,12 @@ public class ScreenPositionTracker {
         }
 
         if (globalBestScore > 0.65) {
-            System.out.printf("[MINIMAP TRACKER] EXACT SCALE LOCKED! Match: %.2f%%\n", (globalBestScore * 100));
             System.out.printf("[MINIMAP TRACKER] EXACT SCALE LOCKED at %dpx! Match: %.2f%%\n", globalBestSize, (globalBestScore * 100));
             this.lockedCoreTemplate = globalBestTemplate;
             this.isScaleLocked = true;
 
             drawDebugBox(minimap, globalBestCenter.x, globalBestCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 165, 255));
-            return globalBestCenter;
+            return new TemplateMatch(globalBestCenter, globalBestScore);
         }
 
         if (globalBestTemplate != null) globalBestTemplate.release();
@@ -370,67 +545,67 @@ public class ScreenPositionTracker {
     private java.util.List<Point> findAllyLocations(Mat minimap) {
         java.util.List<Point> centers = new java.util.ArrayList<>();
         Mat hsv = new Mat();
-        Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
-
-        Scalar lowerBlue = new Scalar(95, 100, 150);
-        Scalar upperBlue = new Scalar(115, 255, 255);
-
         Mat mask = new Mat();
-        Core.inRange(hsv, lowerBlue, upperBlue, mask);
-
-        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(3, 3));
-        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_DILATE, kernel);
-        kernel.release();
-
-        if (WindowUtils.isWindowFocused("League of Legends")) {
-            Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
-        }
-
-        java.util.List<MatOfPoint> contours = new java.util.ArrayList<>();
         Mat hierarchy = new Mat();
-        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+        java.util.List<MatOfPoint> contours = new java.util.ArrayList<>();
 
-        System.out.println("[ALLY_FINDER] Found " + contours.size() + " raw blue contours.");
+        try {
+            Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
 
-        Mat debugDrawMap = null;
-        if (WindowUtils.isWindowFocused("League of Legends")) {
-            debugDrawMap = minimap.clone();
-        }
+            Scalar lowerBlue = new Scalar(95, 100, 150);
+            Scalar upperBlue = new Scalar(115, 255, 255);
+            Core.inRange(hsv, lowerBlue, upperBlue, mask);
 
-        for (MatOfPoint contour : contours) {
-            float[] radius = new float[1];
-            Point center = new Point();
-            MatOfPoint2f contour2f = new MatOfPoint2f(contour.toArray());
+            Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(3, 3));
+            Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_DILATE, kernel);
+            kernel.release();
 
-            Imgproc.minEnclosingCircle(contour2f, center, radius);
+            if (WindowUtils.isWindowFocused("League of Legends")) {
+                Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
+            }
 
-            if (radius[0] > 6 && radius[0] < 45) {
-                centers.add(center);
-                System.out.printf("[ALLY_FINDER] Valid Ally -> Center: (%.1f, %.1f), Radius: %.1f\n", center.x, center.y, radius[0]);
+            Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
-                if (debugDrawMap != null) {
-                    Imgproc.circle(debugDrawMap, center, (int)radius[0], new Scalar(0, 255, 255), 2);
-                    Imgproc.circle(debugDrawMap, center, 2, new Scalar(0, 0, 255), -1);
+            Mat debugDrawMap = null;
+            if (WindowUtils.isWindowFocused("League of Legends")) {
+                debugDrawMap = minimap.clone();
+            }
+
+            for (MatOfPoint contour : contours) {
+                float[] radius = new float[1];
+                Point center = new Point();
+                MatOfPoint2f contour2f = new MatOfPoint2f(contour.toArray());
+
+                Imgproc.minEnclosingCircle(contour2f, center, radius);
+                contour2f.release();
+
+                if (radius[0] > 6 && radius[0] < 45) {
+                    centers.add(center);
+                    if (debugDrawMap != null) {
+                        Imgproc.circle(debugDrawMap, center, (int)radius[0], new Scalar(0, 255, 255), 2);
+                        Imgproc.circle(debugDrawMap, center, 2, new Scalar(0, 0, 255), -1);
+                    }
                 }
+            }
+
+            if (debugDrawMap != null) {
+                Imgcodecs.imwrite("debug/debug_ally_centers.png", debugDrawMap);
+                debugDrawMap.release();
+            }
+        } finally {
+            hsv.release();
+            mask.release();
+            hierarchy.release();
+            for (MatOfPoint contour : contours) {
+                contour.release();
             }
         }
 
-        if (debugDrawMap != null) {
-            Imgcodecs.imwrite("debug/debug_ally_centers.png", debugDrawMap);
-            debugDrawMap.release();
-        }
-
-        System.out.println("[ALLY_FINDER] Total valid allies identified for search: " + centers.size());
-
-        hsv.release();
-        mask.release();
-        hierarchy.release();
         return centers;
     }
 
     private Mat captureScreen(Rectangle bounds) {
         BufferedImage rawImg = robot.createScreenCapture(bounds);
-
         BufferedImage bgrImg = new BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_3BYTE_BGR);
         Graphics2D g = bgrImg.createGraphics();
         g.drawImage(rawImg, 0, 0, null);

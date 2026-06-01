@@ -4,9 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="update gitignore">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="seperate folder for debug entities">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -319,7 +319,11 @@
       <workItem from="1780167773190" duration="1071000" />
       <workItem from="1780168877426" duration="5096000" />
       <workItem from="1780179335412" duration="10718000" />
-      <workItem from="1780233650857" duration="3310000" />
+      <workItem from="1780233650857" duration="8835000" />
+      <workItem from="1780249201526" duration="774000" />
+      <workItem from="1780251242981" duration="383000" />
+      <workItem from="1780253796157" duration="4313000" />
+      <workItem from="1780267198481" duration="7438000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -393,7 +397,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780234201428</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="seperate folder for debug entities">
+      <option name="closed" value="true" />
+      <created>1780237530968</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1780237530968</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -408,7 +420,8 @@
     <MESSAGE value="improve minimap detection by masking for the ally color(blue)" />
     <MESSAGE value="get rid of some deprecated methods" />
     <MESSAGE value="update gitignore" />
-    <option name="LAST_COMMIT_MESSAGE" value="update gitignore" />
+    <MESSAGE value="seperate folder for debug entities" />
+    <option name="LAST_COMMIT_MESSAGE" value="seperate folder for debug entities" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
