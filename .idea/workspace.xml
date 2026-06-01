@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="fix missing script line">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="remove unneeded data throttle">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
     </list>
@@ -322,7 +322,8 @@
       <workItem from="1780249201526" duration="774000" />
       <workItem from="1780251242981" duration="383000" />
       <workItem from="1780253796157" duration="4313000" />
-      <workItem from="1780267198481" duration="9793000" />
+      <workItem from="1780267198481" duration="9880000" />
+      <workItem from="1780282024850" duration="460000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -436,7 +437,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780280219249</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="remove unneeded data throttle">
+      <option name="closed" value="true" />
+      <created>1780281642432</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1780281642432</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -456,7 +465,8 @@
     <MESSAGE value="add krisp ai" />
     <MESSAGE value="fix mic enabling 2 times" />
     <MESSAGE value="fix missing script line" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix missing script line" />
+    <MESSAGE value="remove unneeded data throttle" />
+    <option name="LAST_COMMIT_MESSAGE" value="remove unneeded data throttle" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>

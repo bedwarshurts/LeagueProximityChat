@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>League of Legends Proximity Chat</title>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter"></script>
     <style>
         body {
             background-color: #121212;
@@ -346,10 +345,19 @@
                 const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
 
                 if (audioPublications.length > 0 && audioPublications[0].track) {
-                    const krispProcessor = LivekitKrispNoiseFilter.KrispNoiseFilter();
 
-                    await audioPublications[0].track.setProcessor(krispProcessor);
-                    console.log("[LIVEKIT] Krisp AI Noise Cancellation Active!");
+                    console.log("[LIVEKIT] Downloading Krisp AI WebAssembly...");
+
+                    // Dynamically fetch the browser-ready ESM bundle
+                    const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
+
+                    if (!isKrispNoiseFilterSupported()) {
+                        console.warn("[LIVEKIT] Krisp AI is not supported on this browser.");
+                    } else {
+                        const krispProcessor = KrispNoiseFilter();
+                        await audioPublications[0].track.setProcessor(krispProcessor);
+                        console.log("[LIVEKIT] Krisp AI Noise Cancellation Active!");
+                    }
                 }
             } catch (error) {
                 console.warn("[LIVEKIT] Failed to start Krisp AI:", error);
