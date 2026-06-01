@@ -332,9 +332,6 @@
             await ensurePlaybackUnlocked();
             await room.localParticipant.setMicrophoneEnabled(true);
             console.log("[LIVEKIT] microphone enabled");
-            await ensurePlaybackUnlocked();
-            await room.localParticipant.setMicrophoneEnabled(true);
-            console.log("[LIVEKIT] microphone enabled");
 
             try {
                 const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
