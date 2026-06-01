@@ -1,5 +1,6 @@
 package me.bedwarshurts.leagueproximitychat;
 
+import com.sun.net.httpserver.HttpServer;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
@@ -7,18 +8,52 @@ import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
 import nu.pattern.OpenCV;
 import org.opencv.core.Mat;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.util.Scanner;
 
 public class LeagueProximityChat {
 
     public static boolean wasPaused = false;
+    public static boolean isAwaitingBrowser = true;
+    public static boolean isTrackerReady = false;
+
     public static ScreenPositionTracker tracker = null;
     public static CoordinateServer server = null;
 
     public static void trackingLoop() throws InterruptedException {
-        if (!WindowUtils.isWindowFocused("League of legends")) {
-            if (!wasPaused) System.out.println("League of Legends lost focus. Pausing tracking engine...");
+        if (server.getConnections().isEmpty()) {
+            if (!isAwaitingBrowser) {
+                System.out.println("Browser disconnected.");
+                isAwaitingBrowser = true;
+            }
+            Thread.sleep(1000);
+            return;
+        }
+
+        if (isAwaitingBrowser) {
+            System.out.println("LiveKit Connection detected!");
+            isAwaitingBrowser = false;
+        }
+
+        if (!isTrackerReady) {
+            System.out.println("Scanning for champion template...");
+            Mat championTemplate = TemplateLoader.autoLoadChampionTemplate();
+
+            if (championTemplate == null) {
+                System.err.println("Failed to load champion template. Is the game running? Retrying in 2 seconds...");
+                Thread.sleep(2000);
+                return;
+            }
+
+            tracker = new ScreenPositionTracker(championTemplate);
+            isTrackerReady = true;
+            System.out.println("Starting position tracking");
+        }
+
+        if (!WindowUtils.isWindowFocused("League of Legends (TM) Client") && !WindowUtils.isWindowFocused("League of Legends")) {
+            if (!wasPaused) System.out.println("League of Legends lost focus. Pausing tracking...");
             wasPaused = true;
             Thread.sleep(1000);
             return;
@@ -32,8 +67,6 @@ public class LeagueProximityChat {
         long startTime = System.currentTimeMillis();
 
         ScreenPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
-
-        System.out.printf("Current Map Position: X: %.2f%% | Y: %.2f%% | Dead: %b\n", pos.x, pos.y, pos.isDead);
         server.broadcastCoordinates(pos.x, pos.y, pos.isDead);
 
         long elapsedTime = System.currentTimeMillis() - startTime;
@@ -42,22 +75,50 @@ public class LeagueProximityChat {
         Thread.sleep(sleepTime);
     }
 
+    public static void startHttpServer() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
+
+        server.createContext("/", exchange -> {
+            try (InputStream is = LeagueProximityChat.class.getResourceAsStream("/index.html")) {
+                if (is == null) {
+                    throw new Exception("Could not find index.html.");
+                }
+
+                byte[] htmlBytes = is.readAllBytes();
+
+                exchange.getResponseHeaders().set("Content-Type", "text/html");
+                exchange.sendResponseHeaders(200, htmlBytes.length);
+
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(htmlBytes);
+                }
+            } catch (Exception e) {
+                String error = "Error: " + e.getMessage();
+                exchange.sendResponseHeaders(404, error.length());
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(error.getBytes());
+                }
+            }
+        });
+
+        server.start();
+        System.out.println("Local Web Server running! Go to: http://localhost:8000");
+    }
+
     public static void main(String[] args) {
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
 
-        Mat championTemplate = TemplateLoader.autoLoadChampionTemplate();
-        if (championTemplate == null) {
-            System.err.println("Failed to load champion template, please make sure the game is running!");
-            new Scanner(System.in).nextLine();
-            return;
+        try {
+            startHttpServer();
+        } catch (IOException e) {
+            System.err.println("Failed to start local web server: " + e.getMessage());
         }
 
-        tracker = new ScreenPositionTracker(championTemplate);
         server = new CoordinateServer(new InetSocketAddress("127.0.0.1", 8887));
         server.start();
 
-        System.out.println("Beginning live tracking loop...");
+        System.out.println("Please input your token and click 'Connect & Join Voice'");
 
         while (true) {
             try {

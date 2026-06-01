@@ -229,8 +229,10 @@
         document.getElementById('start-btn').style.display = 'none';
         document.getElementById('mute-btn').style.display = 'block';
 
-        await connectToLiveKit(userToken);
-        connectToLocalJavaTracker();
+        const isConnected = await connectToLiveKit(userToken);
+        if (isConnected) {
+            connectToLocalJavaTracker();
+        }
     });
 
     document.getElementById('mute-btn').addEventListener('click', async () => {
@@ -362,12 +364,15 @@
             } catch (error) {
                 console.warn("[LIVEKIT] Failed to start Krisp AI:", error);
             }
+            return true;
 
         } catch (error) {
             console.error("LiveKit initialization failed:", error);
             const statusEl = document.getElementById('lk-status');
             statusEl.className = 'status error';
             statusEl.innerText = 'LiveKit Connection Failed!';
+
+            return false;
         }
     }
 
