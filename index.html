@@ -49,6 +49,7 @@
             background: #1e1e1e;
             font-size: 14px;
             font-weight: bold;
+            transition: all 0.2s;
         }
         .success {
             border-left: 5px solid #28a745;
@@ -57,6 +58,10 @@
         .error {
             border-left: 5px solid #dc3545;
             color: #dc3545;
+        }
+        .loading {
+            border-left: 5px solid #ffc107;
+            color: #ffc107;
         }
         button {
             width: 100%;
@@ -98,14 +103,14 @@
         adaptiveStream: true,
         dynacast: true,
         audioCaptureDefaults: {
-            echoCancellation: false,
+            echoCancellation: true,
             noiseSuppression: true,
             voiceIsolation: true,
-            autoGainControl: true
+            autoGainControl: false
         }
     });
 
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let audioCtx;
 
     const remoteAudioNodes = {};
     const remotePositions = {};
@@ -115,7 +120,11 @@
     let connected = false;
     let trackerSocket = null;
 
+    let lastPublishTime = 0;
+    const PUBLISH_INTERVAL_MS = 1000 / 15;
+
     function updateListenerPosition() {
+        if (!audioCtx) return;
         const now = audioCtx.currentTime;
 
         audioCtx.listener.positionX.setTargetAtTime(localPosition.x, now, 0.1);
@@ -126,6 +135,7 @@
     }
 
     function updateRemoteAudio(identity) {
+        if (!audioCtx) return;
         const nodeData = remoteAudioNodes[identity];
         const remotePos = remotePositions[identity];
 
@@ -138,9 +148,9 @@
         const distance = Math.hypot(dx, dy);
 
         const maxHearingDistance = 12.2;
-
         const normalized = Math.min(distance / maxHearingDistance, 1);
-        let volume = distance > maxHearingDistance ? 0 : Math.sqrt(1 - normalized);
+
+        let volume = distance > maxHearingDistance ? 0 : Math.sqrt(Math.max(0, 1 - normalized));
 
         if (remotePos.isDead) {
             volume = 0;
@@ -153,8 +163,6 @@
         nodeData.panner.positionZ.setTargetAtTime(remotePos.y, now, 0.1);
 
         nodeData.gain.gain.setTargetAtTime(volume, now, 0.1);
-
-        console.log(`[PROXIMITY AUDIO] ${identity} | Local(${localPosition.x.toFixed(1)}, ${localPosition.y.toFixed(1)}) | Remote(${remotePos.x.toFixed(1)}, ${remotePos.y.toFixed(1)}, Dead:${remotePos.isDead}) | Dist: ${distance.toFixed(1)}px | Vol: ${(volume * 100).toFixed(0)}%`);
     }
 
     function cleanupRemoteAudio(identity) {
@@ -198,6 +206,10 @@
             return;
         }
 
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
         try {
             await audioCtx.resume();
             console.log("[AUDIO CONTEXT] resumed");
@@ -238,6 +250,10 @@
     async function connectToLiveKit(token) {
         try {
             console.log("[LIVEKIT] connecting...");
+
+            const statusEl = document.getElementById('lk-status');
+            statusEl.className = 'status loading';
+            statusEl.innerText = 'LiveKit Audio Server: Connecting...';
 
             room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, async () => {
                 await ensurePlaybackUnlocked();
@@ -305,8 +321,8 @@
             await room.connect(LIVEKIT_URL, token);
             connected = true;
 
-            document.getElementById('lk-status').className = 'status success';
-            document.getElementById('lk-status').innerText = 'LiveKit Audio Server: Connected';
+            statusEl.className = 'status success';
+            statusEl.innerText = 'LiveKit Audio Server: Connected';
 
             console.log("[LIVEKIT] connected", {
                 identity: room.localParticipant.identity,
@@ -316,11 +332,28 @@
             await ensurePlaybackUnlocked();
             await room.localParticipant.setMicrophoneEnabled(true);
             console.log("[LIVEKIT] microphone enabled");
+            await ensurePlaybackUnlocked();
+            await room.localParticipant.setMicrophoneEnabled(true);
+            console.log("[LIVEKIT] microphone enabled");
+
+            try {
+                const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
+
+                if (audioPublications.length > 0 && audioPublications[0].track) {
+                    const krispProcessor = LivekitKrispNoiseFilter.KrispNoiseFilter();
+
+                    await audioPublications[0].track.setProcessor(krispProcessor);
+                    console.log("[LIVEKIT] Krisp AI Noise Cancellation Active!");
+                }
+            } catch (error) {
+                console.warn("[LIVEKIT] Failed to start Krisp AI:", error);
+            }
 
         } catch (error) {
             console.error("LiveKit initialization failed:", error);
-            document.getElementById('lk-status').className = 'status error';
-            document.getElementById('lk-status').innerText = 'LiveKit Connection Failed!';
+            const statusEl = document.getElementById('lk-status');
+            statusEl.className = 'status error';
+            statusEl.innerText = 'LiveKit Connection Failed!';
         }
     }
 
@@ -345,12 +378,16 @@
                 updateListenerPosition();
 
                 if (room.state === LivekitClient.ConnectionState.Connected) {
-                    const payload = new TextEncoder().encode(JSON.stringify({
-                        x: localPosition.x,
-                        y: localPosition.y,
-                        isDead: localPosition.isDead
-                    }));
-                    room.localParticipant.publishData(payload, LivekitClient.DataPacket_Kind.LOSSY);
+                    const now = Date.now();
+                    if (now - lastPublishTime > PUBLISH_INTERVAL_MS) {
+                        const payload = new TextEncoder().encode(JSON.stringify({
+                            x: localPosition.x,
+                            y: localPosition.y,
+                            isDead: localPosition.isDead
+                        }));
+                        room.localParticipant.publishData(payload, LivekitClient.DataPacket_Kind.LOSSY);
+                        lastPublishTime = now;
+                    }
                 }
             } catch (error) {
                 console.warn("[TRACKER PARSE ERROR]", error, event.data);

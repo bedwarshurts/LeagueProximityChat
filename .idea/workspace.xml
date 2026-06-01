@@ -4,10 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="seperate folder for debug entities">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="improve minimap / health method difference">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -323,7 +322,7 @@
       <workItem from="1780249201526" duration="774000" />
       <workItem from="1780251242981" duration="383000" />
       <workItem from="1780253796157" duration="4313000" />
-      <workItem from="1780267198481" duration="7438000" />
+      <workItem from="1780267198481" duration="8326000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -405,7 +404,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780237530968</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="improve minimap / health method difference">
+      <option name="closed" value="true" />
+      <created>1780279241298</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1780279241298</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -421,7 +428,8 @@
     <MESSAGE value="get rid of some deprecated methods" />
     <MESSAGE value="update gitignore" />
     <MESSAGE value="seperate folder for debug entities" />
-    <option name="LAST_COMMIT_MESSAGE" value="seperate folder for debug entities" />
+    <MESSAGE value="improve minimap / health method difference" />
+    <option name="LAST_COMMIT_MESSAGE" value="improve minimap / health method difference" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
