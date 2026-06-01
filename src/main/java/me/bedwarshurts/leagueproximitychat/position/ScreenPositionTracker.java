@@ -183,10 +183,10 @@ public class ScreenPositionTracker {
                 this.calibrationFrames++;
 
                 if (this.calibrationFrames >= MAX_CALIBRATION_FRAMES) {
-                    System.out.printf("[TRACKER] Calibration fully locked! Final Offsets -> X: %.2f, Y: %.2f\n", healthBarCalibrateX, healthBarCalibrateY);
+                    System.out.printf("[trackPlayerPosition] Calibration fully locked! Final Offsets -> X: %.2f, Y: %.2f\n", healthBarCalibrateX, healthBarCalibrateY);
                 }
             } else {
-                System.out.printf("[TRACKER] Calibration Paused - Waiting for clear icon visibility (Score: %.2f)\n", champScore);
+                System.out.printf("[trackPlayerPosition] Calibration Paused - Waiting for clear icon visibility (Score: %.2f)\n", champScore);
             }
         }
 
@@ -202,7 +202,7 @@ public class ScreenPositionTracker {
                 this.lastKnownY -= 2.28f;
             }
 
-            System.out.printf("[ACTIVE TRACKER] HEALTHBAR -> X: %.2f%% | Y: %.2f%%\n", lastKnownX, lastKnownY);
+            System.out.printf("[trackPlayerPosition] HEALTHBAR -> X: %.2f%% | Y: %.2f%%\n", lastKnownX, lastKnownY);
 
             fullScreenMat.release();
             minimapMat.release();
@@ -212,7 +212,7 @@ public class ScreenPositionTracker {
             this.lastKnownX = ((float) champMapCenter.x / perfectMapSize) * 100f;
             this.lastKnownY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
-            System.out.printf("[ACTIVE TRACKER] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%\n", lastKnownX, lastKnownY);
+            System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%\n", lastKnownX, lastKnownY);
 
             fullScreenMat.release();
             minimapMat.release();
@@ -221,6 +221,7 @@ public class ScreenPositionTracker {
 
         fullScreenMat.release();
         minimapMat.release();
+        System.out.printf("[trackPlayerPosition] Couldn't find player returning previous data -> X: %.2f%% | Y: %.2f%%\n", lastKnownX, lastKnownY);
         return new TrackResult(lastKnownX, lastKnownY, isDead);
     }
 
@@ -450,11 +451,12 @@ public class ScreenPositionTracker {
                 result.release();
             }
 
-            if (bestScore > 0.15 && bestAllyCenter != null) {
+            if (bestScore > 0.45 && bestAllyCenter != null) {
                 if (bestAllyCenter.x > borderMarginX && bestAllyCenter.x < minimap.width() - borderMarginX &&
                         bestAllyCenter.y > borderMarginY && bestAllyCenter.y < minimap.height() - borderMarginY) {
 
                     drawDebugBox(minimap, bestAllyCenter.x, bestAllyCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 255, 0));
+                    System.out.printf("[locateChampionViaTemplate] Found template after locked scale! Match: %.2f%%\n", (bestScore * 100));
                     return new TemplateMatch(bestAllyCenter, bestScore);
                 }
             }
@@ -518,8 +520,8 @@ public class ScreenPositionTracker {
             result.release();
         }
 
-        if (globalBestScore > 0.65) {
-            System.out.printf("[MINIMAP TRACKER] EXACT SCALE LOCKED at %dpx! Match: %.2f%%\n", globalBestSize, (globalBestScore * 100));
+        if (globalBestScore > 0.75) {
+            System.out.printf("[locateChampionViaTemplate] EXACT SCALE LOCKED at %dpx! Match: %.2f%%\n", globalBestSize, (globalBestScore * 100));
             this.lockedCoreTemplate = globalBestTemplate;
             this.isScaleLocked = true;
 

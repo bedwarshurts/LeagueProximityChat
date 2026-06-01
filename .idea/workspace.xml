@@ -4,11 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="correct game window name">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/websocket/CoordinateServer.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/websocket/CoordinateServer.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -332,7 +330,9 @@
       <workItem from="1780267198481" duration="9880000" />
       <workItem from="1780282024850" duration="2545000" />
       <workItem from="1780316221272" duration="52000" />
-      <workItem from="1780323516004" duration="551000" />
+      <workItem from="1780323516004" duration="1137000" />
+      <workItem from="1780327738771" duration="2244000" />
+      <workItem from="1780337051343" duration="1441000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -470,7 +470,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780284070868</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="correct game window name">
+      <option name="closed" value="true" />
+      <created>1780324245708</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1780324245708</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -493,7 +501,8 @@
     <MESSAGE value="remove unneeded data throttle" />
     <MESSAGE value="dynamic crisp loading" />
     <MESSAGE value="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established" />
-    <option name="LAST_COMMIT_MESSAGE" value="bundle index.html in the jar and ensure that tracker doesnt start till livekit connection is established" />
+    <MESSAGE value="correct game window name" />
+    <option name="LAST_COMMIT_MESSAGE" value="correct game window name" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
