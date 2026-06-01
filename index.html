@@ -15,20 +15,24 @@
             max-width: 600px;
             margin: 0 auto;
         }
+
         h2 {
             color: #f0f0f0;
             border-bottom: 2px solid #333;
             padding-bottom: 10px;
         }
+
         .input-group {
             margin-bottom: 20px;
         }
+
         label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
             font-size: 14px;
         }
+
         input[type="text"] {
             width: 100%;
             padding: 12px;
@@ -39,10 +43,12 @@
             border-radius: 4px;
             font-family: monospace;
         }
+
         input[type="text"]:focus {
             border-color: #007bff;
             outline: none;
         }
+
         .status {
             padding: 12px;
             margin-bottom: 12px;
@@ -52,18 +58,22 @@
             font-weight: bold;
             transition: all 0.2s;
         }
+
         .success {
             border-left: 5px solid #28a745;
             color: #28a745;
         }
+
         .error {
             border-left: 5px solid #dc3545;
             color: #dc3545;
         }
+
         .loading {
             border-left: 5px solid #ffc107;
             color: #ffc107;
         }
+
         button {
             width: 100%;
             padding: 14px;
@@ -75,6 +85,7 @@
             border-radius: 4px;
             transition: background-color 0.2s, filter 0.2s;
         }
+
         button:hover {
             filter: brightness(0.92);
         }
@@ -115,14 +126,11 @@
 
     const remoteAudioNodes = {};
     const remotePositions = {};
-    const localPosition = { x: 0, y: 0, isDead: false };
+    const localPosition = {x: 0, y: 0, isDead: false};
 
     let micMuted = false;
     let connected = false;
     let trackerSocket = null;
-
-    let lastPublishTime = 0;
-    const PUBLISH_INTERVAL_MS = 1000 / 15;
 
     function updateListenerPosition() {
         if (!audioCtx) return;
@@ -376,16 +384,12 @@
                 updateListenerPosition();
 
                 if (room.state === LivekitClient.ConnectionState.Connected) {
-                    const now = Date.now();
-                    if (now - lastPublishTime > PUBLISH_INTERVAL_MS) {
-                        const payload = new TextEncoder().encode(JSON.stringify({
-                            x: localPosition.x,
-                            y: localPosition.y,
-                            isDead: localPosition.isDead
-                        }));
-                        room.localParticipant.publishData(payload, LivekitClient.DataPacket_Kind.LOSSY);
-                        lastPublishTime = now;
-                    }
+                    const payload = new TextEncoder().encode(JSON.stringify({
+                        x: localPosition.x,
+                        y: localPosition.y,
+                        isDead: localPosition.isDead
+                    }));
+                    room.localParticipant.publishData(payload, LivekitClient.DataPacket_Kind.LOSSY);
                 }
             } catch (error) {
                 console.warn("[TRACKER PARSE ERROR]", error, event.data);
