@@ -294,10 +294,6 @@ public class ScreenPositionTracker {
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, closeKernel);
             closeKernel.release();
 
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
-                Imgcodecs.imwrite("debug/debug_health_mask.png", mask);
-            }
-
             Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
             Rect bestBar = null;
@@ -305,7 +301,7 @@ public class ScreenPositionTracker {
 
             double minHeight = screen.height() * 0.003;
             double maxHeight = screen.height() * 0.020;
-            double minWidth = screen.width() * 0.008;
+            double minWidth = screen.width() * 0.001;
 
             for (MatOfPoint contour : contours) {
                 Rect rect = Imgproc.boundingRect(contour);
@@ -315,7 +311,7 @@ public class ScreenPositionTracker {
                     double extent = pixelArea / (double) (rect.width * rect.height);
                     double aspectRatio = rect.width / (double) rect.height;
 
-                    if (extent > 0.75 && aspectRatio > 2.5) {
+                    if (extent > 0.75 && (aspectRatio > 2.5 || rect.width < 30)) {
                         double centerX = rect.x + (rect.width / 2.0);
                         double centerY = rect.y + (rect.height / 2.0);
                         double distToCenter = Math.pow(centerX - (screen.width() / 2.0), 2) + Math.pow(centerY - (screen.height() / 2.0), 2);
@@ -331,6 +327,21 @@ public class ScreenPositionTracker {
             if (bestBar != null) {
                 resultPoint = new Point(bestBar.x + (bestBar.width / 2.0), bestBar.y + (bestBar.height / 2.0));
             }
+
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                Mat debugHealthMap = new Mat();
+                Imgproc.cvtColor(mask, debugHealthMap, Imgproc.COLOR_GRAY2BGR);
+
+                if (bestBar != null) {
+                    Imgproc.rectangle(debugHealthMap, new Point(bestBar.x, bestBar.y),
+                            new Point(bestBar.x + bestBar.width, bestBar.y + bestBar.height),
+                            new Scalar(0, 0, 255), 2);
+                }
+
+                Imgcodecs.imwrite("debug/debug_health_mask.png", debugHealthMap);
+                debugHealthMap.release();
+            }
+
         } finally {
             hsv.release();
             mask.release();
