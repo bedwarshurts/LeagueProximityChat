@@ -69,7 +69,7 @@ public class LeagueProximityChat {
         long startTime = System.currentTimeMillis();
 
         ScreenPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
-        server.broadcastCoordinates(pos.x, pos.y, pos.isDead);
+        server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead());
 
         long elapsedTime = System.currentTimeMillis() - startTime;
         long sleepTime = Math.max(10, 30 - elapsedTime);

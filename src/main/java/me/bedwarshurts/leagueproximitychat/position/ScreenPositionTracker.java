@@ -25,6 +25,8 @@ public class ScreenPositionTracker {
     private Mat lockedCoreTemplate = null;
     private boolean isScaleLocked = false;
 
+    private boolean isColorblind = false;
+
     private float lastKnownX = 50f;
     private float lastKnownY = 50f;
 
@@ -36,49 +38,30 @@ public class ScreenPositionTracker {
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
 
-    public static class TrackResult {
-        public float x;
-        public float y;
-        public boolean isDead;
-
-        public TrackResult(float x, float y, boolean isDead) {
-            this.x = x;
-            this.y = y;
-            this.isDead = isDead;
-        }
+    public record TrackResult(float x, float y, boolean isDead) {
     }
 
-    public static class TemplateMatch {
-        public Point center;
-        public double score;
-
-        public TemplateMatch(Point center, double score) {
-            this.center = center;
-            this.score = score;
-        }
+    public record TemplateMatch(Point center, double score) {
     }
 
-    public static class CameraBox {
-        public Point center;
-        public int width;
-        public int height;
-
-        public CameraBox(Point center, int width, int height) {
-            this.center = center;
-            this.width = width;
-            this.height = height;
-        }
+    public record CameraBox(Point center, int width, int height) {
     }
 
     public ScreenPositionTracker(Mat championTemplate) {
         try {
             this.robot = new Robot();
             LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
-            this.userMinimapScale = settings.minimapScale;
+
+            this.userMinimapScale = settings.getMinimapScale();
+            this.isColorblind = settings.isColorblind();
+
             this.championTemplate = championTemplate;
+
+            System.out.println("[constructor] Tracker initialized. Target Health Bar Color: " + (this.isColorblind ? "YELLOW" : "GREEN"));
+
         } catch (AWTException e) {
-            System.err.println("[MINIMAP TRACKER] Failed to initialize Java Robot API");
-            System.err.println("Stacktrace: " + e.getMessage());
+            System.err.println("[constructor] Failed to initialize Java Robot API");
+            System.err.println("[constructor] Stacktrace: " + e.getMessage());
         }
     }
 
@@ -278,9 +261,18 @@ public class ScreenPositionTracker {
         try {
             Imgproc.cvtColor(screen, hsv, Imgproc.COLOR_BGR2HSV);
 
-            Scalar lowerYellow = new Scalar(22, 140, 200);
-            Scalar upperYellow = new Scalar(26, 255, 255);
-            Core.inRange(hsv, lowerYellow, upperYellow, mask);
+            Scalar lowerColor;
+            Scalar upperColor;
+
+            if (this.isColorblind) {
+                lowerColor = new Scalar(22, 140, 200);
+                upperColor = new Scalar(26, 255, 255);
+            } else {
+                lowerColor = new Scalar(45, 100, 100);
+                upperColor = new Scalar(75, 255, 255);
+            }
+
+            Core.inRange(hsv, lowerColor, upperColor, mask);
 
             int hudTopY = (int) (screen.height() * 0.75);
             Imgproc.rectangle(mask, new Point(0, hudTopY), new Point(screen.width(), screen.height()), new Scalar(0), -1);
