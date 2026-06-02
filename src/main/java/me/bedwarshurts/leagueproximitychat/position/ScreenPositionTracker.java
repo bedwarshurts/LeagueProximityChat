@@ -272,7 +272,7 @@ public class ScreenPositionTracker {
         Mat hsv = new Mat();
         Mat mask = new Mat();
         Mat hierarchy = new Mat();
-        java.util.List<MatOfPoint> contours = new ArrayList<>();
+        List<MatOfPoint> contours = new ArrayList<>();
         Point resultPoint = null;
 
         try {
@@ -358,7 +358,7 @@ public class ScreenPositionTracker {
         Mat gray = new Mat();
         Mat thresholded = new Mat();
         Mat hierarchy = new Mat();
-        java.util.List<MatOfPoint> contours = new ArrayList<>();
+        List<MatOfPoint> contours = new ArrayList<>();
 
         Point center = new Point(minimap.width() / 2.0, minimap.height() / 2.0);
         int width = 0;
@@ -427,7 +427,7 @@ public class ScreenPositionTracker {
         int borderMarginX = (int) (minimap.width() * 0.08);
         int borderMarginY = (int) (minimap.height() * 0.08);
 
-        java.util.List<Point> allyCenters = findAllyLocations(minimap);
+        List<Point> allyCenters = findAllyLocations(minimap);
 
         if (allyCenters.isEmpty()) return null;
 
@@ -555,12 +555,12 @@ public class ScreenPositionTracker {
         }
     }
 
-    private java.util.List<Point> findAllyLocations(Mat minimap) {
-        java.util.List<Point> centers = new java.util.ArrayList<>();
+    private List<Point> findAllyLocations(Mat minimap) {
+        List<Point> centers = new ArrayList<>();
         Mat hsv = new Mat();
         Mat mask = new Mat();
         Mat hierarchy = new Mat();
-        java.util.List<MatOfPoint> contours = new java.util.ArrayList<>();
+        List<MatOfPoint> contours = new ArrayList<>();
 
         try {
             Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);

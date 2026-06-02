@@ -4,9 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="make it a bit more lenient">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="fix hp bar tracking when low hp">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -244,7 +243,7 @@
       <recent name="C:\Users\proma\Documents\Projects\LeagueProximityChat\src\main\resources" />
     </key>
   </component>
-  <component name="RunManager" selected="Application.me.bedwarshurts.leagueproximitychat.LeagueProximityChat">
+  <component name="RunManager" selected="Maven.leagueproximitychat [clean,install]">
     <configuration name="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
       <option name="MAIN_CLASS_NAME" value="me.bedwarshurts.leagueproximitychat.LeagueProximityChat" />
       <module name="LeagueProximityChat" />
@@ -334,7 +333,7 @@
       <workItem from="1780323516004" duration="1137000" />
       <workItem from="1780327738771" duration="2244000" />
       <workItem from="1780337051343" duration="4603000" />
-      <workItem from="1780350155764" duration="6406000" />
+      <workItem from="1780350155764" duration="9116000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -496,7 +495,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780339237741</updated>
     </task>
-    <option name="localTasksCounter" value="21" />
+    <task id="LOCAL-00021" summary="fix hp bar tracking when low hp">
+      <option name="closed" value="true" />
+      <created>1780357852011</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1780357852011</updated>
+    </task>
+    <option name="localTasksCounter" value="22" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -522,7 +529,8 @@
     <MESSAGE value="correct game window name" />
     <MESSAGE value="if player not found return last known location. Also make the template matching a bit strictier" />
     <MESSAGE value="make it a bit more lenient" />
-    <option name="LAST_COMMIT_MESSAGE" value="make it a bit more lenient" />
+    <MESSAGE value="fix hp bar tracking when low hp" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix hp bar tracking when low hp" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
