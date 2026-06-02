@@ -1,5 +1,7 @@
 package me.bedwarshurts.leagueproximitychat.utils;
 
+import lombok.Getter;
+
 import javax.swing.JFileChooser;
 import java.io.File;
 import java.io.BufferedReader;
@@ -14,9 +16,10 @@ public class LeagueConfigReader {
     private static final String DEFAULT_CONFIG_PATH = "C:/Riot Games/League of Legends/Config";
 
     public static class LeagueSettings {
-        public int width = 1920;
-        public int height = 1080;
-        public float minimapScale = 1.0f;
+        @Getter private int width = 1920;
+        @Getter private int height = 1080;
+        @Getter private float minimapScale = 1.0f;
+        @Getter private boolean isColorblind = false;
     }
 
     public static LeagueSettings loadSettings() {
@@ -24,11 +27,11 @@ public class LeagueConfigReader {
         File configDir = new File(DEFAULT_CONFIG_PATH);
 
         if (!configDir.exists() || !configDir.isDirectory()) {
-            System.out.println("Default League config not found. Prompting user for folder...");
+            System.out.println("[loadSettings] Default League config not found. Prompting user for folder...");
             configDir = promptUserForConfigDirectory();
 
             if (configDir == null) {
-                System.err.println("No folder selected. Using fallback 1080p defaults.");
+                System.err.println("[loadSettings] No folder selected. Using fallback defaults.");
                 return settings;
             }
         }
@@ -42,10 +45,12 @@ public class LeagueConfigReader {
                         settings.width = Integer.parseInt(line.split("=")[1].trim());
                     } else if (line.startsWith("Height=")) {
                         settings.height = Integer.parseInt(line.split("=")[1].trim());
+                    } else if (line.startsWith("ColorPalette=")) {
+                        settings.isColorblind = line.split("=")[1].trim().equals("1");
                     }
                 }
             } catch (Exception e) {
-                System.err.println("Failed to parse game.cfg. Using defaults.");
+                System.err.println("[loadSettings] Failed to parse game.cfg. Using defaults.");
             }
         }
 
@@ -59,7 +64,7 @@ public class LeagueConfigReader {
                     settings.minimapScale = Float.parseFloat(matcher.group(1));
                 }
             } catch (Exception e) {
-                System.err.println("Failed to parse PersistedSettings.json. Defaulting scale to 1.0.");
+                System.err.println("[loadSettings] Failed to parse PersistedSettings.json. Defaulting scale to 1.0.");
             }
         }
 
