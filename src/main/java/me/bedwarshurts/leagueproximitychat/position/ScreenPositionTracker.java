@@ -278,11 +278,14 @@ public class ScreenPositionTracker {
             Imgproc.rectangle(mask, new Point(0, hudTopY), new Point(screen.width(), screen.height()), new Scalar(0), -1);
             Imgproc.rectangle(mask, new Point(screen.width() * 0.85, 0), new Point(screen.width(), screen.height() * 0.10), new Scalar(0), -1);
 
-            Mat openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
+            int openSize = Math.max(1, (int) (screen.height() * 0.002));
+            int closeWidth = Math.max(3, (int) (screen.width() * 0.005));
+
+            Mat openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(openSize, openSize));
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, openKernel);
             openKernel.release();
 
-            Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(11, 1));
+            Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(closeWidth, 1));
             Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, closeKernel);
             closeKernel.release();
 
@@ -303,7 +306,7 @@ public class ScreenPositionTracker {
                     double extent = pixelArea / (double) (rect.width * rect.height);
                     double aspectRatio = rect.width / (double) rect.height;
 
-                    if (extent > 0.75 && (aspectRatio > 2.5 || rect.width < 30)) {
+                    if (extent > 0.55 && (aspectRatio > 2.5 || rect.width < 30)) {
                         double centerX = rect.x + (rect.width / 2.0);
                         double centerY = rect.y + (rect.height / 2.0);
                         double distToCenter = Math.pow(centerX - (screen.width() / 2.0), 2) + Math.pow(centerY - (screen.height() / 2.0), 2);

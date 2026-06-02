@@ -4,12 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="cleanup some code">
+    <list default="true" id="3bfb0eb1-f924-480d-87fa-5199ab61e072" name="Changes" comment="cleanup code">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/LeagueProximityChat.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dependency-reduced-pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/dependency-reduced-pom.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/position/ScreenPositionTracker.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/utils/LeagueConfigReader.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/me/bedwarshurts/leagueproximitychat/utils/LeagueConfigReader.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -337,7 +335,7 @@
       <workItem from="1780327738771" duration="2244000" />
       <workItem from="1780337051343" duration="4603000" />
       <workItem from="1780350155764" duration="9723000" />
-      <workItem from="1780409044348" duration="2053000" />
+      <workItem from="1780409044348" duration="2694000" />
     </task>
     <task id="LOCAL-00001" summary="initial files">
       <option name="closed" value="true" />
@@ -515,7 +513,23 @@
       <option name="project" value="LOCAL" />
       <updated>1780361694392</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="add support for colorblind mode off (green healthbars)">
+      <option name="closed" value="true" />
+      <created>1780411395263</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1780411395263</updated>
+    </task>
+    <task id="LOCAL-00024" summary="cleanup code">
+      <option name="closed" value="true" />
+      <created>1780411407728</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1780411407728</updated>
+    </task>
+    <option name="localTasksCounter" value="25" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -543,7 +557,9 @@
     <MESSAGE value="make it a bit more lenient" />
     <MESSAGE value="fix hp bar tracking when low hp" />
     <MESSAGE value="cleanup some code" />
-    <option name="LAST_COMMIT_MESSAGE" value="cleanup some code" />
+    <MESSAGE value="add support for colorblind mode off (green healthbars)" />
+    <MESSAGE value="cleanup code" />
+    <option name="LAST_COMMIT_MESSAGE" value="cleanup code" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
