@@ -150,7 +150,7 @@ public class ScreenPositionTracker {
         }
 
         if (healthBarCenter != null && champMapCenter != null && calibrationFrames < MAX_CALIBRATION_FRAMES) {
-            if (champScore > 0.70) {
+            if (champScore > 0.60) {
                 float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
                 float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
 
@@ -419,27 +419,31 @@ public class ScreenPositionTracker {
     }
 
     private TemplateMatch locateChampionViaTemplate(Mat minimap) {
-        int borderMarginX = (int) (minimap.width() * 0.08);
-        int borderMarginY = (int) (minimap.height() * 0.08);
+        int borderMarginX = (int) (minimap.width() * 0.03);
+        int borderMarginY = (int) (minimap.height() * 0.03);
 
-        List<Point> allyCenters = findAllyLocations(minimap);
+        java.util.List<Point> allyCenters = findAllyLocations(minimap);
 
         if (allyCenters.isEmpty()) return null;
 
         if (isScaleLocked && lockedCoreTemplate != null) {
             double bestScore = -1.0;
             Point bestAllyCenter = null;
+            double rawScoreForDebug = 0.0;
 
             int cw = lockedCoreTemplate.width();
             int ch = lockedCoreTemplate.height();
 
             for (Point ally : allyCenters) {
-                int searchRadiusX = (int) (cw * 0.8);
-                int searchRadiusY = (int) (ch * 0.8);
-                int startX = (int) Math.max(0, ally.x - searchRadiusX);
-                int startY = (int) Math.max(0, ally.y - searchRadiusY);
-                int roiW = Math.min(minimap.width() - startX, searchRadiusX * 2);
-                int roiH = Math.min(minimap.height() - startY, searchRadiusY * 2);
+                int padding = 2;
+                int startX = (int) Math.max(0, ally.x - (cw / 2.0) - padding);
+                int startY = (int) Math.max(0, ally.y - (ch / 2.0) - padding);
+
+                int roiW = cw + (padding * 2);
+                int roiH = ch + (padding * 2);
+
+                if (startX + roiW > minimap.width()) roiW = minimap.width() - startX;
+                if (startY + roiH > minimap.height()) roiH = minimap.height() - startY;
 
                 if (roiW < cw || roiH < ch) continue;
 
@@ -448,21 +452,34 @@ public class ScreenPositionTracker {
                 Imgproc.matchTemplate(localRoi, lockedCoreTemplate, result, Imgproc.TM_CCOEFF_NORMED);
                 Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
 
-                if (mmr.maxVal > bestScore) {
-                    bestScore = mmr.maxVal;
-                    bestAllyCenter = new Point(startX + mmr.maxLoc.x + (cw / 2.0), startY + mmr.maxLoc.y + (ch / 2.0));
+                double score = mmr.maxVal;
+                Point candidateCenter = new Point(startX + mmr.maxLoc.x + (cw / 2.0), startY + mmr.maxLoc.y + (ch / 2.0));
+
+                double candidateCoordX = (candidateCenter.x / minimap.width()) * 100.0;
+                double candidateCoordY = 100.0 - ((candidateCenter.y / minimap.height()) * 100.0);
+
+                double dist = Math.hypot(candidateCoordX - this.lastKnownX, candidateCoordY - this.lastKnownY);
+
+                if (dist < 6.0) {
+                    score += 0.30;
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestAllyCenter = candidateCenter;
+                    rawScoreForDebug = mmr.maxVal;
                 }
 
                 localRoi.release();
                 result.release();
             }
 
-            if (bestScore > 0.40 && bestAllyCenter != null) {
+            if (bestScore > 0.40) {
                 if (bestAllyCenter.x > borderMarginX && bestAllyCenter.x < minimap.width() - borderMarginX &&
                         bestAllyCenter.y > borderMarginY && bestAllyCenter.y < minimap.height() - borderMarginY) {
 
                     drawDebugBox(minimap, bestAllyCenter.x, bestAllyCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 255, 0));
-                    System.out.printf("[locateChampionViaTemplate] Found template after locked scale! Match: %.2f%%\n", (bestScore * 100));
+                    System.out.printf("[locateChampionViaTemplate] Locked Scale Match -> Raw: %.2f%% | Boosted: %.2f%%\n", (rawScoreForDebug * 100), (bestScore * 100));
                     return new TemplateMatch(bestAllyCenter, bestScore);
                 }
             }

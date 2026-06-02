@@ -12,6 +12,7 @@ import java.util.Scanner;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.opencv.core.Mat;
 import org.opencv.core.CvType;
+import org.opencv.imgcodecs.Imgcodecs;
 
 public class TemplateLoader {
 
@@ -54,6 +55,7 @@ public class TemplateLoader {
             fullMat.put(0, 0, pixels);
 
             System.out.println("Successfully generated Raw 120x120 OpenCV template for " + rawName);
+            Imgcodecs.imwrite("debug/debug_template.png", fullMat);
             return fullMat;
         } catch (Exception e) {
             System.err.println("Failed to automate template loading. Ensure the game is actively running in a match.");
