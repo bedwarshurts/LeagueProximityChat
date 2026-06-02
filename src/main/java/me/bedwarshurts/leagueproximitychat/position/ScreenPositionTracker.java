@@ -47,6 +47,9 @@ public class ScreenPositionTracker {
     public record CameraBox(Point center, int width, int height) {
     }
 
+    public record CandidateMatch(Point center, int width, int height, double score, double rawScore) {
+    }
+
     public ScreenPositionTracker(Mat championTemplate) {
         try {
             this.robot = new Robot();
@@ -424,7 +427,10 @@ public class ScreenPositionTracker {
 
         java.util.List<Point> allyCenters = findAllyLocations(minimap);
 
-        if (allyCenters.isEmpty()) return null;
+        if (allyCenters.isEmpty()) {
+            System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
+            return null;
+        }
 
         if (isScaleLocked && lockedCoreTemplate != null) {
             double bestScore = -1.0;
@@ -433,6 +439,8 @@ public class ScreenPositionTracker {
 
             int cw = lockedCoreTemplate.width();
             int ch = lockedCoreTemplate.height();
+
+            List<CandidateMatch> candidates = new ArrayList<>();
 
             for (Point ally : allyCenters) {
                 int padding = 2;
@@ -457,12 +465,13 @@ public class ScreenPositionTracker {
 
                 double candidateCoordX = (candidateCenter.x / minimap.width()) * 100.0;
                 double candidateCoordY = 100.0 - ((candidateCenter.y / minimap.height()) * 100.0);
-
                 double dist = Math.hypot(candidateCoordX - this.lastKnownX, candidateCoordY - this.lastKnownY);
 
                 if (dist < 6.0) {
                     score += 0.30;
                 }
+
+                candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, mmr.maxVal));
 
                 if (score > bestScore) {
                     bestScore = score;
@@ -473,6 +482,8 @@ public class ScreenPositionTracker {
                 localRoi.release();
                 result.release();
             }
+
+            drawTop10Debug(minimap, candidates);
 
             if (bestScore > 0.40) {
                 if (bestAllyCenter.x > borderMarginX && bestAllyCenter.x < minimap.width() - borderMarginX &&
@@ -492,10 +503,10 @@ public class ScreenPositionTracker {
         Mat globalBestTemplate = null;
         int globalBestSize = 0;
 
+        java.util.Map<Point, CandidateMatch> globalCandidatesMap = new java.util.HashMap<>();
+
         for (int targetSize = 120; targetSize >= 12; targetSize--) {
-            if (targetSize > minimap.width() || targetSize > minimap.height()) {
-                continue;
-            }
+            if (targetSize > minimap.width() || targetSize > minimap.height()) continue;
 
             Mat resizedTemplate = new Mat();
             Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
@@ -511,37 +522,54 @@ public class ScreenPositionTracker {
             }
 
             Mat coreTemplate = new Mat(resizedTemplate, new Rect(cx, cy, cw, ch));
-            Mat result = new Mat();
-            Imgproc.matchTemplate(minimap, coreTemplate, result, Imgproc.TM_CCOEFF_NORMED);
-            Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
 
-            if (mmr.maxVal > globalBestScore) {
-                double matchCenterX = mmr.maxLoc.x + (coreTemplate.width() / 2.0);
-                double matchCenterY = mmr.maxLoc.y + (coreTemplate.height() / 2.0);
+            for (Point ally : allyCenters) {
+                int padding = 4;
+                int startX = (int) Math.max(0, ally.x - (cw / 2.0) - padding);
+                int startY = (int) Math.max(0, ally.y - (ch / 2.0) - padding);
 
-                boolean isNearAlly = false;
-                for (Point ally : allyCenters) {
-                    if (Math.hypot(ally.x - matchCenterX, ally.y - matchCenterY) < 30) {
-                        isNearAlly = true;
-                        break;
+                int roiW = cw + (padding * 2);
+                int roiH = ch + (padding * 2);
+
+                if (startX + roiW > minimap.width()) roiW = minimap.width() - startX;
+                if (startY + roiH > minimap.height()) roiH = minimap.height() - startY;
+
+                if (roiW < cw || roiH < ch) continue;
+
+                Mat localRoi = new Mat(minimap, new Rect(startX, startY, roiW, roiH));
+                Mat result = new Mat();
+                Imgproc.matchTemplate(localRoi, coreTemplate, result, Imgproc.TM_CCOEFF_NORMED);
+                Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
+
+                double matchCenterX = startX + mmr.maxLoc.x + (cw / 2.0);
+                double matchCenterY = startY + mmr.maxLoc.y + (ch / 2.0);
+
+                if (matchCenterX > borderMarginX && matchCenterX < minimap.width() - borderMarginX &&
+                        matchCenterY > borderMarginY && matchCenterY < minimap.height() - borderMarginY) {
+
+                    if (mmr.maxVal > globalBestScore) {
+                        globalBestScore = mmr.maxVal;
+                        globalBestCenter = new Point(matchCenterX, matchCenterY);
+                        if (globalBestTemplate != null) globalBestTemplate.release();
+                        globalBestTemplate = coreTemplate.clone();
+                        globalBestSize = targetSize;
+                    }
+
+                    CandidateMatch currentBest = globalCandidatesMap.get(ally);
+                    if (currentBest == null || mmr.maxVal > currentBest.score()) {
+                        globalCandidatesMap.put(ally, new CandidateMatch(new Point(matchCenterX, matchCenterY), cw, ch, mmr.maxVal, mmr.maxVal));
                     }
                 }
 
-                if (isNearAlly && matchCenterX > borderMarginX && matchCenterX < minimap.width() - borderMarginX &&
-                        matchCenterY > borderMarginY && matchCenterY < minimap.height() - borderMarginY) {
-
-                    globalBestScore = mmr.maxVal;
-                    globalBestCenter = new Point(matchCenterX, matchCenterY);
-                    if (globalBestTemplate != null) globalBestTemplate.release();
-                    globalBestTemplate = coreTemplate.clone();
-                    globalBestSize = targetSize;
-                }
+                localRoi.release();
+                result.release();
             }
 
             coreTemplate.release();
             resizedTemplate.release();
-            result.release();
         }
+
+        drawTop10Debug(minimap, new ArrayList<>(globalCandidatesMap.values()));
 
         if (globalBestScore > 0.75) {
             System.out.printf("[locateChampionViaTemplate] EXACT SCALE LOCKED at %dpx! Match: %.2f%%\n", globalBestSize, (globalBestScore * 100));
@@ -552,8 +580,35 @@ public class ScreenPositionTracker {
             return new TemplateMatch(globalBestCenter, globalBestScore);
         }
 
+        System.out.println("[locateChampionViaTemplate] FAILED: Global Scan completed but highest match was only " + String.format("%.2f%%", globalBestScore * 100));
         if (globalBestTemplate != null) globalBestTemplate.release();
         return null;
+    }
+
+    private void drawTop10Debug(Mat minimap, List<CandidateMatch> candidates) {
+        if (WindowUtils.isWindowFocused("League of Legends (TM) Client") && !candidates.isEmpty()) {
+            Mat top10Map = minimap.clone();
+
+            candidates.sort((c1, c2) -> Double.compare(c2.score(), c1.score()));
+
+            int limit = Math.min(10, candidates.size());
+
+            for (int i = 0; i < limit; i++) {
+                CandidateMatch c = candidates.get(i);
+                Point tl = new Point(c.center().x - (c.width() / 2.0), c.center().y - (c.height() / 2.0));
+                Point br = new Point(tl.x + c.width(), tl.y + c.height());
+
+                Scalar color = (i == 0) ? new Scalar(0, 255, 0) : new Scalar(0, 165, 255);
+                Imgproc.rectangle(top10Map, tl, br, color, 1);
+
+                String text = String.format("Top%d | %.0f%%", (i + 1), (c.score() * 100));
+                double textY = Math.max(10, tl.y - 4);
+                Imgproc.putText(top10Map, text, new Point(tl.x, textY), Imgproc.FONT_HERSHEY_SIMPLEX, 0.35, color, 1);
+            }
+
+            Imgcodecs.imwrite("debug/debug_template_top10_match.png", top10Map);
+            top10Map.release();
+        }
     }
 
     private void drawDebugBox(Mat minimap, double centerX, double centerY, int width, int height, Scalar color) {
