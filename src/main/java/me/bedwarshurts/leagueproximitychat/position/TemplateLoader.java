@@ -10,6 +10,8 @@ import java.net.URL;
 import java.util.Scanner;
 
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
+import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
+import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
 import org.opencv.core.Mat;
 import org.opencv.core.CvType;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -26,35 +28,38 @@ public class TemplateLoader {
             }
             System.out.println("Detected Local Player: " + mySummonerName);
 
-            String listResponse = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
-
-            if (listResponse == null) {
-                System.err.println("Could not fetch player list.");
+            LeagueGame gameData = RitoApiUtils.getLivePlayerList();
+            if (gameData == null || gameData.players() == null) {
+                System.err.println("Could not fetch or parse player list.");
                 return null;
             }
 
-            int playerIndex = listResponse.indexOf(mySummonerName);
-            if (playerIndex == -1) {
-                System.err.println("Could not find " + mySummonerName + " in the player list.");
+            String championCodename = null;
+            for (LeaguePlayer player : gameData.players()) {
+                if (mySummonerName.equals(player.getSummonerName())) {
+
+                    championCodename = player.getChampionName();
+                    break;
+                }
+            }
+
+            if (championCodename == null || championCodename.isEmpty()) {
+                System.err.println("Could not find " + mySummonerName + " in the parsed player list.");
                 return null;
             }
 
-            String searchString = "\"rawChampionName\": \"game_character_displayname_";
-            int rawNameIndex = listResponse.lastIndexOf(searchString, playerIndex);
-
-            String rawName = listResponse.substring(rawNameIndex + searchString.length()).split("\"")[0];
-            System.out.println("Detected Champion Codename: " + rawName);
+            System.out.println("Detected Champion Codename: " + championCodename);
 
             String latestPatch = getLatestDataDragonVersion();
 
-            String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestPatch + "/img/champion/" + rawName + ".png";
+            String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestPatch + "/img/champion/" + championCodename + ".png";
             BufferedImage originalIcon = ImageIO.read(new URI(ddragonUrl).toURL());
 
             byte[] pixels = ((DataBufferByte) originalIcon.getRaster().getDataBuffer()).getData();
             Mat fullMat = new Mat(originalIcon.getHeight(), originalIcon.getWidth(), CvType.CV_8UC3);
             fullMat.put(0, 0, pixels);
 
-            System.out.println("Successfully generated Raw 120x120 OpenCV template for " + rawName);
+            System.out.println("Successfully generated Raw 120x120 OpenCV template for " + championCodename);
             Imgcodecs.imwrite("debug/debug_template.png", fullMat);
             return fullMat;
         } catch (Exception e) {
