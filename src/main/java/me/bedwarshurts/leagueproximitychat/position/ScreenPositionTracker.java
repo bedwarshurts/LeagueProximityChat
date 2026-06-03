@@ -13,7 +13,9 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ScreenPositionTracker {
 
@@ -425,10 +427,10 @@ public class ScreenPositionTracker {
         int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
 
-        java.util.List<Point> allyCenters = findAllyLocations(minimap);
+        List<Point> allyCenters = findAllyLocations(minimap);
 
         if (allyCenters.isEmpty()) {
-            System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
+            System.out.println("[findAllyLocations] FAILED: 0 blue ally circles found on the minimap.");
             return null;
         }
 
@@ -503,18 +505,20 @@ public class ScreenPositionTracker {
         Mat globalBestTemplate = null;
         int globalBestSize = 0;
 
-        java.util.Map<Point, CandidateMatch> globalCandidatesMap = new java.util.HashMap<>();
+        Map<Point, CandidateMatch> globalCandidatesMap = new HashMap<>();
 
-        for (int targetSize = 120; targetSize >= 12; targetSize--) {
+        List<Mat> crops = new ArrayList<>();
+
+        for (int targetSize = 120; targetSize >= 20; targetSize--) {
             if (targetSize > minimap.width() || targetSize > minimap.height()) continue;
 
             Mat resizedTemplate = new Mat();
-            Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
+            Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_LANCZOS4);
 
-            int cx = (int) (resizedTemplate.width() * 0.15);
-            int cy = (int) (resizedTemplate.height() * 0.15);
-            int cw = (int) (resizedTemplate.width() * 0.70);
-            int ch = (int) (resizedTemplate.height() * 0.70);
+            int cx = (int) (resizedTemplate.width() * 0.2);
+            int cy = (int) (resizedTemplate.height() * 0.2);
+            int cw = (int) (resizedTemplate.width() * 0.6);
+            int ch = (int) (resizedTemplate.height() * 0.6);
 
             if (cw <= 0 || ch <= 0) {
                 resizedTemplate.release();
@@ -522,6 +526,10 @@ public class ScreenPositionTracker {
             }
 
             Mat coreTemplate = new Mat(resizedTemplate, new Rect(cx, cy, cw, ch));
+
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                crops.add(coreTemplate.clone());
+            }
 
             for (Point ally : allyCenters) {
                 int padding = 4;
@@ -569,11 +577,13 @@ public class ScreenPositionTracker {
             resizedTemplate.release();
         }
 
+        drawCroppedTemplates(crops);
         drawTop10Debug(minimap, new ArrayList<>(globalCandidatesMap.values()));
 
         if (globalBestScore > 0.75) {
             System.out.printf("[locateChampionViaTemplate] EXACT SCALE LOCKED at %dpx! Match: %.2f%%\n", globalBestSize, (globalBestScore * 100));
             this.lockedCoreTemplate = globalBestTemplate;
+            Imgcodecs.imwrite("debug/debug_locked_template.png", lockedCoreTemplate);
             this.isScaleLocked = true;
 
             drawDebugBox(minimap, globalBestCenter.x, globalBestCenter.y, lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 165, 255));
@@ -583,6 +593,39 @@ public class ScreenPositionTracker {
         System.out.println("[locateChampionViaTemplate] FAILED: Global Scan completed but highest match was only " + String.format("%.2f%%", globalBestScore * 100));
         if (globalBestTemplate != null) globalBestTemplate.release();
         return null;
+    }
+
+    private void drawCroppedTemplates(List<Mat> crops) {
+        if (!crops.isEmpty()) {
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                int totalWidth = 0;
+                int maxHeight = 0;
+
+                for (Mat crop : crops) {
+                    totalWidth += crop.width();
+                    if (crop.height() > maxHeight) maxHeight = crop.height();
+                }
+
+                if (totalWidth > 0 && maxHeight > 0) {
+                    Mat spriteSheet = Mat.zeros(maxHeight, totalWidth, crops.getFirst().type());
+                    int currentX = 0;
+
+                    for (Mat crop : crops) {
+                        Mat roi = new Mat(spriteSheet, new Rect(currentX, 0, crop.width(), crop.height()));
+                        crop.copyTo(roi);
+                        currentX += crop.width();
+                        roi.release();
+                    }
+
+                    Imgcodecs.imwrite("debug/debug_cropped_templates.png", spriteSheet);
+                    spriteSheet.release();
+                }
+            }
+            for (Mat crop : crops) {
+                crop.release();
+            }
+            crops.clear();
+        }
     }
 
     private void drawTop10Debug(Mat minimap, List<CandidateMatch> candidates) {
@@ -598,12 +641,16 @@ public class ScreenPositionTracker {
                 Point tl = new Point(c.center().x - (c.width() / 2.0), c.center().y - (c.height() / 2.0));
                 Point br = new Point(tl.x + c.width(), tl.y + c.height());
 
-                Scalar color = (i == 0) ? new Scalar(0, 255, 0) : new Scalar(0, 165, 255);
-                Imgproc.rectangle(top10Map, tl, br, color, 1);
+                Scalar boxColor = (i == 0) ? new Scalar(0, 255, 0) : new Scalar(0, 0, 255);
+                Imgproc.rectangle(top10Map, tl, br, boxColor, 1);
 
                 String text = String.format("Top%d | %.0f%%", (i + 1), (c.score() * 100));
                 double textY = Math.max(10, tl.y - 4);
-                Imgproc.putText(top10Map, text, new Point(tl.x, textY), Imgproc.FONT_HERSHEY_SIMPLEX, 0.35, color, 1);
+
+
+                Imgproc.putText(top10Map, text, new Point(tl.x + 1, textY + 1), Imgproc.FONT_HERSHEY_SIMPLEX, 0.35, new Scalar(0, 0, 0), 1);
+
+                Imgproc.putText(top10Map, text, new Point(tl.x, textY), Imgproc.FONT_HERSHEY_SIMPLEX, 0.35, boxColor, 1);
             }
 
             Imgcodecs.imwrite("debug/debug_template_top10_match.png", top10Map);
@@ -632,7 +679,7 @@ public class ScreenPositionTracker {
         try {
             Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
 
-            Scalar lowerBlue = new Scalar(95, 100, 150);
+            Scalar lowerBlue = new Scalar(80, 140, 200);
             Scalar upperBlue = new Scalar(115, 255, 255);
             Core.inRange(hsv, lowerBlue, upperBlue, mask);
 
