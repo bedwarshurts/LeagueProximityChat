@@ -488,7 +488,7 @@ public class ScreenPositionTracker {
                 double candidateCoordY = 100.0 - ((candidateCenter.y / minimap.height()) * 100.0);
                 double dist = Math.hypot(candidateCoordX - this.lastKnownX, candidateCoordY - this.lastKnownY);
 
-                if (dist < 6.0) {
+                if (dist < 8.0) {
                     score += 0.30;
                 }
 
@@ -503,7 +503,7 @@ public class ScreenPositionTracker {
 
             drawTop10Debug(minimap, candidates);
 
-            if (bestScore > 0.40) {
+            if (bestScore > 0.45) {
                 if (bestAllyCenter.x > borderMarginX && bestAllyCenter.x < minimap.width() - borderMarginX &&
                         bestAllyCenter.y > borderMarginY && bestAllyCenter.y < minimap.height() - borderMarginY) {
 
@@ -670,8 +670,6 @@ public class ScreenPositionTracker {
         List<Point> centers = new ArrayList<>();
         Mat hsv = new Mat();
         Mat mask = new Mat();
-        Mat hierarchy = new Mat();
-        List<MatOfPoint> contours = new ArrayList<>();
 
         try {
             Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
@@ -680,35 +678,34 @@ public class ScreenPositionTracker {
             Scalar upperBlue = new Scalar(115, 255, 255);
             Core.inRange(hsv, lowerBlue, upperBlue, mask);
 
-            Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(3, 3));
-            Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_DILATE, kernel);
-            kernel.release();
+            Mat blurredMask = new Mat();
+            Imgproc.GaussianBlur(mask, blurredMask, new Size(3, 3), 0);
 
             if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
-                Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
+                Imgcodecs.imwrite("debug/debug_ally_mask.png", blurredMask);
             }
 
-            Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+            Mat circles = new Mat();
+
+            Imgproc.HoughCircles(blurredMask, circles, Imgproc.HOUGH_GRADIENT, 1.0, 10.0, 100.0, 14.0, 10, 22);
 
             Mat debugDrawMap = null;
             if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                 debugDrawMap = minimap.clone();
             }
 
-            for (MatOfPoint contour : contours) {
-                float[] radius = new float[1];
-                Point center = new Point();
-                MatOfPoint2f contour2f = new MatOfPoint2f(contour.toArray());
+            for (int i = 0; i < circles.cols(); i++) {
+                double[] c = circles.get(0, i);
+                if (c == null || c.length < 3) continue;
 
-                Imgproc.minEnclosingCircle(contour2f, center, radius);
-                contour2f.release();
+                Point center = new Point(Math.round(c[0]), Math.round(c[1]));
+                int radius = (int) Math.round(c[2]);
 
-                if (radius[0] > 6 && radius[0] < 45) {
-                    centers.add(center);
-                    if (debugDrawMap != null) {
-                        Imgproc.circle(debugDrawMap, center, (int)radius[0], new Scalar(0, 255, 255), 2);
-                        Imgproc.circle(debugDrawMap, center, 2, new Scalar(0, 0, 255), -1);
-                    }
+                centers.add(center);
+
+                if (debugDrawMap != null) {
+                    Imgproc.circle(debugDrawMap, center, radius, new Scalar(0, 255, 0), 2); // Green boundary
+                    Imgproc.circle(debugDrawMap, center, 2, new Scalar(0, 0, 255), -1);     // Red center dot
                 }
             }
 
@@ -716,13 +713,13 @@ public class ScreenPositionTracker {
                 Imgcodecs.imwrite("debug/debug_ally_centers.png", debugDrawMap);
                 debugDrawMap.release();
             }
+
+            blurredMask.release();
+            circles.release();
+
         } finally {
             hsv.release();
             mask.release();
-            hierarchy.release();
-            for (MatOfPoint contour : contours) {
-                contour.release();
-            }
         }
 
         return centers;
