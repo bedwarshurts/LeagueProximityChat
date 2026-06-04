@@ -447,8 +447,11 @@ public class ScreenPositionTracker {
         Imgproc.matchTemplate(localRoi, template, result, Imgproc.TM_CCOEFF_NORMED);
         Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
 
-        double matchCenterX = startX + mmr.maxLoc.x + (cw / 2.0);
-        double matchCenterY = startY + mmr.maxLoc.y + (ch / 2.0);
+        double centerX = mmr.maxLoc.x + (cw / 2.0);
+        double centerY = mmr.maxLoc.y + (ch / 2.0);
+
+        double matchCenterX = startX + centerX;
+        double matchCenterY = startY + centerY;
 
         localRoi.release();
         result.release();
@@ -489,7 +492,7 @@ public class ScreenPositionTracker {
                 double dist = Math.hypot(candidateCoordX - this.lastKnownX, candidateCoordY - this.lastKnownY);
 
                 if (dist < 8.0) {
-                    score += 0.30;
+                    score += 0.35;
                 }
 
                 candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, eval.score()));

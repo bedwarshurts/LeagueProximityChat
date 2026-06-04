@@ -33,7 +33,6 @@
         .error { border-left: 5px solid #dc3545; color: #dc3545; }
         .loading { border-left: 5px solid #ffc107; color: #ffc107; }
 
-        /* NEW: Live Tracker Display */
         .pos-tracker {
             background: #1e1e1e;
             padding: 12px;
@@ -102,7 +101,6 @@
         .kick-btn { background-color: #dc3545; }
         .revoke-btn { background-color: #ff9800; color: #000; }
 
-        /* NEW: Proximity Badges */
         .distance-badge {
             background: #121212;
             padding: 3px 8px;
@@ -110,7 +108,7 @@
             font-family: monospace;
             font-size: 11px;
             color: #888;
-            display: none; /* Hidden until connected */
+            display: none;
         }
     </style>
 </head>
@@ -123,7 +121,7 @@
     <div id="ws-status" class="status error">Yowaimo Local Position Tracker: Disconnected</div>
 
     <div class="pos-tracker">
-        <span>📍 Local Pos:</span>
+        <span>📍 OpenCV Local Pos:</span>
         <span id="local-coords" class="highlight">Waiting for data...</span>
     </div>
 
@@ -192,6 +190,9 @@
         const container = document.getElementById('roster-container');
         container.innerHTML = '';
 
+        const isAdmin = localUserIdentity &&
+            ["only forward#star", "stab enchanters#star"].includes(localUserIdentity.toLowerCase());
+
         players.forEach(player => {
             const div = document.createElement('div');
             div.className = 'player-item';
@@ -211,7 +212,7 @@
             controlsContainer.style.alignItems = 'center';
             controlsContainer.style.gap = '15px';
 
-            if (player.identity !== localUserIdentity) {
+            if (player.identity !== localUserIdentity && isAdmin) {
                 const distSpan = document.createElement('span');
                 distSpan.className = 'distance-badge';
                 distSpan.id = `dist-${player.identity}`;
