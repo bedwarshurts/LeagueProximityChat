@@ -44,7 +44,7 @@ public class ScreenPositionTracker {
 
     private final Deque<float[]> offsetWindow = new ArrayDeque<>();
 
-    private static final float DRIFT_CONFIRM_THRESHOLD = 2.0f;
+    private static final float DRIFT_CONFIRM_THRESHOLD = 1.5f;
 
     private static final int DRIFT_SAMPLE_WINDOW = 10;
 
@@ -144,7 +144,9 @@ public class ScreenPositionTracker {
 
         CameraBox cameraBox = (healthBarCenter != null) ? locateMinimapCameraBox(minimapMat) : null;
 
-        TemplateMatch champMatch = null;
+        TemplateMatch champMatch = (championTemplate != null)
+                ? locateChampionViaTemplate(minimapMat)
+                : null;
         if (healthBarCenter == null || !calibrationConverged) {
             champMatch = (championTemplate != null) ? locateChampionViaTemplate(minimapMat) : null;
         }
