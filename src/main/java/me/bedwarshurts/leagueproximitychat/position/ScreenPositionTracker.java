@@ -35,7 +35,7 @@ public class ScreenPositionTracker {
     private float healthBarCalibrateX = 0.0f;
     private float healthBarCalibrateY = 0.0f;
     private int calibrationFrames = 0;
-    private static final int MAX_CALIBRATION_FRAMES = 30;
+    private static final int MAX_CALIBRATION_FRAMES = 60;
 
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
@@ -447,11 +447,8 @@ public class ScreenPositionTracker {
         Imgproc.matchTemplate(localRoi, template, result, Imgproc.TM_CCOEFF_NORMED);
         Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
 
-        double centerX = mmr.maxLoc.x + (cw / 2.0);
-        double centerY = mmr.maxLoc.y + (ch / 2.0);
-
-        double matchCenterX = startX + centerX;
-        double matchCenterY = startY + centerY;
+        double matchCenterX = startX + mmr.maxLoc.x + (cw / 2.0);
+        double matchCenterY = startY + mmr.maxLoc.y + (ch / 2.0);
 
         localRoi.release();
         result.release();
