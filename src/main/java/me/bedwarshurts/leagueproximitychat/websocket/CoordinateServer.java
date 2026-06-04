@@ -27,7 +27,6 @@ public class CoordinateServer extends WebSocketServer {
             activeConnection.close(1000, "Replaced by a newer tab.");
         }
         activeConnection = conn;
-        System.out.println("Browser connected. Set as active tab.");
     }
 
     @Override
@@ -40,7 +39,7 @@ public class CoordinateServer extends WebSocketServer {
                 LeagueProximityChat.setActiveRoom(null);
             }
 
-            System.out.println("Active browser tab closed. Room state destroyed.");
+            System.out.println("Active browser tab closed.");
         }
     }
 
@@ -68,7 +67,7 @@ public class CoordinateServer extends WebSocketServer {
 
                     if ("PLAYER_JOINED".equals(type) && !identity.isEmpty()) {
                         if (LeagueProximityChat.getActiveRoom().isBanned(targetUser)) {
-                            System.out.println("[Moderation] Banned user " + identity + " tried to rejoin. Auto-kicking...");
+                            System.out.println("Banned user " + identity + " tried to rejoin. Auto-kicking...");
                             LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator);
 
                             sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");

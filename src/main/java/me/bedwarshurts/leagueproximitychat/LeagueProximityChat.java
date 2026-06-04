@@ -64,7 +64,7 @@ public class LeagueProximityChat {
         }
 
         if (isAwaitingBrowser) {
-            System.out.println("Browser WebSocket connected! Waiting for user to click Connect...");
+            System.out.println("Browser WebSocket connected!");
             isAwaitingBrowser = false;
         }
 
@@ -128,7 +128,6 @@ public class LeagueProximityChat {
                 server.sendToActive(payload);
 
                 hasConnectedToLiveKit = true;
-                System.out.println("Sent LiveKit token to frontend! Proceeding to OpenCV tracking...");
             }
         } else if (!isInGame && !hasConnectedToLiveKit) {
             Thread.sleep(1000);
@@ -136,29 +135,29 @@ public class LeagueProximityChat {
         }
 
         if (!isTrackerReady) {
-            System.out.println("Scanning for champion template...");
+            System.out.println("Loading champion template.");
             Mat championTemplate = TemplateLoader.autoLoadChampionTemplate();
 
             if (championTemplate == null) {
-                System.err.println("Failed to load champion template. Retrying in 2 seconds...");
+                System.err.println("Failed to load champion template. Retrying in 2 seconds!");
                 Thread.sleep(2000);
                 return;
             }
 
             tracker = new ScreenPositionTracker(championTemplate);
             isTrackerReady = true;
-            System.out.println("Starting position tracking");
+            System.out.println("Starting position tracking.");
         }
 
         if (!WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
-            if (!wasPaused) System.out.println("League of Legends lost focus. Pausing tracking...");
+            if (!wasPaused) System.out.println("League of Legends lost focus. Pausing tracking.");
             wasPaused = true;
             Thread.sleep(1000);
             return;
         }
 
         if (wasPaused) {
-            System.out.println("League of Legends focused. Resuming tracking...");
+            System.out.println("League of Legends focused. Resuming tracking.");
             wasPaused = false;
         }
 
@@ -232,7 +231,6 @@ public class LeagueProximityChat {
 
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Application shutting down. Notifying browser...");
             if (server != null && server.hasActiveConnection()) {
                 server.sendToActive("{\"type\":\"SHUTDOWN\"}");
                 try {
@@ -245,7 +243,6 @@ public class LeagueProximityChat {
         System.out.println("Current lobby leader: " + roomLeaderRiotId);
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
-            System.err.println("Closing application...");
             System.exit(0);
         }
 
