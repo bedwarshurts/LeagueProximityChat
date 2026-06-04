@@ -27,7 +27,7 @@ public class LeagueProximityChat {
 
     private static boolean wasPaused = false;
     private static boolean isAwaitingBrowser = true;
-    private static boolean hasConnectedToLiveKit = false;
+    @Getter @Setter private static boolean hasConnectedToLiveKit = false;
     private static boolean isTrackerReady = false;
 
     @Getter @Setter private static LivekitRoom activeRoom = null;
