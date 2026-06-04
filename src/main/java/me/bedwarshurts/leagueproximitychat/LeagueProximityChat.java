@@ -242,6 +242,7 @@ public class LeagueProximityChat {
         }));
 
         roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
+        System.out.println("Current lobby leader: " + roomLeaderRiotId);
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
             System.err.println("Closing application...");
