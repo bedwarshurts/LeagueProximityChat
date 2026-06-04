@@ -61,7 +61,7 @@ public class LivekitRoom {
     public void kickUser(LiveKitUser user, LiveKitUser moderator) {
         try {
             if (!moderator.equals(roomLeader)) {
-                System.err.println("Only the active room leader can kick users. You must be connected to audio.");
+                System.err.println("Only the active room leader can kick users.");
                 return;
             }
 
@@ -81,7 +81,7 @@ public class LivekitRoom {
 
     public void revokeBan(LiveKitUser user, LiveKitUser moderator) {
         if (!moderator.equals(roomLeader)) {
-            System.err.println("Only the active room leader can revoke bans. You must be connected to audio.");
+            System.err.println("Only the active room leader can revoke bans.");
             return;
         }
         banned.remove(user);

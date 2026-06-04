@@ -148,6 +148,7 @@
                 actionBtn.className = 'action-btn kick-btn';
                 actionBtn.id = `action-${player.identity}`;
                 actionBtn.innerText = 'Kick';
+                actionBtn.style.display = 'none';
                 actionBtn.onclick = () => handleModerationAction(player.identity, player.name);
                 controlsContainer.appendChild(actionBtn);
             }
@@ -174,6 +175,15 @@
         if (statusSpan) {
             statusSpan.innerText = statusText;
             statusSpan.className = `player-status ${cssClass}`;
+        }
+
+        const actionBtn = document.getElementById(`action-${identity}`);
+        if (actionBtn) {
+            if (statusText === "Connected" || statusText === "Banned") {
+                actionBtn.style.display = 'block';
+            } else {
+                actionBtn.style.display = 'none';
+            }
         }
     }
 
@@ -285,22 +295,30 @@
                 }
 
                 if (data.type === "PLAYER_BANNED") {
-                    const nameSpan = document.querySelector(`#roster-${data.identity} .player-name`);
-                    if (nameSpan) nameSpan.classList.add('banned-name');
-                    updatePlayerStatus(data.identity, "Banned", "status-offline");
+                    const row = document.getElementById(`roster-${data.identity}`);
+                    if (row) {
+                        const nameSpan = row.querySelector('.player-name');
+                        if (nameSpan) nameSpan.classList.add('banned-name');
+                    }
 
                     const btn = document.getElementById(`action-${data.identity}`);
                     if (btn) { btn.className = 'action-btn revoke-btn'; btn.innerText = 'Revoke Ban'; }
+
+                    updatePlayerStatus(data.identity, "Banned", "status-offline");
                     return;
                 }
 
                 if (data.type === "PLAYER_UNBANNED") {
-                    const nameSpan = document.querySelector(`#roster-${data.identity} .player-name`);
-                    if (nameSpan) nameSpan.classList.remove('banned-name');
-                    updatePlayerStatus(data.identity, "Not Connected", "status-offline");
+                    const row = document.getElementById(`roster-${data.identity}`);
+                    if (row) {
+                        const nameSpan = row.querySelector('.player-name');
+                        if (nameSpan) nameSpan.classList.remove('banned-name');
+                    }
 
                     const btn = document.getElementById(`action-${data.identity}`);
                     if (btn) { btn.className = 'action-btn kick-btn'; btn.innerText = 'Kick'; }
+
+                    updatePlayerStatus(data.identity, "Not Connected", "status-offline");
                     return;
                 }
 
@@ -334,7 +352,29 @@
         try {
             const statusEl = document.getElementById('lk-status');
             statusEl.className = 'status loading'; statusEl.innerText = 'LiveKit Audio Server: Connecting...';
+
             room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, async () => { await ensurePlaybackUnlocked(); });
+
+            room.on(LivekitClient.RoomEvent.Disconnected, () => {
+                document.getElementById('lk-status').className = 'status error';
+                document.getElementById('lk-status').innerText = 'LiveKit Disconnected. Ready to retry.';
+
+                document.getElementById('start-btn').style.display = 'block';
+                document.getElementById('start-btn').style.backgroundColor = '#007bff';
+                document.getElementById('start-btn').innerText = 'Connect to Audio';
+                document.getElementById('mute-btn').style.display = 'none';
+
+                connected = false;
+                isWaitingForMatch = false;
+
+                if (localUserIdentity) {
+                    updatePlayerStatus(localUserIdentity, "Not Connected", "status-offline");
+                }
+
+                if (trackerSocket && trackerSocket.readyState === WebSocket.OPEN) {
+                    trackerSocket.send("CANCEL_JOIN");
+                }
+            });
 
             room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
                 reportPlayerStateToJava("PLAYER_JOINED", participant);
@@ -381,6 +421,8 @@
                 updatePlayerStatus(participant.identity, "Connected", "status-connected");
             });
 
+            reportPlayerStateToJava("PLAYER_JOINED", room.localParticipant);
+
             statusEl.className = 'status success'; statusEl.innerText = 'LiveKit Audio Server: Connected';
             document.getElementById('start-btn').style.display = 'none'; document.getElementById('mute-btn').style.display = 'block';
             if (localUserIdentity) updatePlayerStatus(localUserIdentity, "Connected", "status-connected");
@@ -397,9 +439,19 @@
                 }
             } catch (e) {}
             return true;
+
         } catch (error) {
-            document.getElementById('lk-status').className = 'status error'; document.getElementById('lk-status').innerText = 'LiveKit Connection Failed!';
-            isWaitingForMatch = false; document.getElementById('start-btn').style.backgroundColor = '#007bff'; document.getElementById('start-btn').innerText = 'Connect to Audio';
+            document.getElementById('lk-status').className = 'status error';
+            document.getElementById('lk-status').innerText = 'LiveKit Connection Failed!';
+
+            document.getElementById('start-btn').style.display = 'block';
+            document.getElementById('start-btn').style.backgroundColor = '#007bff';
+            document.getElementById('start-btn').innerText = 'Connect to Audio';
+            document.getElementById('mute-btn').style.display = 'none';
+
+            isWaitingForMatch = false;
+            connected = false;
+
             if (localUserIdentity) updatePlayerStatus(localUserIdentity, "Not Connected", "status-offline");
             return false;
         }
