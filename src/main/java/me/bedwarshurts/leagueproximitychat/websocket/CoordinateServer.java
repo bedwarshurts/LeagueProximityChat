@@ -70,6 +70,8 @@ public class CoordinateServer extends WebSocketServer {
                         if (LeagueProximityChat.getActiveRoom().isBanned(targetUser)) {
                             System.out.println("[Moderation] Banned user " + identity + " tried to rejoin. Auto-kicking...");
                             LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator);
+
+                            sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
                         } else {
                             LeagueProximityChat.getActiveRoom().addParticipant(targetUser);
                         }
@@ -116,5 +118,4 @@ public class CoordinateServer extends WebSocketServer {
             activeConnection.send(payload);
         }
     }
-
 }
