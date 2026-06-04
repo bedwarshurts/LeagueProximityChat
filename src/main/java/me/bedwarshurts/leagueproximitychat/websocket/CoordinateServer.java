@@ -1,12 +1,20 @@
 package me.bedwarshurts.leagueproximitychat.websocket;
 
+import lombok.Getter;
+import lombok.Setter;
+import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
+import me.bedwarshurts.leagueproximitychat.livekit.LiveKitUser;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
+import org.json.JSONObject;
+
 import java.net.InetSocketAddress;
-import java.util.Locale;
 
 public class CoordinateServer extends WebSocketServer {
+
+    private WebSocket activeConnection = null;
+    @Getter @Setter private volatile boolean userRequestedConnection = false;
 
     public CoordinateServer(InetSocketAddress address) {
         super(address);
@@ -14,30 +22,99 @@ public class CoordinateServer extends WebSocketServer {
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
-        System.out.println("Web client connected: " + conn.getRemoteSocketAddress());
+        if (activeConnection != null && activeConnection.isOpen()) {
+            activeConnection.send("{\"type\":\"REPLACED\"}");
+            activeConnection.close(1000, "Replaced by a newer tab.");
+        }
+        activeConnection = conn;
+        System.out.println("Browser connected. Set as active tab.");
     }
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-        System.out.println("Web client disconnected.");
+        if (activeConnection == conn) {
+            activeConnection = null;
+            userRequestedConnection = false;
+
+            if (LeagueProximityChat.getActiveRoom() != null) {
+                LeagueProximityChat.setActiveRoom(null);
+            }
+
+            System.out.println("Active browser tab closed. Room state destroyed.");
+        }
     }
 
     @Override
     public void onMessage(WebSocket conn, String message) {
-        // we dont read incoming msgs
+        if ("REQUEST_JOIN".equals(message)) {
+            userRequestedConnection = true;
+            return;
+        } else if ("CANCEL_JOIN".equals(message)) {
+            userRequestedConnection = false;
+            return;
+        }
+
+        if (message.startsWith("{")) {
+            try {
+                JSONObject json = new JSONObject(message);
+                String type = json.optString("type");
+                String identity = json.optString("identity");
+                String name = json.optString("name", "Unknown");
+
+                if (LeagueProximityChat.getActiveRoom() != null) {
+
+                    LiveKitUser targetUser = new LiveKitUser(identity, name);
+                    LiveKitUser localModerator = new LiveKitUser(LeagueProximityChat.getRoomLeaderRiotId(), "");
+
+                    if ("PLAYER_JOINED".equals(type) && !identity.isEmpty()) {
+                        if (LeagueProximityChat.getActiveRoom().isBanned(targetUser)) {
+                            System.out.println("[Moderation] Banned user " + identity + " tried to rejoin. Auto-kicking...");
+                            LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator);
+                        } else {
+                            LeagueProximityChat.getActiveRoom().addParticipant(targetUser);
+                        }
+                    }
+                    else if ("PLAYER_LEFT".equals(type) && !identity.isEmpty()) {
+                        LeagueProximityChat.getActiveRoom().removeParticipant(targetUser);
+                    }
+                    else if ("KICK_USER".equals(type) && !identity.isEmpty()) {
+                        LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator);
+                        sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
+                    }
+                    else if ("REVOKE_BAN".equals(type) && !identity.isEmpty()) {
+                        LeagueProximityChat.getActiveRoom().revokeBan(targetUser, localModerator);
+                        sendToActive("{\"type\":\"PLAYER_UNBANNED\", \"identity\":\"" + identity + "\"}");
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     @Override
     public void onError(WebSocket conn, Exception ex) {
-        ex.printStackTrace();
+        System.out.println("Websocket Error: " + ex.getMessage());
     }
 
     @Override
     public void onStart() {
+        System.out.println("WebSocket server started on port " + getPort());
     }
 
-    public void broadcastCoordinates(float x, float y, boolean isDead) {
-        String jsonPayload = String.format(Locale.US, "{\"x\": %.3f, \"y\": %.3f, \"isDead\": %b}", x, y, isDead);
-        broadcast(jsonPayload);
+    public boolean hasActiveConnection() {
+        return activeConnection != null && activeConnection.isOpen();
     }
+
+    public void sendToActive(String text) {
+        if (hasActiveConnection()) {
+            activeConnection.send(text);
+        }
+    }
+
+    public void broadcastCoordinates(double x, double y, boolean isDead) {
+        if (hasActiveConnection()) {
+            String payload = String.format("{\"x\":%f, \"y\":%f, \"isDead\":%b}", x, y, isDead);
+            activeConnection.send(payload);
+        }
+    }
+
 }

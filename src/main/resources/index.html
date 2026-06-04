@@ -15,413 +15,395 @@
             margin: 0 auto;
         }
 
-        h2 {
-            color: #f0f0f0;
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
-        }
+        h2 { border-bottom: 2px solid #333; padding-bottom: 10px; }
 
-        .input-group {
-            margin-bottom: 20px;
-        }
+        .status { padding: 12px; margin-bottom: 12px; border-radius: 4px; background: #1e1e1e; font-size: 14px; font-weight: bold; }
+        .success { border-left: 5px solid #28a745; color: #28a745; }
+        .error { border-left: 5px solid #dc3545; color: #dc3545; }
+        .loading { border-left: 5px solid #ffc107; color: #ffc107; }
 
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            font-size: 14px;
-        }
+        button { width: 100%; padding: 14px; font-size: 16px; font-weight: bold; cursor: pointer; color: white; border: none; border-radius: 4px; transition: 0.2s; margin-bottom: 20px; }
+        button:hover { filter: brightness(0.92); }
 
-        input[type="text"] {
-            width: 100%;
-            padding: 12px;
-            box-sizing: border-box;
-            background-color: #1e1e1e;
-            border: 1px solid #444;
-            color: #fff;
-            border-radius: 4px;
-            font-family: monospace;
-        }
+        .roster-panel { background: #1e1e1e; border-radius: 6px; padding: 15px; margin-top: 20px; }
+        .roster-panel h3 { margin-top: 0; color: #c8aa6e; border-bottom: 1px solid #333; padding-bottom: 8px; font-size: 16px; }
 
-        input[type="text"]:focus {
-            border-color: #007bff;
-            outline: none;
-        }
+        .player-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #2a2a2a; font-size: 14px; }
+        .player-item:last-child { border-bottom: none; }
 
-        .status {
-            padding: 12px;
-            margin-bottom: 12px;
-            border-radius: 4px;
-            background: #1e1e1e;
-            font-size: 14px;
-            font-weight: bold;
-            transition: all 0.2s;
-        }
+        .player-name { font-weight: 600; transition: color 0.3s; }
+        .player-status { font-size: 12px; font-weight: bold; }
 
-        .success {
-            border-left: 5px solid #28a745;
-            color: #28a745;
-        }
+        .status-offline { color: #dc3545; }
+        .status-connected { color: #28a745; }
 
-        .error {
-            border-left: 5px solid #dc3545;
-            color: #dc3545;
-        }
-
-        .loading {
-            border-left: 5px solid #ffc107;
-            color: #ffc107;
-        }
-
-        button {
-            width: 100%;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            transition: background-color 0.2s, filter 0.2s;
-        }
-
-        button:hover {
-            filter: brightness(0.92);
-        }
+        .banned-name { text-decoration: line-through; color: #666; }
+        .action-btn { width: auto; padding: 6px 12px; font-size: 12px; margin: 0; }
+        .kick-btn { background-color: #dc3545; }
+        .revoke-btn { background-color: #ff9800; color: #000; }
     </style>
 </head>
 <body>
 
-<h2>League Proximity Chat</h2>
+<div id="main-ui">
+    <h2>League Proximity Chat</h2>
 
-<div class="input-group" id="setup-area">
-    <label for="token-input">LiveKit Token:</label>
-    <input type="text" id="token-input" placeholder="Enter your token here">
+    <div id="lk-status" class="status error">LiveKit Audio Server: Waiting for token...</div>
+    <div id="ws-status" class="status error">Yowaimo Local Position Tracker: Disconnected</div>
+
+    <button id="start-btn" style="background-color:#007bff;">Connect to Audio</button>
+    <button id="mute-btn" style="display:none; background-color:#dc3545;">Mute Microphone</button>
+
+    <div class="roster-panel">
+        <h3>Players</h3>
+        <div id="roster-container">
+            <div class="player-item" style="color:#666; font-style:italic;">Waiting for match to begin...</div>
+        </div>
+    </div>
 </div>
-
-<div id="lk-status" class="status error">LiveKit Audio Server: Disconnected</div>
-<div id="ws-status" class="status error">Yowaimo Local Position Tracker: Disconnected</div>
-
-<button id="start-btn" style="background-color:#007bff;">Connect & Join Voice</button>
-<button id="mute-btn" style="display:none; margin-top:12px; background-color:#dc3545;">Mute Microphone</button>
 
 <div id="hidden-audio-container" style="display: none;"></div>
 
 <script>
     const LIVEKIT_URL = 'wss://league-proximity-chat-3q7it5ix.livekit.cloud';
 
-    const room = new LivekitClient.Room({
-        adaptiveStream: true,
-        dynacast: true,
-        audioCaptureDefaults: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            voiceIsolation: false,
-            autoGainControl: false
-        }
-    });
+    const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: false, noiseSuppression: false, voiceIsolation: false, autoGainControl: false } });
 
     let audioCtx;
-
     const remoteAudioNodes = {};
     const remotePositions = {};
     const localPosition = {x: 0, y: 0, isDead: false};
 
     let micMuted = false;
     let connected = false;
+    let isWaitingForMatch = false;
     let trackerSocket = null;
+    let localUserIdentity = null;
+    let matchLeaderIdentity = null;
+    let isReplaced = false;
+
+    connectToLocalJavaTracker();
+
+    function closeApplicationTab() {
+        try { if (room) room.disconnect(); } catch (e) {}
+
+        document.body.innerHTML = `
+            <div style="display:flex; height:100vh; text-align:center; align-items:center; justify-content:center; flex-direction:column; background-color:#121212; color:#e0e0e0; margin:0; position:absolute; top:0; left:0; right:0; bottom:0;">
+                <div style="background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 5px solid #dc3545; box-shadow: 0 4px 15px rgba(0,0,0,0.5); max-width: 400px; width: 90%;">
+                    <h2 style="color:#dc3545; margin-top:0; border:none; padding-bottom: 0;">Application Terminated</h2>
+                    <p style="color:#aaa; font-size: 15px;">The Yowaimo Java backend has successfully shut down.</p>
+
+                    <div style="margin: 25px 0; padding: 15px; background: rgba(40, 167, 69, 0.1); border-radius: 6px; border: 1px solid #28a745;">
+                        <span style="color:#28a745; font-weight:bold; font-size: 16px;">🎤 Microphone Disconnected</span>
+                    </div>
+
+                    <p style="margin-top: 20px; font-size: 13px; color: #666; line-height: 1.5;">
+                        Browser security prevents this tab from closing automatically.<br>
+                        <strong>You may safely close this window.</strong>
+                    </p>
+                </div>
+            </div>
+        `;
+
+        setTimeout(() => {
+            window.open('', '_self', '');
+            window.close();
+        }, 100);
+    }
+
+    function buildRosterUI(players, localId, leaderId) {
+        localUserIdentity = localId;
+        matchLeaderIdentity = leaderId;
+        const container = document.getElementById('roster-container');
+        container.innerHTML = '';
+
+        players.forEach(player => {
+            const div = document.createElement('div');
+            div.className = 'player-item';
+            div.id = `roster-${player.identity}`;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'player-name';
+
+            if (player.identity === matchLeaderIdentity) {
+                nameSpan.innerText = `👑 ${player.name}`;
+            } else {
+                nameSpan.innerText = player.name;
+            }
+
+            const controlsContainer = document.createElement('div');
+            controlsContainer.style.display = 'flex';
+            controlsContainer.style.alignItems = 'center';
+            controlsContainer.style.gap = '15px';
+
+            const statusSpan = document.createElement('span');
+            statusSpan.className = 'player-status status-offline';
+            statusSpan.id = `status-${player.identity}`;
+            statusSpan.innerText = "Not Connected";
+
+            controlsContainer.appendChild(statusSpan);
+
+            if (localUserIdentity === matchLeaderIdentity && player.identity !== localUserIdentity) {
+                const actionBtn = document.createElement('button');
+                actionBtn.className = 'action-btn kick-btn';
+                actionBtn.id = `action-${player.identity}`;
+                actionBtn.innerText = 'Kick';
+                actionBtn.onclick = () => handleModerationAction(player.identity, player.name);
+                controlsContainer.appendChild(actionBtn);
+            }
+
+            div.appendChild(nameSpan);
+            div.appendChild(controlsContainer);
+            container.appendChild(div);
+        });
+    }
+
+    function handleModerationAction(identity, name) {
+        const btn = document.getElementById(`action-${identity}`);
+        if (!btn || !trackerSocket) return;
+
+        if (btn.innerText === 'Kick') {
+            trackerSocket.send(JSON.stringify({ type: "KICK_USER", identity: identity, name: name }));
+        } else {
+            trackerSocket.send(JSON.stringify({ type: "REVOKE_BAN", identity: identity, name: name }));
+        }
+    }
+
+    function updatePlayerStatus(identity, statusText, cssClass) {
+        const statusSpan = document.getElementById(`status-${identity}`);
+        if (statusSpan) {
+            statusSpan.innerText = statusText;
+            statusSpan.className = `player-status ${cssClass}`;
+        }
+    }
 
     function updateListenerPosition() {
         if (!audioCtx) return;
         const now = audioCtx.currentTime;
-
         audioCtx.listener.positionX.setTargetAtTime(localPosition.x, now, 0.1);
         audioCtx.listener.positionY.setTargetAtTime(0, now, 0.1);
         audioCtx.listener.positionZ.setTargetAtTime(localPosition.y, now, 0.1);
-
-        console.log(`[LOCAL POSITION] X: ${localPosition.x.toFixed(1)} | Y: ${localPosition.y.toFixed(1)} | Dead: ${localPosition.isDead}`);
     }
 
     function updateRemoteAudio(identity) {
         if (!audioCtx) return;
         const nodeData = remoteAudioNodes[identity];
         const remotePos = remotePositions[identity];
+        if (!nodeData || !remotePos) return;
 
-        if (!nodeData || !remotePos) {
-            return;
-        }
-
-        const dx = remotePos.x - localPosition.x;
-        const dy = remotePos.y - localPosition.y;
-        const distance = Math.hypot(dx, dy);
-
-        const maxHearingDistance = 12.2;
-        const normalized = Math.min(distance / maxHearingDistance, 1);
-
-        let volume = distance > maxHearingDistance ? 0 : Math.sqrt(Math.max(0, 1 - normalized));
-
-        if (remotePos.isDead) {
-            volume = 0;
-        }
+        const distance = Math.hypot(remotePos.x - localPosition.x, remotePos.y - localPosition.y);
+        const maxDist = 12.2;
+        let volume = distance > maxDist ? 0 : Math.sqrt(Math.max(0, 1 - (distance / maxDist)));
+        if (remotePos.isDead) volume = 0;
 
         const now = audioCtx.currentTime;
-
         nodeData.panner.positionX.setTargetAtTime(remotePos.x, now, 0.1);
         nodeData.panner.positionY.setTargetAtTime(0, now, 0.1);
         nodeData.panner.positionZ.setTargetAtTime(remotePos.y, now, 0.1);
-
         nodeData.gain.gain.setTargetAtTime(volume, now, 0.1);
     }
 
     function cleanupRemoteAudio(identity) {
         const nodeData = remoteAudioNodes[identity];
         if (!nodeData) return;
-
-        console.log("[AUDIO CLEANUP]", identity);
-
-        try {
-            nodeData.source.disconnect();
-            nodeData.panner.disconnect();
-            nodeData.gain.disconnect();
-
-            if (nodeData.hiddenElement) {
-                nodeData.hiddenElement.remove();
-            }
-        } catch (error) {
-            console.warn('Audio cleanup warning:', error);
-        }
-
+        try { nodeData.source.disconnect(); nodeData.panner.disconnect(); nodeData.gain.disconnect(); if (nodeData.hiddenElement) nodeData.hiddenElement.remove(); } catch (e) {}
         delete remoteAudioNodes[identity];
         delete remotePositions[identity];
     }
 
     async function ensurePlaybackUnlocked() {
-        try {
-            if (typeof room.canPlaybackAudio === 'boolean' && !room.canPlaybackAudio) {
-                console.log("[AUDIO PLAYBACK] unlocking via room.startAudio()");
-                await room.startAudio();
-            }
-        } catch (error) {
-            console.warn("[AUDIO PLAYBACK] startAudio failed:", error);
-        }
+        try { if (typeof room.canPlaybackAudio === 'boolean' && !room.canPlaybackAudio) await room.startAudio(); } catch (e) {}
     }
 
     document.getElementById('start-btn').addEventListener('click', async () => {
-        const userToken = document.getElementById('token-input').value.trim();
+        if (connected || !trackerSocket || trackerSocket.readyState !== WebSocket.OPEN) return;
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        try { await audioCtx.resume(); } catch (e) {}
 
-        if (!userToken) {
-            alert("Please paste your unique LiveKit token before connecting!");
-            return;
-        }
-
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
-        try {
-            await audioCtx.resume();
-            console.log("[AUDIO CONTEXT] resumed");
-        } catch (error) {
-            console.warn('AudioContext resume failed:', error);
-        }
-
-        document.getElementById('setup-area').style.display = 'none';
-        document.getElementById('start-btn').style.display = 'none';
-        document.getElementById('mute-btn').style.display = 'block';
-
-        const isConnected = await connectToLiveKit(userToken);
-        if (isConnected) {
-            connectToLocalJavaTracker();
+        const btn = document.getElementById('start-btn');
+        if (!isWaitingForMatch) {
+            isWaitingForMatch = true;
+            btn.style.backgroundColor = '#ff9800';
+            btn.innerText = 'Will connect to Audio once match begins (Click to cancel)';
+            trackerSocket.send("REQUEST_JOIN");
+        } else {
+            isWaitingForMatch = false;
+            btn.style.backgroundColor = '#007bff';
+            btn.innerText = 'Connect to Audio';
+            trackerSocket.send("CANCEL_JOIN");
         }
     });
 
     document.getElementById('mute-btn').addEventListener('click', async () => {
         if (!connected) return;
-
         try {
             micMuted = !micMuted;
             await room.localParticipant.setMicrophoneEnabled(!micMuted);
-
             const muteBtn = document.getElementById('mute-btn');
-            if (micMuted) {
-                muteBtn.innerText = 'Unmute Microphone';
-                muteBtn.style.backgroundColor = '#28a745';
-            } else {
-                muteBtn.innerText = 'Mute Microphone';
-                muteBtn.style.backgroundColor = '#dc3545';
-            }
-
-            console.log("[MIC TOGGLE]", micMuted ? "muted" : "unmuted");
-        } catch (error) {
-            console.error('Failed to toggle microphone:', error);
-        }
+            muteBtn.innerText = micMuted ? 'Unmute Microphone' : 'Mute Microphone';
+            muteBtn.style.backgroundColor = micMuted ? '#28a745' : '#dc3545';
+        } catch (e) {}
     });
 
-    async function connectToLiveKit(token) {
-        try {
-            console.log("[LIVEKIT] connecting...");
-
-            const statusEl = document.getElementById('lk-status');
-            statusEl.className = 'status loading';
-            statusEl.innerText = 'LiveKit Audio Server: Connecting...';
-
-            room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, async () => {
-                await ensurePlaybackUnlocked();
-            });
-
-            room.on(LivekitClient.RoomEvent.TrackSubscribed, async (track, publication, participant) => {
-                if (track.kind !== 'audio') return;
-
-                const hiddenElement = track.attach();
-                hiddenElement.volume = 0;
-                document.getElementById('hidden-audio-container').appendChild(hiddenElement);
-
-                const mediaStream = new MediaStream([track.mediaStreamTrack]);
-                const source = audioCtx.createMediaStreamSource(mediaStream);
-                const panner = audioCtx.createPanner();
-                const gain = audioCtx.createGain();
-
-                panner.panningModel = 'HRTF';
-                panner.distanceModel = 'linear';
-                panner.refDistance = 100;
-                panner.maxDistance = 100000;
-                panner.rolloffFactor = 0;
-                panner.coneInnerAngle = 360;
-
-                source.connect(panner);
-                panner.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                remoteAudioNodes[participant.identity] = {
-                    source,
-                    panner,
-                    gain,
-                    hiddenElement
-                };
-
-                console.log("[AUDIO NODE CREATED]", participant.identity);
-
-                await ensurePlaybackUnlocked();
-                updateRemoteAudio(participant.identity);
-            });
-
-            room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-                cleanupRemoteAudio(participant.identity);
-            });
-
-            room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
-                cleanupRemoteAudio(participant.identity);
-            });
-
-            room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
-                const decoded = new TextDecoder().decode(payload);
-                try {
-                    const data = JSON.parse(decoded);
-                    remotePositions[participant.identity] = {
-                        x: Number(data.x),
-                        y: Number(data.y),
-                        isDead: Boolean(data.isDead)
-                    };
-                    updateRemoteAudio(participant.identity);
-                } catch (error) {
-                    console.error("[LIVEKIT RECEIVE ERROR]", error, decoded);
-                }
-            });
-
-            await room.connect(LIVEKIT_URL, token);
-            connected = true;
-
-            statusEl.className = 'status success';
-            statusEl.innerText = 'LiveKit Audio Server: Connected';
-
-            console.log("[LIVEKIT] connected", {
-                identity: room.localParticipant.identity,
-                name: room.localParticipant.name
-            });
-
-            await ensurePlaybackUnlocked();
-            await room.localParticipant.setMicrophoneEnabled(true);
-            console.log("[LIVEKIT] microphone enabled");
-
-            try {
-                const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
-
-                if (audioPublications.length > 0 && audioPublications[0].track) {
-
-                    console.log("[LIVEKIT] Downloading Krisp AI WebAssembly...");
-
-                    // Dynamically fetch the browser-ready ESM bundle
-                    const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
-
-                    if (!isKrispNoiseFilterSupported()) {
-                        console.warn("[LIVEKIT] Krisp AI is not supported on this browser.");
-                    } else {
-                        const krispProcessor = KrispNoiseFilter();
-                        await audioPublications[0].track.setProcessor(krispProcessor);
-                        console.log("[LIVEKIT] Krisp AI Noise Cancellation Active!");
-                    }
-                }
-            } catch (error) {
-                console.warn("[LIVEKIT] Failed to start Krisp AI:", error);
-            }
-            return true;
-
-        } catch (error) {
-            console.error("LiveKit initialization failed:", error);
-            const statusEl = document.getElementById('lk-status');
-            statusEl.className = 'status error';
-            statusEl.innerText = 'LiveKit Connection Failed!';
-
-            return false;
+    function reportPlayerStateToJava(type, participant) {
+        if (trackerSocket && trackerSocket.readyState === WebSocket.OPEN) {
+            trackerSocket.send(JSON.stringify({ type: type, identity: participant.identity, name: participant.name || "Unknown" }));
         }
     }
 
     function connectToLocalJavaTracker() {
         if (trackerSocket && trackerSocket.readyState === WebSocket.OPEN) return;
 
-        trackerSocket = new WebSocket('ws://localhost:8887');
+        isReplaced = false;
 
-        trackerSocket.onopen = () => {
-            document.getElementById('ws-status').className = 'status success';
-            document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Connected';
-        };
+        trackerSocket = new WebSocket('ws://localhost:8887');
+        trackerSocket.onopen = () => { document.getElementById('ws-status').className = 'status success'; document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Connected'; };
 
         trackerSocket.onmessage = (event) => {
             try {
+                if (event.data === "REQUEST_JOIN" || event.data === "CANCEL_JOIN") return;
                 const data = JSON.parse(event.data);
 
-                localPosition.x = Number(data.x);
-                localPosition.y = Number(data.y);
-                localPosition.isDead = Boolean(data.isDead);
-
-                updateListenerPosition();
-
-                if (room.state === LivekitClient.ConnectionState.Connected) {
-                    const payload = new TextEncoder().encode(JSON.stringify({
-                        x: localPosition.x,
-                        y: localPosition.y,
-                        isDead: localPosition.isDead
-                    }));
-                    room.localParticipant.publishData(payload, LivekitClient.DataPacket_Kind.LOSSY);
+                if (data.type === "REPLACED") {
+                    isReplaced = true;
+                    return;
                 }
-            } catch (error) {
-                console.warn("[TRACKER PARSE ERROR]", error, event.data);
-            }
+
+                if (data.type === "SHUTDOWN") {
+                    closeApplicationTab();
+                    return;
+                }
+
+                if (data.type === "MATCH_ROSTER") {
+                    buildRosterUI(data.players, data.localIdentity, data.roomLeader);
+                    return;
+                }
+
+                if (data.type === "CONNECT_LIVEKIT") {
+                    connectToLiveKit(data.token);
+                    return;
+                }
+
+                if (data.type === "PLAYER_BANNED") {
+                    const nameSpan = document.querySelector(`#roster-${data.identity} .player-name`);
+                    if (nameSpan) nameSpan.classList.add('banned-name');
+                    updatePlayerStatus(data.identity, "Banned", "status-offline");
+
+                    const btn = document.getElementById(`action-${data.identity}`);
+                    if (btn) { btn.className = 'action-btn revoke-btn'; btn.innerText = 'Revoke Ban'; }
+                    return;
+                }
+
+                if (data.type === "PLAYER_UNBANNED") {
+                    const nameSpan = document.querySelector(`#roster-${data.identity} .player-name`);
+                    if (nameSpan) nameSpan.classList.remove('banned-name');
+                    updatePlayerStatus(data.identity, "Not Connected", "status-offline");
+
+                    const btn = document.getElementById(`action-${data.identity}`);
+                    if (btn) { btn.className = 'action-btn kick-btn'; btn.innerText = 'Kick'; }
+                    return;
+                }
+
+                if (data.x !== undefined && data.y !== undefined) {
+                    localPosition.x = Number(data.x); localPosition.y = Number(data.y); localPosition.isDead = Boolean(data.isDead);
+                    updateListenerPosition();
+                    if (room.state === LivekitClient.ConnectionState.Connected) {
+                        const payload = new TextEncoder().encode(JSON.stringify({ x: localPosition.x, y: localPosition.y, isDead: localPosition.isDead }));
+                        room.localParticipant.publishData(payload, LivekitClient.DataPacket_Kind.LOSSY);
+                    }
+                }
+            } catch (e) {}
         };
 
         trackerSocket.onclose = () => {
+            trackerSocket = null;
+
+            if (isReplaced) {
+                document.getElementById('ws-status').className = 'status error';
+                document.getElementById('ws-status').innerText = 'Connection yielded to a newer tab.';
+                return;
+            }
+
             document.getElementById('ws-status').className = 'status error';
             document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Disconnected';
-            trackerSocket = null;
             setTimeout(connectToLocalJavaTracker, 2000);
         };
+    }
 
-        trackerSocket.onerror = (error) => {
-            document.getElementById('ws-status').className = 'status error';
-            document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Connection Error';
-        };
+    async function connectToLiveKit(token) {
+        try {
+            const statusEl = document.getElementById('lk-status');
+            statusEl.className = 'status loading'; statusEl.innerText = 'LiveKit Audio Server: Connecting...';
+            room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, async () => { await ensurePlaybackUnlocked(); });
+
+            room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+                reportPlayerStateToJava("PLAYER_JOINED", participant);
+                updatePlayerStatus(participant.identity, "Connected", "status-connected");
+            });
+
+            room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+                cleanupRemoteAudio(participant.identity);
+                reportPlayerStateToJava("PLAYER_LEFT", participant);
+
+                const statusSpan = document.getElementById(`status-${participant.identity}`);
+                if (statusSpan && statusSpan.innerText !== "Banned") {
+                    updatePlayerStatus(participant.identity, "Not Connected", "status-offline");
+                }
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackSubscribed, async (track, publication, participant) => {
+                if (track.kind !== 'audio') return;
+                const hiddenElement = track.attach(); hiddenElement.volume = 0; document.getElementById('hidden-audio-container').appendChild(hiddenElement);
+                const mediaStream = new MediaStream([track.mediaStreamTrack]);
+                const source = audioCtx.createMediaStreamSource(mediaStream);
+                const panner = audioCtx.createPanner(); const gain = audioCtx.createGain();
+                panner.panningModel = 'HRTF'; panner.distanceModel = 'linear'; panner.refDistance = 100; panner.maxDistance = 100000; panner.rolloffFactor = 0; panner.coneInnerAngle = 360;
+                source.connect(panner); panner.connect(gain); gain.connect(audioCtx.destination);
+                remoteAudioNodes[participant.identity] = { source, panner, gain, hiddenElement };
+                await ensurePlaybackUnlocked(); updateRemoteAudio(participant.identity);
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => { cleanupRemoteAudio(participant.identity); });
+            room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+                const decoded = new TextDecoder().decode(payload);
+                try {
+                    const data = JSON.parse(decoded);
+                    remotePositions[participant.identity] = { x: Number(data.x), y: Number(data.y), isDead: Boolean(data.isDead) };
+                    updateRemoteAudio(participant.identity);
+                } catch (e) {}
+            });
+
+            await room.connect(LIVEKIT_URL, token);
+            connected = true;
+
+            room.remoteParticipants.forEach((participant) => {
+                reportPlayerStateToJava("PLAYER_JOINED", participant);
+                updatePlayerStatus(participant.identity, "Connected", "status-connected");
+            });
+
+            statusEl.className = 'status success'; statusEl.innerText = 'LiveKit Audio Server: Connected';
+            document.getElementById('start-btn').style.display = 'none'; document.getElementById('mute-btn').style.display = 'block';
+            if (localUserIdentity) updatePlayerStatus(localUserIdentity, "Connected", "status-connected");
+
+            await ensurePlaybackUnlocked(); await room.localParticipant.setMicrophoneEnabled(true);
+
+            try {
+                const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
+                if (audioPublications.length > 0 && audioPublications[0].track) {
+                    const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
+                    if (isKrispNoiseFilterSupported()) {
+                        const krispProcessor = KrispNoiseFilter(); await audioPublications[0].track.setProcessor(krispProcessor);
+                    }
+                }
+            } catch (e) {}
+            return true;
+        } catch (error) {
+            document.getElementById('lk-status').className = 'status error'; document.getElementById('lk-status').innerText = 'LiveKit Connection Failed!';
+            isWaitingForMatch = false; document.getElementById('start-btn').style.backgroundColor = '#007bff'; document.getElementById('start-btn').innerText = 'Connect to Audio';
+            if (localUserIdentity) updatePlayerStatus(localUserIdentity, "Not Connected", "status-offline");
+            return false;
+        }
     }
 </script>
-
 </body>
 </html>

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public record LeagueGame(List<LeaguePlayer> players) {
+
     public String createRoomHash() throws NoSuchAlgorithmException {
         String sortedPlayerIds = players.stream()
                 .map(LeaguePlayer::getRiotId)

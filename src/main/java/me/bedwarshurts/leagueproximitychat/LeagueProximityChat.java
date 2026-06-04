@@ -1,8 +1,14 @@
 package me.bedwarshurts.leagueproximitychat;
 
 import com.sun.net.httpserver.HttpServer;
+import lombok.Getter;
+import lombok.Setter;
+import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
+import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
+import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
+import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
 import nu.pattern.OpenCV;
@@ -12,31 +18,121 @@ import java.awt.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.security.NoSuchAlgorithmException;
 
 public class LeagueProximityChat {
 
-    public static boolean wasPaused = false;
-    public static boolean isAwaitingBrowser = true;
-    public static boolean isTrackerReady = false;
+    private static boolean wasPaused = false;
+    private static boolean isAwaitingBrowser = true;
+    private static boolean hasConnectedToLiveKit = false;
+    private static boolean isTrackerReady = false;
 
-    public static ScreenPositionTracker tracker = null;
-    public static CoordinateServer server = null;
+    @Getter @Setter private static LivekitRoom activeRoom = null;
+    private static boolean hasSentRoster = false;
 
-    public static void trackingLoop() throws InterruptedException {
-        if (server.getConnections().isEmpty()) {
+    @Getter private static String roomLeaderRiotId = null;
+
+    private static ScreenPositionTracker tracker = null;
+    private static CoordinateServer server = null;
+
+    public static LeaguePlayer findLocalPlayer(LeagueGame gameData, String localSummonerName) {
+        for (LeaguePlayer p : gameData.players()) {
+            if ((p.getRiotId() != null && p.getRiotId().equalsIgnoreCase(localSummonerName))) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    public static void trackingLoop() throws InterruptedException, NoSuchAlgorithmException {
+        if (!server.hasActiveConnection()) {
             if (!isAwaitingBrowser) {
                 System.out.println("Browser disconnected.");
                 isAwaitingBrowser = true;
+
+                hasConnectedToLiveKit = false;
+                hasSentRoster = false;
+                isTrackerReady = false;
+                server.setUserRequestedConnection(false);
+                activeRoom = null;
             }
             Thread.sleep(1000);
             return;
         }
 
         if (isAwaitingBrowser) {
-            System.out.println("LiveKit Connection detected!");
+            System.out.println("Browser WebSocket connected! Waiting for user to click Connect...");
             isAwaitingBrowser = false;
+        }
+
+        LeagueGame gameData = null;
+        String localSummonerName = null;
+        boolean isInGame = false;
+
+        if (!hasSentRoster || (server.isUserRequestedConnection() && !hasConnectedToLiveKit)) {
+
+            String currentLeader = RitoApiUtils.getLobbyLeader();
+            if (currentLeader != null && !currentLeader.equals(roomLeaderRiotId)) {
+                roomLeaderRiotId = currentLeader;
+                System.out.println("Lobby switch detected. New leader: " + roomLeaderRiotId);
+            }
+
+            gameData = RitoApiUtils.getLivePlayerList();
+            localSummonerName = RitoApiUtils.getLocalSummonerName();
+            isInGame = (gameData != null && localSummonerName != null);
+        }
+
+        if (isInGame && !hasSentRoster) {
+            LeaguePlayer localPlayer = findLocalPlayer(gameData, localSummonerName);
+
+            if (localPlayer != null) {
+                StringBuilder rosterArray = new StringBuilder("[");
+                for (int i = 0; i < gameData.players().size(); i++) {
+                    LeaguePlayer p = gameData.players().get(i);
+                    String pId = p.getRiotId();
+                    String pName = p.getRiotId() + " (" + p.getChampionName() + ")";
+
+                    rosterArray.append(String.format("{\"identity\":\"%s\", \"name\":\"%s\"}", pId, pName));
+                    if (i < gameData.players().size() - 1) rosterArray.append(",");
+                }
+                rosterArray.append("]");
+
+                String rosterPayload = String.format("{\"type\":\"MATCH_ROSTER\", \"players\":%s, \"localIdentity\":\"%s\", \"roomLeader\":\"%s\"}",
+                        rosterArray, localPlayer.getRiotId(), roomLeaderRiotId);
+                server.sendToActive(rosterPayload);
+                hasSentRoster = true;
+                System.out.println("Match detected!");
+            }
+        }
+
+        if (!server.isUserRequestedConnection()) {
+            Thread.sleep(1000);
+            return;
+        }
+
+        if (isInGame && !hasConnectedToLiveKit) {
+            LeaguePlayer localPlayer = findLocalPlayer(gameData, localSummonerName);
+
+            if (localPlayer != null) {
+                String roomName = gameData.createRoomHash();
+                String identity = localPlayer.getRiotId();
+                String name = localPlayer.getRiotId() + " (" + localPlayer.getChampionName() + ")";
+
+                activeRoom = new LivekitRoom(roomName, roomLeaderRiotId);
+
+                String token = activeRoom.generateRoomToken(name, identity);
+                String payload = String.format("{\"type\":\"CONNECT_LIVEKIT\", \"token\":\"%s\"}", token);
+                server.sendToActive(payload);
+
+                hasConnectedToLiveKit = true;
+                System.out.println("Sent LiveKit token to frontend! Proceeding to OpenCV tracking...");
+            }
+        } else if (!isInGame && !hasConnectedToLiveKit) {
+            Thread.sleep(1000);
+            return;
         }
 
         if (!isTrackerReady) {
@@ -44,7 +140,7 @@ public class LeagueProximityChat {
             Mat championTemplate = TemplateLoader.autoLoadChampionTemplate();
 
             if (championTemplate == null) {
-                System.err.println("Failed to load champion template. Is the game running? Retrying in 2 seconds...");
+                System.err.println("Failed to load champion template. Retrying in 2 seconds...");
                 Thread.sleep(2000);
                 return;
             }
@@ -124,6 +220,9 @@ public class LeagueProximityChat {
 
         try {
             startHttpServer();
+        } catch (BindException e) {
+            System.err.println("The application is already running!");
+            System.exit(0);
         } catch (IOException e) {
             System.err.println("Failed to start local web server: " + e.getMessage());
         }
@@ -131,10 +230,28 @@ public class LeagueProximityChat {
         server = new CoordinateServer(new InetSocketAddress("127.0.0.1", 8887));
         server.start();
 
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Application shutting down. Notifying browser...");
+            if (server != null && server.hasActiveConnection()) {
+                server.sendToActive("{\"type\":\"SHUTDOWN\"}");
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException ignored) {}
+            }
+        }));
+
+        roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
+        if (roomLeaderRiotId == null) {
+            System.err.println("Please launch this app while waiting in the game lobby!");
+            System.err.println("Closing application...");
+            System.exit(0);
+        }
+
         while (true) {
             try {
                 trackingLoop();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException | NoSuchAlgorithmException e) {
                 System.err.println("Tracking loop interrupted: " + e.getMessage());
             }
         }

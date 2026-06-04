@@ -10,8 +10,12 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 
 public class RitoApiUtils {
@@ -24,15 +28,9 @@ public class RitoApiUtils {
         try {
             TrustManager[] trustAllCerts = new TrustManager[]{
                     new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
-
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                        }
-
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                        }
+                        public X509Certificate[] getAcceptedIssuers() { return null; }
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
                     }
             };
             SSLContext sc = SSLContext.getInstance("SSL");
@@ -45,26 +43,125 @@ public class RitoApiUtils {
         }
     }
 
-    public static String fetchAPI(String endpoint) {
+    private static String executeGetRequest(String endpoint, String authHeader) throws Exception {
         disableSSLChecks();
-        try {
-            URL url = new URI(endpoint).toURL();
-            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
 
-            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        URL url = new URI(endpoint).toURL();
+        HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(2000);
+        conn.setReadTimeout(2000);
+
+        if (authHeader != null && !authHeader.isEmpty()) {
+            conn.setRequestProperty("Authorization", "Basic " + authHeader);
+            conn.setRequestProperty("Accept", "application/json");
+        }
+
+        if (conn.getResponseCode() != 200) {
+            return null;
+        }
+
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
             StringBuilder content = new StringBuilder();
             String inputLine;
             while ((inputLine = in.readLine()) != null) {
                 content.append(inputLine);
             }
-            in.close();
-            conn.disconnect();
             return content.toString();
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    public static String fetchAPI(String endpoint) {
+        try {
+            return executeGetRequest(endpoint, null);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    public static String getLocalSummonerName() {
+        if (cachedSummonerName != null) {
+            return cachedSummonerName;
+        }
+
+        String activePlayerJson = fetchAPI("https://127.0.0.1:2999/liveclientdata/activeplayer");
+        if (activePlayerJson == null || activePlayerJson.isEmpty()) {
+            return null;
+        }
+
+        try {
+            JSONObject json = new JSONObject(activePlayerJson);
+
+            String riotId = json.optString("riotId", "");
+            String summonerName = json.optString("summonerName", "");
+
+            String resolvedName = !riotId.isEmpty() ? riotId : summonerName;
+
+            if (!resolvedName.isEmpty()) {
+                cachedSummonerName = resolvedName;
+                return cachedSummonerName;
+            }
+        } catch (Exception ignored) {
+        }
+
+        return null;
+    }
+
+    public static String getLobbyLeader() {
+        try {
+            Path lockfilePath = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
+            if (!Files.exists(lockfilePath)) {
+                return null;
+            }
+
+            String lockfileData = Files.readString(lockfilePath);
+            String[] lockfileParts = lockfileData.split(":");
+            String port = lockfileParts[2];
+            String password = lockfileParts[3];
+
+            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
+            String response = executeGetRequest("https://127.0.0.1:" + port + "/lol-lobby/v2/lobby", base64Auth);
+
+            if (response == null) {
+                return null;
+            }
+
+            JSONObject lobbyJson = new JSONObject(response);
+            JSONArray members = lobbyJson.optJSONArray("members");
+
+            if (members != null) {
+                for (int i = 0; i < members.length(); i++) {
+                    JSONObject member = members.getJSONObject(i);
+                    if (member.optBoolean("isLeader", false)) {
+                        long leaderId = member.optLong("summonerId", 0);
+                        if (leaderId != 0) {
+                            return getRiotIdFromSummonerId(port, base64Auth, leaderId);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    public static String getRiotIdFromSummonerId(String port, String base64Auth, long summonerId) {
+        try {
+            String response = executeGetRequest("https://127.0.0.1:" + port + "/lol-summoner/v1/summoners/" + summonerId, base64Auth);
+
+            if (response == null) return "Unknown";
+
+            JSONObject summonerJson = new JSONObject(response);
+            String gameName = summonerJson.optString("gameName", "Unknown");
+            String tagLine = summonerJson.optString("tagLine", "");
+
+            return tagLine.isEmpty() ? gameName : gameName + "#" + tagLine;
+
+        } catch (Exception e) {
+            System.err.println("Failed to resolve Summoner ID: " + e.getMessage());
+            return "Unknown";
         }
     }
 
@@ -180,26 +277,5 @@ public class RitoApiUtils {
                 obj.optString("rawDescription", ""),
                 obj.optString("rawDisplayName", "")
         );
-    }
-
-
-    public static String getLocalSummonerName() {
-        if (cachedSummonerName != null) return cachedSummonerName;
-
-        String activePlayerJson = fetchAPI("https://127.0.0.1:2999/liveclientdata/activeplayer");
-        if (activePlayerJson == null) return "Couldn't get name";
-
-        String marker = "\"summonerName\":";
-        int idx = activePlayerJson.indexOf(marker);
-        if (idx == -1) return "Couldn't get name";
-
-        int start = activePlayerJson.indexOf("\"", idx + marker.length()) + 1;
-        int end = activePlayerJson.indexOf("\"", start);
-        if (start > 0 && end > start) {
-            cachedSummonerName = activePlayerJson.substring(start, end);
-        } else {
-            cachedSummonerName = "Couldn't get name";
-        }
-        return cachedSummonerName;
     }
 }
