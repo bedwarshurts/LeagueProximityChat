@@ -10,6 +10,7 @@ import org.java_websocket.server.WebSocketServer;
 import org.json.JSONObject;
 
 import java.net.InetSocketAddress;
+import java.util.Locale;
 
 public class CoordinateServer extends WebSocketServer {
 
@@ -50,6 +51,12 @@ public class CoordinateServer extends WebSocketServer {
             return;
         } else if ("CANCEL_JOIN".equals(message)) {
             userRequestedConnection = false;
+
+            LeagueProximityChat.setHasConnectedToLiveKit(false);
+            if (LeagueProximityChat.getActiveRoom() != null) {
+                LeagueProximityChat.setActiveRoom(null);
+            }
+
             return;
         }
 
@@ -113,7 +120,7 @@ public class CoordinateServer extends WebSocketServer {
 
     public void broadcastCoordinates(double x, double y, boolean isDead) {
         if (hasActiveConnection()) {
-            String payload = String.format("{\"x\":%f, \"y\":%f, \"isDead\":%b}", x, y, isDead);
+            String payload = String.format(Locale.US, "{\"x\":%f, \"y\":%f, \"isDead\":%b}", x, y, isDead);
             activeConnection.send(payload);
         }
     }
