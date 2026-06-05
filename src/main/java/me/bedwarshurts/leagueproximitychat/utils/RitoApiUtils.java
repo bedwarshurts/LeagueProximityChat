@@ -28,9 +28,15 @@ public class RitoApiUtils {
         try {
             TrustManager[] trustAllCerts = new TrustManager[]{
                     new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() { return null; }
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return null;
+                        }
+
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                        }
+
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                        }
                     }
             };
             SSLContext sc = SSLContext.getInstance("SSL");
@@ -277,5 +283,29 @@ public class RitoApiUtils {
                 obj.optString("rawDescription", ""),
                 obj.optString("rawDisplayName", "")
         );
+    }
+
+    public static String sanitizeChampionName(String rawName) {
+        if (rawName == null || rawName.isEmpty()) {
+            return "Unknown";
+        }
+
+        if (rawName.startsWith("Character_") && rawName.endsWith("_Name")) {
+            rawName = rawName.replace("Character_", "").replace("_Name", "");
+        }
+
+        if (rawName.startsWith("game_character_displayname_")) {
+            rawName = rawName.replace("game_character_displayname_", "");
+        }
+
+        rawName = rawName.replace(" ", "")
+                .replace("'", "")
+                .replace(".", "");
+
+        if (rawName.length() > 1) {
+            rawName = rawName.substring(0, 1).toUpperCase() + rawName.substring(1);
+        }
+
+        return rawName;
     }
 }

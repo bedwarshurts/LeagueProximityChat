@@ -1,6 +1,8 @@
 package me.bedwarshurts.leagueproximitychat.data;
 
 import lombok.Getter;
+import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
+
 import java.util.List;
 
 @Getter
@@ -53,9 +55,9 @@ public class LeaguePlayer {
         this.summonerSpells = summonerSpells;
 
         if (rawChampionName != null && rawChampionName.startsWith("game_character_displayname_")) {
-            this.championName = rawChampionName.replace("game_character_displayname_", "");
+            this.championName = RitoApiUtils.sanitizeChampionName(rawChampionName.replace("game_character_displayname_", ""));
         } else {
-            this.championName = rawChampionName;
+            this.championName = RitoApiUtils.sanitizeChampionName(rawChampionName);
         }
     }
 

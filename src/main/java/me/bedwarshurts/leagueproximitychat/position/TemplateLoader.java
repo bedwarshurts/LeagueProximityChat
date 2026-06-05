@@ -42,19 +42,18 @@ public class TemplateLoader {
                     break;
                 }
             }
-
             if (championCodename == null || championCodename.isEmpty()) {
                 System.err.println("Could not find " + mySummonerName + " in the parsed player list.");
                 return null;
             }
+            championCodename = RitoApiUtils.sanitizeChampionName(championCodename);
 
             System.out.println("Detected Champion Codename: " + championCodename);
 
             String latestPatch = getLatestDataDragonVersion();
-
             String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestPatch + "/img/champion/" + championCodename + ".png";
-            BufferedImage originalIcon = ImageIO.read(new URI(ddragonUrl).toURL());
 
+            BufferedImage originalIcon = ImageIO.read(new URI(ddragonUrl).toURL());
             byte[] pixels = ((DataBufferByte) originalIcon.getRaster().getDataBuffer()).getData();
             Mat fullMat = new Mat(originalIcon.getHeight(), originalIcon.getWidth(), CvType.CV_8UC3);
             fullMat.put(0, 0, pixels);
