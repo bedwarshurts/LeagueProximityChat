@@ -1,5 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.position;
 
+import me.bedwarshurts.leagueproximitychat.utils.ImageUtils;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
@@ -20,6 +21,8 @@ public class ScreenPositionTracker {
     private float userMinimapScale;
     private Mat championTemplate;
     private Mat lockedCoreTemplate = null;
+    private Mat lockedCoreTemplateEnhanced = null;
+    private static final double LOW_CONTRAST_STDDEV_THRESHOLD = 28.0;
     private boolean isScaleLocked = false;
     private boolean isColorblind = false;
 
@@ -158,9 +161,6 @@ public class ScreenPositionTracker {
         TemplateMatch champMatch = (championTemplate != null)
                 ? locateChampionViaTemplate(minimapMat)
                 : null;
-        if (healthBarCenter == null || !calibrationConverged) {
-            champMatch = (championTemplate != null) ? locateChampionViaTemplate(minimapMat) : null;
-        }
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
@@ -570,31 +570,49 @@ public class ScreenPositionTracker {
     }
 
     private EvalResult evaluateTemplateAtAlly(Mat minimap, Point ally, Mat template, int padding) {
-        int cw = template.width();
-        int ch = template.height();
+        return evaluateTemplateAtAlly(minimap, ally, template, null, padding);
+    }
+
+    private EvalResult evaluateTemplateAtAlly(Mat minimap, Point ally, Mat template,
+                                              Mat enhancedTemplate, int padding) {
+        int cw = (enhancedTemplate != null ? enhancedTemplate : template).width();
+        int ch = (enhancedTemplate != null ? enhancedTemplate : template).height();
 
         int startX = (int) Math.max(0, ally.x - (cw / 2.0) - padding);
         int startY = (int) Math.max(0, ally.y - (ch / 2.0) - padding);
         int roiW = cw + (padding * 2);
         int roiH = ch + (padding * 2);
 
-        if (startX + roiW > minimap.width()) roiW = minimap.width() - startX;
+        if (startX + roiW > minimap.width())  roiW = minimap.width()  - startX;
         if (startY + roiH > minimap.height()) roiH = minimap.height() - startY;
         if (roiW < cw || roiH < ch) return null;
 
         Mat localRoi = new Mat(minimap, new Rect(startX, startY, roiW, roiH));
         Mat result = new Mat();
+        Mat matchRoi = localRoi;
+        Mat enhancedRoi = null;
 
-        Imgproc.matchTemplate(localRoi, template, result, Imgproc.TM_CCOEFF_NORMED);
-        Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
+        try {
+            Mat matchTemplate = template;
 
-        double matchCenterX = startX + mmr.maxLoc.x + (cw / 2.0);
-        double matchCenterY = startY + mmr.maxLoc.y + (ch / 2.0);
+            if (enhancedTemplate != null) {
+                enhancedRoi = ImageUtils.applyEnhancement(localRoi);
+                matchRoi = enhancedRoi;
+                matchTemplate = enhancedTemplate;
+            }
 
-        localRoi.release();
-        result.release();
+            Imgproc.matchTemplate(matchRoi, matchTemplate, result, Imgproc.TM_CCOEFF_NORMED);
+            Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
 
-        return new EvalResult(new Point(matchCenterX, matchCenterY), mmr.maxVal);
+            double matchCenterX = startX + mmr.maxLoc.x + (cw / 2.0);
+            double matchCenterY = startY + mmr.maxLoc.y + (ch / 2.0);
+
+            return new EvalResult(new Point(matchCenterX, matchCenterY), mmr.maxVal);
+        } finally {
+            localRoi.release();
+            result.release();
+            if (enhancedRoi != null) enhancedRoi.release();
+        }
     }
 
     private TemplateMatch locateChampionViaTemplate(Mat minimap) {
@@ -617,7 +635,7 @@ public class ScreenPositionTracker {
             List<CandidateMatch> candidates = new ArrayList<>();
 
             for (Point ally : allyCenters) {
-                EvalResult eval = evaluateTemplateAtAlly(minimap, ally, lockedCoreTemplate, 2);
+                EvalResult eval = evaluateTemplateAtAlly(minimap, ally, lockedCoreTemplate, lockedCoreTemplateEnhanced, 2);
                 if (eval == null) continue;
 
                 double score = eval.score();
@@ -665,10 +683,10 @@ public class ScreenPositionTracker {
             Mat resizedTemplate = new Mat();
             Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
 
-            int cx = (int) (resizedTemplate.width() * 0.15);
-            int cy = (int) (resizedTemplate.height() * 0.15);
-            int cw = (int) (resizedTemplate.width() * 0.7);
-            int ch = (int) (resizedTemplate.height() * 0.7);
+            int cx = (int) (resizedTemplate.width() * 0.175);
+            int cy = (int) (resizedTemplate.height() * 0.175);
+            int cw = (int) (resizedTemplate.width() * 0.65);
+            int ch = (int) (resizedTemplate.height() * 0.65);
 
             if (cw <= 0 || ch <= 0) {
                 resizedTemplate.release();
@@ -676,10 +694,14 @@ public class ScreenPositionTracker {
             }
 
             Mat coreTemplate = new Mat(resizedTemplate, new Rect(cx, cy, cw, ch));
+            Mat enhancedCore = (ImageUtils.getStdDev(coreTemplate) < LOW_CONTRAST_STDDEV_THRESHOLD)
+                    ? ImageUtils.applyEnhancement(coreTemplate)
+                    : null;
+
             if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) crops.add(coreTemplate.clone());
 
             for (Point ally : allyCenters) {
-                EvalResult eval = evaluateTemplateAtAlly(minimap, ally, coreTemplate, 4);
+                EvalResult eval = evaluateTemplateAtAlly(minimap, ally, coreTemplate, enhancedCore, 4);
                 if (eval == null) continue;
 
                 Point matchCenter = eval.center();
@@ -714,6 +736,15 @@ public class ScreenPositionTracker {
             System.out.printf("[locateChampionViaTemplate] Scale locked at %dpx! Match: %.2f%%%n",
                     globalBestSize, globalBestScore * 100);
             this.lockedCoreTemplate = globalBestTemplate;
+
+            double sigma = ImageUtils.getStdDev(this.lockedCoreTemplate);
+            if (sigma < LOW_CONTRAST_STDDEV_THRESHOLD) {
+                this.lockedCoreTemplateEnhanced = ImageUtils.applyEnhancement(this.lockedCoreTemplate);
+                System.out.printf("[locateChampionViaTemplate] Low-contrast template detected (σ=%.1f) — CLAHE enabled.%n", sigma);
+            } else {
+                this.lockedCoreTemplateEnhanced = null;
+            }
+
             Imgcodecs.imwrite("debug/debug_locked_template.png", lockedCoreTemplate);
             this.isScaleLocked = true;
 
