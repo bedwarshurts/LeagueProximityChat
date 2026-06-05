@@ -560,7 +560,7 @@ public class ScreenPositionTracker {
         try {
             Imgproc.cvtColor(screen, hsv, Imgproc.COLOR_BGR2HSV);
 
-            Scalar lowerColor = this.isColorblind ? new Scalar(23, 155, 200) : new Scalar(45, 100, 100);
+            Scalar lowerColor = this.isColorblind ? new Scalar(23, 140, 200) : new Scalar(45, 100, 100);
             Scalar upperColor = this.isColorblind ? new Scalar(26, 225, 255) : new Scalar(75, 255, 255);
             Core.inRange(hsv, lowerColor, upperColor, mask);
 
