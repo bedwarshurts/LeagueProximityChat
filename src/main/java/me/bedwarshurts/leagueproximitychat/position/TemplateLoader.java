@@ -3,11 +3,7 @@ package me.bedwarshurts.leagueproximitychat.position;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URL;
-import java.util.Scanner;
 
 import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
