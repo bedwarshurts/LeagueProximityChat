@@ -24,6 +24,7 @@ public class ScreenPositionTracker {
     private Mat lockedCoreTemplateEnhanced = null;
     private static final double LOW_CONTRAST_STDDEV_THRESHOLD = 28.0;
     private boolean isScaleLocked = false;
+    private boolean isBootstrapped = false;
     private boolean isColorblind = false;
 
     private int maxSeenCamW = 0;
@@ -176,7 +177,7 @@ public class ScreenPositionTracker {
 
         List<AllyCircle> allyCircles = findAllyLocations(minimapMat);
 
-        if (!isScaleLocked && healthBarCenter != null && cameraBox != null && !allyCircles.isEmpty()) {
+        if (!isBootstrapped && healthBarCenter != null && cameraBox != null && !allyCircles.isEmpty()) {
             bootstrapTemplateFromHealthBar(minimapMat, allyCircles, cameraBox, healthBarCenter,
                     perfectMapSize, fullScreenMat.width(), fullScreenMat.height());
         }
@@ -451,6 +452,7 @@ public class ScreenPositionTracker {
         if (lockedCoreTemplateEnhanced != null) lockedCoreTemplateEnhanced.release();
         lockedCoreTemplate = core;
         isScaleLocked = true;
+        isBootstrapped = true;
         lockedMatchFailures = 0;
 
         double sigma = ImageUtils.getStdDev(lockedCoreTemplate);
@@ -460,10 +462,6 @@ public class ScreenPositionTracker {
 
         System.out.printf("[bootstrap] Self-learned template from live minimap (σ=%.1f)%s — scale lock acquired.%n",
                 sigma, lockedCoreTemplateEnhanced != null ? " [CLAHE]" : "");
-
-        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
-            Imgcodecs.imwrite("debug/debug_bootstrap_template.png", lockedCoreTemplate);
-        }
     }
 
     private Mat extractIconTemplate(Mat minimap, Point center, int radius) {
@@ -487,6 +485,7 @@ public class ScreenPositionTracker {
 
         Mat core = new Mat(region, new Rect(cx, cy, cw, ch)).clone();
         region.release();
+        Imgcodecs.imwrite("debug/debug_extracted_icon_template.png", core);
         return core;
     }
 
@@ -500,6 +499,7 @@ public class ScreenPositionTracker {
             lockedCoreTemplateEnhanced = null;
         }
         isScaleLocked = false;
+        isBootstrapped = false;
         lockedMatchFailures = 0;
         bootstrapConfidence = 0;
         bootstrapLastPick = null;
@@ -813,7 +813,7 @@ public class ScreenPositionTracker {
             return null;
         }
 
-        if (isScaleLocked && lockedCoreTemplate != null) {
+        if ((isScaleLocked || isBootstrapped) && lockedCoreTemplate != null) {
             double bestScore = -1.0;
             Point bestCenter = null;
             double rawScoreLog = 0.0;
@@ -832,7 +832,7 @@ public class ScreenPositionTracker {
                 double candidateY = 100.0 - ((candidateCenter.y / minimap.height()) * 100.0);
 
                 double dist = Math.hypot(candidateX - this.lastKnownX, candidateY - this.lastKnownY);
-                if (dist < 8.0) score += 0.40;
+                if (dist < 8.0) score += 0.50;
 
                 candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, eval.score()));
 
@@ -875,10 +875,10 @@ public class ScreenPositionTracker {
             Mat resizedTemplate = new Mat();
             Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
 
-            int cx = (int) (resizedTemplate.width() * 0.175);
-            int cy = (int) (resizedTemplate.height() * 0.175);
-            int cw = (int) (resizedTemplate.width() * 0.65);
-            int ch = (int) (resizedTemplate.height() * 0.65);
+            int cx = (int) (resizedTemplate.width() * 0.15);
+            int cy = (int) (resizedTemplate.height() * 0.15);
+            int cw = (int) (resizedTemplate.width() * 0.7);
+            int ch = (int) (resizedTemplate.height() * 0.7);
 
             if (cw <= 0 || ch <= 0) {
                 resizedTemplate.release();
