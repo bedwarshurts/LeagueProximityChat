@@ -23,6 +23,7 @@ import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.CompletableFuture;
 
 public class LeagueProximityChat {
 
@@ -80,7 +81,6 @@ public class LeagueProximityChat {
             String currentLeader = RitoApiUtils.getLobbyLeader();
             if (currentLeader != null && !currentLeader.equals(roomLeaderRiotId)) {
                 roomLeaderRiotId = currentLeader;
-                System.out.println("Lobby switch detected. New leader: " + roomLeaderRiotId);
             }
 
             gameData = RitoApiUtils.getLivePlayerList();
@@ -112,6 +112,7 @@ public class LeagueProximityChat {
         }
 
         if (!server.isUserRequestedConnection()) {
+            CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
             Thread.sleep(1000);
             return;
         }
@@ -133,6 +134,7 @@ public class LeagueProximityChat {
                 hasConnectedToLiveKit = true;
             }
         } else if (!isInGame && !hasConnectedToLiveKit) {
+            CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
             Thread.sleep(1000);
             return;
         }
@@ -167,7 +169,7 @@ public class LeagueProximityChat {
         long startTime = System.currentTimeMillis();
 
         ScreenPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
-        DiscordRPCManager.updatePresenceActive(pos, detectedChampion);
+        CompletableFuture.runAsync(() -> DiscordRPCManager.updatePresenceActive(pos, detectedChampion));
         server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead());
 
         long elapsedTime = System.currentTimeMillis() - startTime;
@@ -217,7 +219,7 @@ public class LeagueProximityChat {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
 
@@ -248,7 +250,8 @@ public class LeagueProximityChat {
         roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
-            System.exit(0);
+            Thread.sleep(1000);
+            //System.exit(0);
         }
 
         DiscordRPCManager.start();

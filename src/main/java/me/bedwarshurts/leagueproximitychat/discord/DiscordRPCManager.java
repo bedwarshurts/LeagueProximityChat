@@ -72,7 +72,6 @@ public class DiscordRPCManager {
             client.connect();
             startTime = System.currentTimeMillis() / 1000L;
             isRunning = true;
-            updatePresenceIdle();
         } catch (Exception e) {
             System.err.println("[RPC] Failed to connect: " + e.getMessage());
         }
@@ -101,7 +100,6 @@ public class DiscordRPCManager {
     }
 
     public static void updatePresenceIdle() {
-        System.out.println(isRunning + " " + (client == null));
         if (!isRunning || client == null) return;
 
         RichPresence.Builder builder = new RichPresence.Builder()

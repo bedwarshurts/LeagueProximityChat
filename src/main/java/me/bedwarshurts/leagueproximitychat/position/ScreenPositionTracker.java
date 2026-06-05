@@ -60,6 +60,17 @@ public class ScreenPositionTracker {
     private int driftSampleCount = 0;
     private double accumulatedDriftMagnitude = 0f;
 
+    private int bootstrapConfidence = 0;
+    private Point bootstrapLastPick = null;
+    private static final int BOOTSTRAP_CONFIRM_FRAMES = 3;
+    private static final double BOOTSTRAP_MAX_DIST = 12.0;
+    private static final double BOOTSTRAP_AMBIGUITY = 0.6;
+
+    private int lockedMatchFailures = 0;
+    private static final int MAX_LOCKED_MATCH_FAILURES = 20;
+
+    private static final int MATCH_BLUR_KERNEL = 3;
+
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
 
@@ -76,6 +87,9 @@ public class ScreenPositionTracker {
     }
 
     private record EvalResult(Point center, double score) {
+    }
+
+    private record AllyCircle(Point center, int radius) {
     }
 
     public ScreenPositionTracker(Mat championTemplate) {
@@ -160,12 +174,29 @@ public class ScreenPositionTracker {
 
         CameraBox cameraBox = (healthBarCenter != null) ? locateMinimapCameraBox(minimapMat, fullScreenMat.width(), fullScreenMat.height()) : null;
 
-        TemplateMatch champMatch = (championTemplate != null)
-                ? locateChampionViaTemplate(minimapMat)
-                : null;
+        List<AllyCircle> allyCircles = findAllyLocations(minimapMat);
+
+        if (!isScaleLocked && healthBarCenter != null && cameraBox != null && !allyCircles.isEmpty()) {
+            bootstrapTemplateFromHealthBar(minimapMat, allyCircles, cameraBox, healthBarCenter,
+                    perfectMapSize, fullScreenMat.width(), fullScreenMat.height());
+        }
+
+        TemplateMatch champMatch = locateChampionViaTemplate(minimapMat, allyCircles);
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
+
+        if (isScaleLocked && healthBarCenter != null) {
+            if (champMatch == null) {
+                lockedMatchFailures++;
+                if (lockedMatchFailures >= MAX_LOCKED_MATCH_FAILURES) {
+                    System.out.println("[bootstrap] Locked template failing repeatedly while champion is present — resetting to re-learn.");
+                    resetScaleLock();
+                }
+            } else {
+                lockedMatchFailures = 0;
+            }
+        }
 
         if (healthBarCenter != null && champMapCenter != null && !calibrationConverged) {
             runCalibrationUpdate(healthBarCenter, champMapCenter, cameraBox,
@@ -369,6 +400,109 @@ public class ScreenPositionTracker {
             accumulatedDriftMagnitude = 0f;
             driftSampleCount = 0;
         }
+    }
+
+    private void bootstrapTemplateFromHealthBar(Mat minimap, List<AllyCircle> allies, CameraBox cameraBox,
+                                                Point healthBarCenter, int perfectMapSize,
+                                                int screenWidth, int screenHeight) {
+        float projX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, screenWidth) + healthBarCalibrateX;
+        float projY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, screenHeight) + healthBarCalibrateY;
+
+        AllyCircle nearest = null;
+        double nearestDist = Double.MAX_VALUE;
+        double secondDist = Double.MAX_VALUE;
+
+        for (AllyCircle a : allies) {
+            double ax = (a.center().x / minimap.width()) * 100.0;
+            double ay = 100.0 - ((a.center().y / minimap.height()) * 100.0);
+            double d = Math.hypot(ax - projX, ay - projY);
+            if (d < nearestDist) {
+                secondDist = nearestDist;
+                nearestDist = d;
+                nearest = a;
+            } else if (d < secondDist) {
+                secondDist = d;
+            }
+        }
+
+        boolean unambiguous = (secondDist == Double.MAX_VALUE)
+                || (nearestDist < secondDist * BOOTSTRAP_AMBIGUITY)
+                || (nearestDist < 6.0);
+        if (nearest == null || nearestDist > BOOTSTRAP_MAX_DIST || !unambiguous) {
+            bootstrapConfidence = 0;
+            bootstrapLastPick = null;
+            return;
+        }
+
+        if (bootstrapLastPick != null
+                && Math.hypot(nearest.center().x - bootstrapLastPick.x, nearest.center().y - bootstrapLastPick.y) < 5.0) {
+            bootstrapConfidence++;
+        } else {
+            bootstrapConfidence = 1;
+        }
+        bootstrapLastPick = nearest.center();
+
+        if (bootstrapConfidence < BOOTSTRAP_CONFIRM_FRAMES) return;
+
+        Mat core = extractIconTemplate(minimap, nearest.center(), nearest.radius());
+        if (core == null) return;
+
+        if (lockedCoreTemplate != null) lockedCoreTemplate.release();
+        if (lockedCoreTemplateEnhanced != null) lockedCoreTemplateEnhanced.release();
+        lockedCoreTemplate = core;
+        isScaleLocked = true;
+        lockedMatchFailures = 0;
+
+        double sigma = ImageUtils.getStdDev(lockedCoreTemplate);
+        lockedCoreTemplateEnhanced = (sigma < LOW_CONTRAST_STDDEV_THRESHOLD)
+                ? ImageUtils.applyEnhancement(lockedCoreTemplate)
+                : null;
+
+        System.out.printf("[bootstrap] Self-learned template from live minimap (σ=%.1f)%s — scale lock acquired.%n",
+                sigma, lockedCoreTemplateEnhanced != null ? " [CLAHE]" : "");
+
+        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            Imgcodecs.imwrite("debug/debug_bootstrap_template.png", lockedCoreTemplate);
+        }
+    }
+
+    private Mat extractIconTemplate(Mat minimap, Point center, int radius) {
+        int boxHalf = Math.max(4, radius);
+        int x = (int) Math.max(0, center.x - boxHalf);
+        int y = (int) Math.max(0, center.y - boxHalf);
+        int w = Math.min(minimap.width() - x, boxHalf * 2);
+        int h = Math.min(minimap.height() - y, boxHalf * 2);
+        if (w < 6 || h < 6) return null;
+
+        Mat region = new Mat(minimap, new Rect(x, y, w, h)).clone();
+
+        int cx = (int) (region.width() * 0.175);
+        int cy = (int) (region.height() * 0.175);
+        int cw = (int) (region.width() * 0.65);
+        int ch = (int) (region.height() * 0.65);
+        if (cw < 4 || ch < 4) {
+            region.release();
+            return null;
+        }
+
+        Mat core = new Mat(region, new Rect(cx, cy, cw, ch)).clone();
+        region.release();
+        return core;
+    }
+
+    private void resetScaleLock() {
+        if (lockedCoreTemplate != null) {
+            lockedCoreTemplate.release();
+            lockedCoreTemplate = null;
+        }
+        if (lockedCoreTemplateEnhanced != null) {
+            lockedCoreTemplateEnhanced.release();
+            lockedCoreTemplateEnhanced = null;
+        }
+        isScaleLocked = false;
+        lockedMatchFailures = 0;
+        bootstrapConfidence = 0;
+        bootstrapLastPick = null;
     }
 
     private float calculateProjectedX(double healthBarX, CameraBox cameraBox, int perfectMapSize, int screenWidth) {
@@ -631,6 +765,8 @@ public class ScreenPositionTracker {
         Mat result = new Mat();
         Mat matchRoi = localRoi;
         Mat enhancedRoi = null;
+        Mat blurredTemplate = null;
+        Mat blurredRoi = null;
 
         try {
             Mat matchTemplate = template;
@@ -639,6 +775,17 @@ public class ScreenPositionTracker {
                 enhancedRoi = ImageUtils.applyEnhancement(localRoi);
                 matchRoi = enhancedRoi;
                 matchTemplate = enhancedTemplate;
+            }
+
+            if (MATCH_BLUR_KERNEL >= 3
+                    && matchTemplate.width() >= MATCH_BLUR_KERNEL && matchTemplate.height() >= MATCH_BLUR_KERNEL
+                    && matchRoi.width() >= MATCH_BLUR_KERNEL && matchRoi.height() >= MATCH_BLUR_KERNEL) {
+                blurredTemplate = new Mat();
+                blurredRoi = new Mat();
+                Imgproc.GaussianBlur(matchTemplate, blurredTemplate, new Size(MATCH_BLUR_KERNEL, MATCH_BLUR_KERNEL), 0);
+                Imgproc.GaussianBlur(matchRoi, blurredRoi, new Size(MATCH_BLUR_KERNEL, MATCH_BLUR_KERNEL), 0);
+                matchTemplate = blurredTemplate;
+                matchRoi = blurredRoi;
             }
 
             Imgproc.matchTemplate(matchRoi, matchTemplate, result, Imgproc.TM_CCOEFF_NORMED);
@@ -652,16 +799,16 @@ public class ScreenPositionTracker {
             localRoi.release();
             result.release();
             if (enhancedRoi != null) enhancedRoi.release();
+            if (blurredTemplate != null) blurredTemplate.release();
+            if (blurredRoi != null) blurredRoi.release();
         }
     }
 
-    private TemplateMatch locateChampionViaTemplate(Mat minimap) {
+    private TemplateMatch locateChampionViaTemplate(Mat minimap, List<AllyCircle> allyCircles) {
         int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
 
-        List<Point> allyCenters = findAllyLocations(minimap);
-
-        if (allyCenters.isEmpty()) {
+        if (allyCircles.isEmpty()) {
             System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
             return null;
         }
@@ -674,8 +821,8 @@ public class ScreenPositionTracker {
             int ch = lockedCoreTemplate.height();
             List<CandidateMatch> candidates = new ArrayList<>();
 
-            for (Point ally : allyCenters) {
-                EvalResult eval = evaluateTemplateAtAlly(minimap, ally, lockedCoreTemplate, lockedCoreTemplateEnhanced, 2);
+            for (AllyCircle ally : allyCircles) {
+                EvalResult eval = evaluateTemplateAtAlly(minimap, ally.center(), lockedCoreTemplate, lockedCoreTemplateEnhanced, 2);
                 if (eval == null) continue;
 
                 double score = eval.score();
@@ -683,8 +830,9 @@ public class ScreenPositionTracker {
 
                 double candidateX = (candidateCenter.x / minimap.width()) * 100.0;
                 double candidateY = 100.0 - ((candidateCenter.y / minimap.height()) * 100.0);
+
                 double dist = Math.hypot(candidateX - this.lastKnownX, candidateY - this.lastKnownY);
-                if (dist < 8.0) score += 0.35;
+                if (dist < 8.0) score += 0.40;
 
                 candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, eval.score()));
 
@@ -706,6 +854,10 @@ public class ScreenPositionTracker {
                 return new TemplateMatch(bestCenter, bestScore);
             }
 
+            return null;
+        }
+
+        if (championTemplate == null) {
             return null;
         }
 
@@ -740,8 +892,8 @@ public class ScreenPositionTracker {
 
             if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) crops.add(coreTemplate.clone());
 
-            for (Point ally : allyCenters) {
-                EvalResult eval = evaluateTemplateAtAlly(minimap, ally, coreTemplate, enhancedCore, 4);
+            for (AllyCircle ally : allyCircles) {
+                EvalResult eval = evaluateTemplateAtAlly(minimap, ally.center(), coreTemplate, enhancedCore, 4);
                 if (eval == null) continue;
 
                 Point matchCenter = eval.center();
@@ -758,13 +910,14 @@ public class ScreenPositionTracker {
                         globalBestSize = targetSize;
                     }
 
-                    CandidateMatch current = globalCandidatesMap.get(ally);
+                    CandidateMatch current = globalCandidatesMap.get(ally.center());
                     if (current == null || matchScore > current.score()) {
-                        globalCandidatesMap.put(ally, new CandidateMatch(matchCenter, cw, ch, matchScore, matchScore));
+                        globalCandidatesMap.put(ally.center(), new CandidateMatch(matchCenter, cw, ch, matchScore, matchScore));
                     }
                 }
             }
 
+            if (enhancedCore != null) enhancedCore.release();
             coreTemplate.release();
             resizedTemplate.release();
         }
@@ -787,6 +940,7 @@ public class ScreenPositionTracker {
 
             Imgcodecs.imwrite("debug/debug_locked_template.png", lockedCoreTemplate);
             this.isScaleLocked = true;
+            this.lockedMatchFailures = 0;
 
             drawDebugBox(minimap, globalBestCenter.x, globalBestCenter.y,
                     lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 165, 255));
@@ -798,8 +952,8 @@ public class ScreenPositionTracker {
         return null;
     }
 
-    private List<Point> findAllyLocations(Mat minimap) {
-        List<Point> centers = new ArrayList<>();
+    private List<AllyCircle> findAllyLocations(Mat minimap) {
+        List<AllyCircle> centers = new ArrayList<>();
         Mat hsv = new Mat();
         Mat mask = new Mat();
 
@@ -826,7 +980,7 @@ public class ScreenPositionTracker {
 
                 Point center = new Point(Math.round(c[0]), Math.round(c[1]));
                 int radius = (int) Math.round(c[2]);
-                centers.add(center);
+                centers.add(new AllyCircle(center, radius));
 
                 if (debugDrawMap != null) {
                     Imgproc.circle(debugDrawMap, center, radius, new Scalar(0, 255, 0), 2);
