@@ -8,6 +8,7 @@ import org.json.JSONObject;
 import javax.net.ssl.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.file.Files;
@@ -17,6 +18,7 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Scanner;
 
 public class RitoApiUtils {
 
@@ -307,5 +309,18 @@ public class RitoApiUtils {
         }
 
         return rawName;
+    }
+
+
+    public static String getLatestDataDragonVersion() throws Exception {
+        URL url = new URI("https://ddragon.leagueoflegends.com/api/versions.json").toURL();
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+
+        Scanner scanner = new Scanner(new InputStreamReader(conn.getInputStream()));
+        String response = scanner.useDelimiter("\\A").next();
+        scanner.close();
+
+        return response.split("\"")[1];
     }
 }

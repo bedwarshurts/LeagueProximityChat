@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
+import me.bedwarshurts.leagueproximitychat.discord.DiscordRPCManager;
 import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
@@ -34,6 +35,8 @@ public class LeagueProximityChat {
     private static boolean hasSentRoster = false;
 
     @Getter private static String roomLeaderRiotId = null;
+
+    @Setter private static String detectedChampion = null;
 
     private static ScreenPositionTracker tracker = null;
     private static CoordinateServer server = null;
@@ -164,6 +167,7 @@ public class LeagueProximityChat {
         long startTime = System.currentTimeMillis();
 
         ScreenPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
+        DiscordRPCManager.updatePresenceActive(pos, detectedChampion);
         server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead());
 
         long elapsedTime = System.currentTimeMillis() - startTime;
@@ -238,15 +242,16 @@ public class LeagueProximityChat {
                 } catch (InterruptedException ignored) {
                 }
             }
+            DiscordRPCManager.stop();
         }));
 
         roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
-        System.out.println("Current lobby leader: " + roomLeaderRiotId);
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
             System.exit(0);
         }
 
+        DiscordRPCManager.start();
         while (true) {
             try {
                 trackingLoop();

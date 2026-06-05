@@ -9,6 +9,7 @@ import java.net.URI;
 import java.net.URL;
 import java.util.Scanner;
 
+import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
@@ -49,8 +50,9 @@ public class TemplateLoader {
             championCodename = RitoApiUtils.sanitizeChampionName(championCodename);
 
             System.out.println("Detected Champion Codename: " + championCodename);
+            LeagueProximityChat.setDetectedChampion(championCodename);
 
-            String latestPatch = getLatestDataDragonVersion();
+            String latestPatch = RitoApiUtils.getLatestDataDragonVersion();
             String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestPatch + "/img/champion/" + championCodename + ".png";
 
             BufferedImage originalIcon = ImageIO.read(new URI(ddragonUrl).toURL());
@@ -66,17 +68,5 @@ public class TemplateLoader {
             System.err.println("Stacktrace: " + e.getMessage());
             return null;
         }
-    }
-
-    private static String getLatestDataDragonVersion() throws Exception {
-        URL url = new URI("https://ddragon.leagueoflegends.com/api/versions.json").toURL();
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-
-        Scanner scanner = new Scanner(new InputStreamReader(conn.getInputStream()));
-        String response = scanner.useDelimiter("\\A").next();
-        scanner.close();
-
-        return response.split("\"")[1];
     }
 }

@@ -512,7 +512,6 @@ public class ScreenPositionTracker {
         Point center = new Point(minimap.width() / 2.0, minimap.height() / 2.0);
 
         try {
-            // 1. Mathematically lock the true dimensions forever based on the window resolution
             if (minimap.width() != lastMinimapWidth) {
                 float exactAspectRatio = (float) screenWidth / screenHeight;
                 maxSeenCamH = (int) (minimap.height() * 0.14);
@@ -537,7 +536,6 @@ public class ScreenPositionTracker {
                 double area = (double) rect.width * rect.height;
 
                 if (rect.width > 20 && rect.height > 20 && area > maxBoundingArea) {
-                    // Reject tiny shattered fragments
                     if (maxSeenCamW > 0 && maxSeenCamH > 0) {
                         if (rect.width < maxSeenCamW * 0.35 || rect.height < maxSeenCamH * 0.35) continue;
                     }
@@ -555,9 +553,6 @@ public class ScreenPositionTracker {
                 boolean touchesBottom = bounds.y + bounds.height >= minimap.height() - edgeMarginY;
 
                 boolean isClipped = touchesLeft || touchesRight || touchesTop || touchesBottom;
-
-                // --- THE FIX: Removed the dynamic 'learning' block entirely ---
-                // The size is mathematically locked. It can never be permanently stretched by noise again.
 
                 double trueCenterX = bounds.x + (bounds.width / 2.0);
                 double trueCenterY = bounds.y + (bounds.height / 2.0);
@@ -578,13 +573,11 @@ public class ScreenPositionTracker {
                 center.y = trueCenterY;
 
                 if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
-                    // 1. Re-implemented debug_camera_mask.png
                     Mat debugMask = Mat.zeros(thresholded.size(), CvType.CV_8UC1);
                     Imgproc.drawContours(debugMask, List.of(cameraContour), -1, new Scalar(255), 1);
                     Imgcodecs.imwrite("debug/debug_camera_mask.png", debugMask);
                     debugMask.release();
 
-                    // 2. Reconstructed Map
                     Mat debugReconstructed = minimap.clone();
                     Imgproc.drawContours(debugReconstructed, List.of(cameraContour), -1, new Scalar(0, 0, 255), 1);
 
@@ -601,7 +594,6 @@ public class ScreenPositionTracker {
 
                 return new CameraBox(center, Math.max(0, maxSeenCamW), Math.max(0, maxSeenCamH));
             } else {
-                // If no camera contour is found, output the raw threshold so you can see why it failed
                 if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                     Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
                 }
