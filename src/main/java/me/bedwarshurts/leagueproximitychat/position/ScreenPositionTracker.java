@@ -38,15 +38,16 @@ public class ScreenPositionTracker {
 
     private static final float CONVERGENCE_THRESHOLD = 0.04f;
 
-    private static final float OUTLIER_THRESHOLD = 2.5f;
+    private static final float OUTLIER_THRESHOLD = 3.0f;
 
-    private static final int ROLLING_WINDOW_SIZE = 12;
+    private static final int ROLLING_WINDOW_SIZE = 14;
 
     private final Deque<float[]> offsetWindow = new ArrayDeque<>();
 
     private static final float DRIFT_CONFIRM_THRESHOLD = 1.5f;
-
     private static final int DRIFT_SAMPLE_WINDOW = 10;
+    private int driftConfirmStreak = 0;
+    private static final int DRIFT_CONFIRM_REQUIRED = 3;
 
     private int driftSampleCount = 0;
     private float accumulatedDriftX = 0f;
@@ -55,12 +56,20 @@ public class ScreenPositionTracker {
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
 
-    public record TrackResult(float x, float y, boolean isDead) {}
-    public record TemplateMatch(Point center, double score) {}
-    public record CameraBox(Point center, int width, int height) {}
-    public record CandidateMatch(Point center, int width, int height, double score, double rawScore) {}
-    private record EvalResult(Point center, double score) {}
+    public record TrackResult(float x, float y, boolean isDead) {
+    }
 
+    public record TemplateMatch(Point center, double score) {
+    }
+
+    public record CameraBox(Point center, int width, int height) {
+    }
+
+    public record CandidateMatch(Point center, int width, int height, double score, double rawScore) {
+    }
+
+    private record EvalResult(Point center, double score) {
+    }
 
     public ScreenPositionTracker(Mat championTemplate) {
         try {
@@ -152,7 +161,7 @@ public class ScreenPositionTracker {
         }
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
-        double champScore    = (champMatch != null) ? champMatch.score()  : 0.0;
+        double champScore = (champMatch != null) ? champMatch.score() : 0.0;
 
         if (healthBarCenter != null && champMapCenter != null && !calibrationConverged) {
             runCalibrationUpdate(healthBarCenter, champMapCenter, cameraBox,
@@ -236,7 +245,7 @@ public class ScreenPositionTracker {
 
     private float computeAlpha(float score) {
         float scoreWeight = Math.clamp((score - 0.60f) / 0.40f, 0f, 1f);
-        float progress    = Math.min(1.0f, (float) calibrationFrames / MAX_CALIBRATION_FRAMES);
+        float progress = Math.min(1.0f, (float) calibrationFrames / MAX_CALIBRATION_FRAMES);
         float decayedBase = 0.30f * (1.0f - progress) + 0.05f * progress;
         return decayedBase * (0.5f + 0.5f * scoreWeight);
     }
@@ -303,16 +312,23 @@ public class ScreenPositionTracker {
         driftSampleCount++;
 
         if (driftSampleCount >= DRIFT_SAMPLE_WINDOW) {
-            float avgDriftX  = accumulatedDriftX / driftSampleCount;
-            float avgDriftY  = accumulatedDriftY / driftSampleCount;
+            float avgDriftX = accumulatedDriftX / driftSampleCount;
+            float avgDriftY = accumulatedDriftY / driftSampleCount;
             float driftMagnitude = Math.abs(avgDriftX) + Math.abs(avgDriftY);
 
             if (driftMagnitude > DRIFT_CONFIRM_THRESHOLD) {
-                System.out.printf("[drift] Systematic drift detected — ΔX: %.2f, ΔY: %.2f. Re-entering calibration.%n",
-                        avgDriftX, avgDriftY);
-                this.calibrationConverged = false;
-                this.calibrationFrames = 0;
-                this.offsetWindow.clear();
+                driftConfirmStreak++;
+
+                if (driftConfirmStreak >= DRIFT_CONFIRM_REQUIRED) {
+                    System.out.printf("[drift] Systematic drift detected — ΔX: %.2f, ΔY: %.2f. Re-entering calibration.%n",
+                            avgDriftX, avgDriftY);
+                    this.calibrationConverged = false;
+                    this.calibrationFrames = 0;
+                    this.offsetWindow.clear();
+                    driftConfirmStreak = 0;
+                }
+            } else {
+                driftConfirmStreak = 0;
             }
 
             accumulatedDriftX = 0f;
@@ -329,20 +345,20 @@ public class ScreenPositionTracker {
                 : 0.021f;
 
         float offsetX = (float) healthBarX - (screenWidth / 2.0f);
-        float finalX  = cameraCenterX + (offsetX * dynamicRatioX);
+        float finalX = cameraCenterX + (offsetX * dynamicRatioX);
         return (finalX / perfectMapSize) * 100f;
     }
 
     private float calculateProjectedY(double healthBarY, CameraBox cameraBox, int perfectMapSize, int screenHeight) {
-        float feetY          = (float) (healthBarY + (screenHeight * 0.074f));
-        float cameraCenterY  = (float) cameraBox.center().y;
+        float feetY = (float) (healthBarY + (screenHeight * 0.074f));
+        float cameraCenterY = (float) cameraBox.center().y;
         float PERSPECTIVE_COMPENSATION_Y = 0.75f;
         float dynamicRatioY = (cameraBox.height() > 0)
                 ? ((float) cameraBox.height() * PERSPECTIVE_COMPENSATION_Y) / screenHeight
                 : 0.021f;
 
         float offsetY = feetY - (screenHeight / 2.0f);
-        float finalY  = cameraCenterY + (offsetY * dynamicRatioY);
+        float finalY = cameraCenterY + (offsetY * dynamicRatioY);
         return 100f - ((finalY / perfectMapSize) * 100f);
     }
 
@@ -367,8 +383,8 @@ public class ScreenPositionTracker {
     }
 
     private Point locateSelfHealthBar(Mat screen) {
-        Mat hsv       = new Mat();
-        Mat mask      = new Mat();
+        Mat hsv = new Mat();
+        Mat mask = new Mat();
         Mat hierarchy = new Mat();
         List<MatOfPoint> contours = new ArrayList<>();
         Point resultPoint = null;
@@ -384,7 +400,7 @@ public class ScreenPositionTracker {
             Imgproc.rectangle(mask, new Point(0, hudTopY), new Point(screen.width(), screen.height()), new Scalar(0), -1);
             Imgproc.rectangle(mask, new Point(screen.width() * 0.85, 0), new Point(screen.width(), screen.height() * 0.10), new Scalar(0), -1);
 
-            int openSize   = Math.max(1, (int) (screen.height() * 0.002));
+            int openSize = Math.max(1, (int) (screen.height() * 0.002));
             int closeWidth = Math.max(3, (int) (screen.width() * 0.005));
 
             Mat openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(openSize, openSize));
@@ -397,19 +413,19 @@ public class ScreenPositionTracker {
 
             Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
-            Rect   bestBar      = null;
+            Rect bestBar = null;
             double bestDistance = Double.MAX_VALUE;
 
             double minHeight = screen.height() * 0.003;
             double maxHeight = screen.height() * 0.020;
-            double minWidth  = screen.width()  * 0.001;
+            double minWidth = screen.width() * 0.001;
 
             for (MatOfPoint contour : contours) {
                 Rect rect = Imgproc.boundingRect(contour);
                 double pixelArea = Imgproc.contourArea(contour);
 
                 if (rect.height >= minHeight && rect.height <= maxHeight && rect.width >= minWidth) {
-                    double extent      = pixelArea / (double) (rect.width * rect.height);
+                    double extent = pixelArea / (double) (rect.width * rect.height);
                     double aspectRatio = rect.width / (double) rect.height;
 
                     if (extent > 0.55 && (aspectRatio > 2.5 || rect.width < 30)) {
@@ -454,14 +470,14 @@ public class ScreenPositionTracker {
     }
 
     private CameraBox locateMinimapCameraBox(Mat minimap) {
-        Mat gray        = new Mat();
+        Mat gray = new Mat();
         Mat thresholded = new Mat();
-        Mat hierarchy   = new Mat();
+        Mat hierarchy = new Mat();
         List<MatOfPoint> contours = new ArrayList<>();
 
         Point center = new Point(minimap.width() / 2.0, minimap.height() / 2.0);
-        int width    = 0;
-        int height   = 0;
+        int width = 0;
+        int height = 0;
 
         try {
             Imgproc.cvtColor(minimap, gray, Imgproc.COLOR_BGR2GRAY);
@@ -469,7 +485,7 @@ public class ScreenPositionTracker {
             Imgproc.findContours(thresholded, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
             MatOfPoint cameraContour = null;
-            double maxBoundingArea   = 0;
+            double maxBoundingArea = 0;
 
             for (MatOfPoint contour : contours) {
                 Rect rect = Imgproc.boundingRect(contour);
@@ -491,7 +507,7 @@ public class ScreenPositionTracker {
                     center.y = bounds.y + (bounds.height / 2.0);
                 }
                 Rect bounds = Imgproc.boundingRect(cameraContour);
-                width  = bounds.width;
+                width = bounds.width;
                 height = bounds.height;
 
                 if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
@@ -521,15 +537,15 @@ public class ScreenPositionTracker {
 
         int startX = (int) Math.max(0, ally.x - (cw / 2.0) - padding);
         int startY = (int) Math.max(0, ally.y - (ch / 2.0) - padding);
-        int roiW   = cw + (padding * 2);
-        int roiH   = ch + (padding * 2);
+        int roiW = cw + (padding * 2);
+        int roiH = ch + (padding * 2);
 
-        if (startX + roiW > minimap.width())  roiW = minimap.width()  - startX;
+        if (startX + roiW > minimap.width()) roiW = minimap.width() - startX;
         if (startY + roiH > minimap.height()) roiH = minimap.height() - startY;
         if (roiW < cw || roiH < ch) return null;
 
         Mat localRoi = new Mat(minimap, new Rect(startX, startY, roiW, roiH));
-        Mat result   = new Mat();
+        Mat result = new Mat();
 
         Imgproc.matchTemplate(localRoi, template, result, Imgproc.TM_CCOEFF_NORMED);
         Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
@@ -544,7 +560,7 @@ public class ScreenPositionTracker {
     }
 
     private TemplateMatch locateChampionViaTemplate(Mat minimap) {
-        int borderMarginX = (int) (minimap.width()  * 0.03);
+        int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
 
         List<Point> allyCenters = findAllyLocations(minimap);
@@ -555,9 +571,9 @@ public class ScreenPositionTracker {
         }
 
         if (isScaleLocked && lockedCoreTemplate != null) {
-            double bestScore    = -1.0;
-            Point  bestCenter   = null;
-            double rawScoreLog  = 0.0;
+            double bestScore = -1.0;
+            Point bestCenter = null;
+            double rawScoreLog = 0.0;
             int cw = lockedCoreTemplate.width();
             int ch = lockedCoreTemplate.height();
             List<CandidateMatch> candidates = new ArrayList<>();
@@ -566,11 +582,11 @@ public class ScreenPositionTracker {
                 EvalResult eval = evaluateTemplateAtAlly(minimap, ally, lockedCoreTemplate, 2);
                 if (eval == null) continue;
 
-                double score           = eval.score();
-                Point  candidateCenter = eval.center();
+                double score = eval.score();
+                Point candidateCenter = eval.center();
 
                 // Proximity boost: candidates near the last known position are more likely to be us
-                double candidateX = (candidateCenter.x / minimap.width())  * 100.0;
+                double candidateX = (candidateCenter.x / minimap.width()) * 100.0;
                 double candidateY = 100.0 - ((candidateCenter.y / minimap.height()) * 100.0);
                 double dist = Math.hypot(candidateX - this.lastKnownX, candidateY - this.lastKnownY);
                 if (dist < 8.0) score += 0.35;
@@ -578,8 +594,8 @@ public class ScreenPositionTracker {
                 candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, eval.score()));
 
                 if (score > bestScore) {
-                    bestScore   = score;
-                    bestCenter  = candidateCenter;
+                    bestScore = score;
+                    bestCenter = candidateCenter;
                     rawScoreLog = eval.score();
                 }
             }
@@ -598,10 +614,10 @@ public class ScreenPositionTracker {
             return null;
         }
 
-        double globalBestScore   = 0;
-        Point  globalBestCenter  = null;
-        Mat    globalBestTemplate = null;
-        int    globalBestSize    = 0;
+        double globalBestScore = 0;
+        Point globalBestCenter = null;
+        Mat globalBestTemplate = null;
+        int globalBestSize = 0;
 
         Map<Point, CandidateMatch> globalCandidatesMap = new HashMap<>();
         List<Mat> crops = new ArrayList<>();
@@ -612,9 +628,9 @@ public class ScreenPositionTracker {
             Mat resizedTemplate = new Mat();
             Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
 
-            int cx = (int) (resizedTemplate.width()  * 0.2);
+            int cx = (int) (resizedTemplate.width() * 0.2);
             int cy = (int) (resizedTemplate.height() * 0.2);
-            int cw = (int) (resizedTemplate.width()  * 0.6);
+            int cw = (int) (resizedTemplate.width() * 0.6);
             int ch = (int) (resizedTemplate.height() * 0.6);
 
             if (cw <= 0 || ch <= 0) {
@@ -629,10 +645,10 @@ public class ScreenPositionTracker {
                 EvalResult eval = evaluateTemplateAtAlly(minimap, ally, coreTemplate, 4);
                 if (eval == null) continue;
 
-                Point  matchCenter = eval.center();
-                double matchScore  = eval.score();
+                Point matchCenter = eval.center();
+                double matchScore = eval.score();
 
-                if (matchCenter.x > borderMarginX && matchCenter.x < minimap.width()  - borderMarginX
+                if (matchCenter.x > borderMarginX && matchCenter.x < minimap.width() - borderMarginX
                         && matchCenter.y > borderMarginY && matchCenter.y < minimap.height() - borderMarginY) {
 
                     if (matchScore > globalBestScore) {
@@ -676,7 +692,7 @@ public class ScreenPositionTracker {
 
     private List<Point> findAllyLocations(Mat minimap) {
         List<Point> centers = new ArrayList<>();
-        Mat hsv  = new Mat();
+        Mat hsv = new Mat();
         Mat mask = new Mat();
 
         try {
@@ -701,7 +717,7 @@ public class ScreenPositionTracker {
                 if (c == null || c.length < 3) continue;
 
                 Point center = new Point(Math.round(c[0]), Math.round(c[1]));
-                int radius   = (int) Math.round(c[2]);
+                int radius = (int) Math.round(c[2]);
                 centers.add(center);
 
                 if (debugDrawMap != null) {
@@ -731,7 +747,7 @@ public class ScreenPositionTracker {
 
         if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
             int totalWidth = 0;
-            int maxHeight  = 0;
+            int maxHeight = 0;
             for (Mat crop : crops) {
                 totalWidth += crop.width();
                 if (crop.height() > maxHeight) maxHeight = crop.height();
@@ -763,14 +779,14 @@ public class ScreenPositionTracker {
         int limit = Math.min(10, candidates.size());
 
         for (int i = 0; i < limit; i++) {
-            CandidateMatch c  = candidates.get(i);
+            CandidateMatch c = candidates.get(i);
             Point tl = new Point(c.center().x - (c.width() / 2.0), c.center().y - (c.height() / 2.0));
             Point br = new Point(tl.x + c.width(), tl.y + c.height());
 
             Scalar boxColor = (i == 0) ? new Scalar(0, 255, 0) : new Scalar(0, 0, 255);
             Imgproc.rectangle(top10Map, tl, br, boxColor, 1);
 
-            String text  = String.format("Top%d | %.0f%%", i + 1, c.score() * 100);
+            String text = String.format("Top%d | %.0f%%", i + 1, c.score() * 100);
             double textY = Math.max(10, tl.y - 4);
 
             Imgproc.putText(top10Map, text, new Point(tl.x + 1, textY + 1),
@@ -786,8 +802,8 @@ public class ScreenPositionTracker {
     private void drawDebugBox(Mat minimap, double centerX, double centerY, int width, int height, Scalar color) {
         if (!WindowUtils.isWindowFocused("League of Legends (TM) Client")) return;
 
-        Mat debugMap     = minimap.clone();
-        Point topLeft    = new Point(centerX - (width / 2.0), centerY - (height / 2.0));
+        Mat debugMap = minimap.clone();
+        Point topLeft = new Point(centerX - (width / 2.0), centerY - (height / 2.0));
         Point bottomRight = new Point(topLeft.x + width, topLeft.y + height);
         Imgproc.rectangle(debugMap, topLeft, bottomRight, color, 2);
         Imgcodecs.imwrite("debug/debug_template_match.png", debugMap);
