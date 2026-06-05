@@ -44,7 +44,9 @@ public class ScreenPositionTracker {
 
     private static final float CONVERGENCE_THRESHOLD = 0.04f;
 
-    private static final float OUTLIER_THRESHOLD = 3.0f;
+    private int consecutiveOutliers = 0;
+    private static final int MAX_OUTLIER_STREAK = 25;
+    private static final float OUTLIER_THRESHOLD = 2.5f;
 
     private static final int ROLLING_WINDOW_SIZE = 14;
 
@@ -177,7 +179,7 @@ public class ScreenPositionTracker {
 
         TrackResult result;
 
-        if (healthBarCenter != null) {
+        if (healthBarCenter != null && cameraBox != null) {
             float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
             float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
 
@@ -185,6 +187,24 @@ public class ScreenPositionTracker {
             this.lastKnownY = rawHpY + this.healthBarCalibrateY;
 
             System.out.printf("[trackPlayerPosition] HEALTHBAR -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                Mat debugHealthLoc = minimapMat.clone();
+
+                double mapPixelX = (this.lastKnownX / 100.0) * perfectMapSize;
+                double mapPixelY = ((100.0 - this.lastKnownY) / 100.0) * perfectMapSize;
+                Point hpEstimatedPos = new Point(mapPixelX, mapPixelY);
+
+                Imgproc.circle(debugHealthLoc, hpEstimatedPos, 6, new Scalar(255, 0, 255), 2);
+                Imgproc.circle(debugHealthLoc, hpEstimatedPos, 1, new Scalar(255, 0, 255), -1);
+
+                Imgproc.putText(debugHealthLoc, "HP", new Point(mapPixelX + 8, mapPixelY + 4),
+                        Imgproc.FONT_HERSHEY_SIMPLEX, 0.35, new Scalar(255, 0, 255), 1);
+
+                Imgcodecs.imwrite("debug/debug_health_location.png", debugHealthLoc);
+                debugHealthLoc.release();
+            }
+
             result = new TrackResult(lastKnownX, lastKnownY, isDead);
 
         } else if (champMapCenter != null) {
@@ -263,8 +283,24 @@ public class ScreenPositionTracker {
 
         if (Math.abs(offsetX - medianX) > OUTLIER_THRESHOLD
                 || Math.abs(offsetY - medianY) > OUTLIER_THRESHOLD) {
+
+            consecutiveOutliers++;
+            if (consecutiveOutliers >= MAX_OUTLIER_STREAK) {
+                System.out.printf("[calibration] %d consecutive outliers! Camera shift detected. Wiping previous median.%n", consecutiveOutliers);
+
+                offsetWindow.clear();
+                consecutiveOutliers = 0;
+
+                this.calibrationFrames = 0;
+
+                offsetWindow.addLast(new float[]{offsetX, offsetY});
+                return true;
+            }
+
             return false;
         }
+
+        consecutiveOutliers = 0;
 
         if (offsetWindow.size() >= ROLLING_WINDOW_SIZE) {
             offsetWindow.pollFirst();
@@ -476,6 +512,19 @@ public class ScreenPositionTracker {
         Point center = new Point(minimap.width() / 2.0, minimap.height() / 2.0);
 
         try {
+            // 1. Mathematically lock the true dimensions forever based on the window resolution
+            if (minimap.width() != lastMinimapWidth) {
+                float exactAspectRatio = (float) screenWidth / screenHeight;
+                maxSeenCamH = (int) (minimap.height() * 0.14);
+                maxSeenCamW = (int) (maxSeenCamH * exactAspectRatio);
+                lastMinimapWidth = minimap.width();
+                System.out.printf("[CameraBox] Initialized exact bounds for %dx%d monitor. Box: %dx%d%n",
+                        screenWidth, screenHeight, maxSeenCamW, maxSeenCamH);
+            }
+
+            int edgeMarginX = (int) (minimap.width() * 0.08);
+            int edgeMarginY = (int) (minimap.height() * 0.08);
+
             Imgproc.cvtColor(minimap, gray, Imgproc.COLOR_BGR2GRAY);
             Imgproc.threshold(gray, thresholded, 240, 255, Imgproc.THRESH_BINARY);
             Imgproc.findContours(thresholded, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
@@ -487,7 +536,11 @@ public class ScreenPositionTracker {
                 Rect rect = Imgproc.boundingRect(contour);
                 double area = (double) rect.width * rect.height;
 
-                if (rect.width > 30 && rect.height > 30 && area > maxBoundingArea) {
+                if (rect.width > 20 && rect.height > 20 && area > maxBoundingArea) {
+                    // Reject tiny shattered fragments
+                    if (maxSeenCamW > 0 && maxSeenCamH > 0) {
+                        if (rect.width < maxSeenCamW * 0.35 || rect.height < maxSeenCamH * 0.35) continue;
+                    }
                     maxBoundingArea = area;
                     cameraContour = contour;
                 }
@@ -496,21 +549,6 @@ public class ScreenPositionTracker {
             if (cameraContour != null) {
                 Rect bounds = Imgproc.boundingRect(cameraContour);
 
-                if (minimap.width() != lastMinimapWidth) {
-                    float exactAspectRatio = (float) screenWidth / screenHeight;
-
-                    maxSeenCamH = (int) (minimap.height() * 0.14);
-
-                    maxSeenCamW = (int) (maxSeenCamH * exactAspectRatio);
-
-                    lastMinimapWidth = minimap.width();
-                    System.out.printf("[CameraBox] Initialized exact bounds for %dx%d monitor. Box: %dx%d%n",
-                            screenWidth, screenHeight, maxSeenCamW, maxSeenCamH);
-                }
-
-                int edgeMarginX = (int) (minimap.width() * 0.08);
-                int edgeMarginY = (int) (minimap.height() * 0.08);
-
                 boolean touchesLeft = bounds.x <= edgeMarginX;
                 boolean touchesRight = bounds.x + bounds.width >= minimap.width() - edgeMarginX;
                 boolean touchesTop = bounds.y <= edgeMarginY;
@@ -518,12 +556,8 @@ public class ScreenPositionTracker {
 
                 boolean isClipped = touchesLeft || touchesRight || touchesTop || touchesBottom;
 
-                if (!touchesLeft && !touchesRight && bounds.width > maxSeenCamW && bounds.width < minimap.width() * 0.5) {
-                    maxSeenCamW = bounds.width;
-                }
-                if (!touchesTop && !touchesBottom && bounds.height > maxSeenCamH && bounds.height < minimap.height() * 0.5) {
-                    maxSeenCamH = bounds.height;
-                }
+                // --- THE FIX: Removed the dynamic 'learning' block entirely ---
+                // The size is mathematically locked. It can never be permanently stretched by noise again.
 
                 double trueCenterX = bounds.x + (bounds.width / 2.0);
                 double trueCenterY = bounds.y + (bounds.height / 2.0);
@@ -544,6 +578,13 @@ public class ScreenPositionTracker {
                 center.y = trueCenterY;
 
                 if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                    // 1. Re-implemented debug_camera_mask.png
+                    Mat debugMask = Mat.zeros(thresholded.size(), CvType.CV_8UC1);
+                    Imgproc.drawContours(debugMask, List.of(cameraContour), -1, new Scalar(255), 1);
+                    Imgcodecs.imwrite("debug/debug_camera_mask.png", debugMask);
+                    debugMask.release();
+
+                    // 2. Reconstructed Map
                     Mat debugReconstructed = minimap.clone();
                     Imgproc.drawContours(debugReconstructed, List.of(cameraContour), -1, new Scalar(0, 0, 255), 1);
 
@@ -557,6 +598,13 @@ public class ScreenPositionTracker {
                     Imgcodecs.imwrite("debug/debug_camera_reconstructed.png", debugReconstructed);
                     debugReconstructed.release();
                 }
+
+                return new CameraBox(center, Math.max(0, maxSeenCamW), Math.max(0, maxSeenCamH));
+            } else {
+                // If no camera contour is found, output the raw threshold so you can see why it failed
+                if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                    Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
+                }
             }
 
         } finally {
@@ -566,7 +614,7 @@ public class ScreenPositionTracker {
             for (MatOfPoint contour : contours) contour.release();
         }
 
-        return new CameraBox(center, Math.max(0, maxSeenCamW), Math.max(0, maxSeenCamH));
+        return null;
     }
 
     private EvalResult evaluateTemplateAtAlly(Mat minimap, Point ally, Mat template, int padding) {
@@ -583,7 +631,7 @@ public class ScreenPositionTracker {
         int roiW = cw + (padding * 2);
         int roiH = ch + (padding * 2);
 
-        if (startX + roiW > minimap.width())  roiW = minimap.width()  - startX;
+        if (startX + roiW > minimap.width()) roiW = minimap.width() - startX;
         if (startY + roiH > minimap.height()) roiH = minimap.height() - startY;
         if (roiW < cw || roiH < ch) return null;
 
@@ -732,7 +780,7 @@ public class ScreenPositionTracker {
         drawCroppedTemplates(crops);
         drawTop10Debug(minimap, new ArrayList<>(globalCandidatesMap.values()));
 
-        if (globalBestScore > 0.65) {
+        if (globalBestScore > 0.67) {
             System.out.printf("[locateChampionViaTemplate] Scale locked at %dpx! Match: %.2f%%%n",
                     globalBestSize, globalBestScore * 100);
             this.lockedCoreTemplate = globalBestTemplate;
