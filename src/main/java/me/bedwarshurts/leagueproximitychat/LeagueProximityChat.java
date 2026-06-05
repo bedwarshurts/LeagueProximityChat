@@ -251,7 +251,7 @@ public class LeagueProximityChat {
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
             Thread.sleep(1000);
-            //System.exit(0);
+            System.exit(0);
         }
 
         DiscordRPCManager.start();
