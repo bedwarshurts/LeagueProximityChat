@@ -47,11 +47,10 @@ public class ScreenPositionTracker {
     private static final float DRIFT_CONFIRM_THRESHOLD = 1.5f;
     private static final int DRIFT_SAMPLE_WINDOW = 10;
     private int driftConfirmStreak = 0;
-    private static final int DRIFT_CONFIRM_REQUIRED = 3;
+    private static final int DRIFT_CONFIRM_REQUIRED = 2;
 
     private int driftSampleCount = 0;
-    private float accumulatedDriftX = 0f;
-    private float accumulatedDriftY = 0f;
+    private double accumulatedDriftMagnitude = 0f;
 
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
@@ -298,6 +297,7 @@ public class ScreenPositionTracker {
 
     private void monitorDrift(Point healthBarCenter, Point champMapCenter, CameraBox cameraBox,
                               int perfectMapSize, int screenWidth, int screenHeight) {
+
         float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, screenWidth);
         float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, screenHeight);
 
@@ -307,21 +307,18 @@ public class ScreenPositionTracker {
         float trueX = ((float) champMapCenter.x / perfectMapSize) * 100f;
         float trueY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
-        accumulatedDriftX += trueX - calibratedHpX;
-        accumulatedDriftY += trueY - calibratedHpY;
+        double currentFrameDrift = Math.hypot(trueX - calibratedHpX, trueY - calibratedHpY);
+        accumulatedDriftMagnitude += currentFrameDrift;
         driftSampleCount++;
 
         if (driftSampleCount >= DRIFT_SAMPLE_WINDOW) {
-            float avgDriftX = accumulatedDriftX / driftSampleCount;
-            float avgDriftY = accumulatedDriftY / driftSampleCount;
-            float driftMagnitude = Math.abs(avgDriftX) + Math.abs(avgDriftY);
+            double avgDrift = accumulatedDriftMagnitude / driftSampleCount;
 
-            if (driftMagnitude > DRIFT_CONFIRM_THRESHOLD) {
+            if (avgDrift > DRIFT_CONFIRM_THRESHOLD) {
                 driftConfirmStreak++;
 
                 if (driftConfirmStreak >= DRIFT_CONFIRM_REQUIRED) {
-                    System.out.printf("[drift] Systematic drift detected — ΔX: %.2f, ΔY: %.2f. Re-entering calibration.%n",
-                            avgDriftX, avgDriftY);
+                    System.out.printf("[drift] Systematic drift detected — Variance: %.2f%%. Re-entering calibration.%n", avgDrift);
                     this.calibrationConverged = false;
                     this.calibrationFrames = 0;
                     this.offsetWindow.clear();
@@ -330,9 +327,7 @@ public class ScreenPositionTracker {
             } else {
                 driftConfirmStreak = 0;
             }
-
-            accumulatedDriftX = 0f;
-            accumulatedDriftY = 0f;
+            accumulatedDriftMagnitude = 0f;
             driftSampleCount = 0;
         }
     }
