@@ -205,7 +205,7 @@ public class ScreenPositionTracker {
 
     private void runCalibrationUpdate(Point healthBarCenter, Point champMapCenter, CameraBox cameraBox,
                                       float champScore, int perfectMapSize, int screenWidth, int screenHeight) {
-        if (champScore <= 0.60f) {
+        if (champScore <= 0.65f) {
             System.out.printf("[calibration] Paused — low template confidence (%.2f)%n", champScore);
             return;
         }
@@ -628,10 +628,10 @@ public class ScreenPositionTracker {
             Mat resizedTemplate = new Mat();
             Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
 
-            int cx = (int) (resizedTemplate.width() * 0.2);
-            int cy = (int) (resizedTemplate.height() * 0.2);
-            int cw = (int) (resizedTemplate.width() * 0.6);
-            int ch = (int) (resizedTemplate.height() * 0.6);
+            int cx = (int) (resizedTemplate.width() * 0.15);
+            int cy = (int) (resizedTemplate.height() * 0.15);
+            int cw = (int) (resizedTemplate.width() * 0.7);
+            int ch = (int) (resizedTemplate.height() * 0.7);
 
             if (cw <= 0 || ch <= 0) {
                 resizedTemplate.release();

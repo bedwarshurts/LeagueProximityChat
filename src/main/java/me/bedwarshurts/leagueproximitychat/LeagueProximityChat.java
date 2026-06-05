@@ -235,7 +235,8 @@ public class LeagueProximityChat {
                 server.sendToActive("{\"type\":\"SHUTDOWN\"}");
                 try {
                     Thread.sleep(200);
-                } catch (InterruptedException ignored) {}
+                } catch (InterruptedException ignored) {
+                }
             }
         }));
 
