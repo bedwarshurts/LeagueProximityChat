@@ -68,7 +68,7 @@ public class ScreenPositionTracker {
     private static final double BOOTSTRAP_AMBIGUITY = 0.6;
 
     private int lockedMatchFailures = 0;
-    private static final int MAX_LOCKED_MATCH_FAILURES = 20;
+    private static final int MAX_LOCKED_MATCH_FAILURES = 12;
 
     private static final int MATCH_BLUR_KERNEL = 3;
 
@@ -179,7 +179,7 @@ public class ScreenPositionTracker {
 
         if (!isBootstrapped && healthBarCenter != null && cameraBox != null && !allyCircles.isEmpty()) {
             bootstrapTemplateFromHealthBar(minimapMat, allyCircles, cameraBox, healthBarCenter,
-                    perfectMapSize, fullScreenMat.width(), fullScreenMat.height());
+                    perfectMapSize, fullScreenMat.width(), fullScreenMat.height(), minimapMat);
         }
 
         TemplateMatch champMatch = locateChampionViaTemplate(minimapMat, allyCircles);
@@ -187,7 +187,7 @@ public class ScreenPositionTracker {
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
 
-        if (isScaleLocked && healthBarCenter != null) {
+        if ((isScaleLocked || isBootstrapped) && healthBarCenter != null) {
             if (champMatch == null) {
                 lockedMatchFailures++;
                 if (lockedMatchFailures >= MAX_LOCKED_MATCH_FAILURES) {
@@ -405,7 +405,7 @@ public class ScreenPositionTracker {
 
     private void bootstrapTemplateFromHealthBar(Mat minimap, List<AllyCircle> allies, CameraBox cameraBox,
                                                 Point healthBarCenter, int perfectMapSize,
-                                                int screenWidth, int screenHeight) {
+                                                int screenWidth, int screenHeight, Mat minimapMat) {
         float projX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, screenWidth) + healthBarCalibrateX;
         float projY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, screenHeight) + healthBarCalibrateY;
 
@@ -430,6 +430,13 @@ public class ScreenPositionTracker {
                 || (nearestDist < secondDist * BOOTSTRAP_AMBIGUITY)
                 || (nearestDist < 6.0);
         if (nearest == null || nearestDist > BOOTSTRAP_MAX_DIST || !unambiguous) {
+            bootstrapConfidence = 0;
+            bootstrapLastPick = null;
+            return;
+        }
+
+        if (isRegionContaminatedByEnemy(minimapMat, nearest.center(), nearest.radius())) {
+            System.out.println("[bootstrap] Target circle isolated, but contaminated by enemy indicators. Skipping frame.");
             bootstrapConfidence = 0;
             bootstrapLastPick = null;
             return;
@@ -464,6 +471,45 @@ public class ScreenPositionTracker {
                 sigma, lockedCoreTemplateEnhanced != null ? " [CLAHE]" : "");
     }
 
+    private boolean isRegionContaminatedByEnemy(Mat minimap, Point center, int radius) {
+        int checkRadius = (int) (radius * 1.3);
+        int x = (int) Math.max(0, center.x - checkRadius);
+        int y = (int) Math.max(0, center.y - checkRadius);
+        int w = Math.min(minimap.width() - x, checkRadius * 2);
+        int h = Math.min(minimap.height() - y, checkRadius * 2);
+
+        if (w <= 0 || h <= 0) return true;
+
+        Mat roi = new Mat(minimap, new Rect(x, y, w, h));
+        Mat hsv = new Mat();
+        Imgproc.cvtColor(roi, hsv, Imgproc.COLOR_BGR2HSV);
+
+        Mat maskLower = new Mat();
+        Mat maskUpper = new Mat();
+        Core.inRange(hsv, new Scalar(0, 140, 140), new Scalar(6, 255, 230), maskLower);
+        Core.inRange(hsv, new Scalar(174, 140, 140), new Scalar(179, 255, 230), maskUpper);
+
+        Mat redMask = new Mat();
+        Core.bitwise_or(maskLower, maskUpper, redMask);
+
+        Point roiCenter = new Point(w / 2.0, h / 2.0);
+        int ignoreRadius = (int) (radius * 0.85);
+        Imgproc.circle(redMask, roiCenter, ignoreRadius, new Scalar(0), -1);
+
+        int redPixelCount = Core.countNonZero(redMask);
+
+        double totalCheckedPixels = (w * h) - (Math.PI * Math.pow(ignoreRadius, 2));
+        double redRatio = redPixelCount / totalCheckedPixels;
+
+        roi.release();
+        hsv.release();
+        maskLower.release();
+        maskUpper.release();
+        redMask.release();
+
+        return redRatio > 0.015;
+    }
+
     private Mat extractIconTemplate(Mat minimap, Point center, int radius) {
         int boxHalf = Math.max(4, radius);
         int x = (int) Math.max(0, center.x - boxHalf);
@@ -474,10 +520,10 @@ public class ScreenPositionTracker {
 
         Mat region = new Mat(minimap, new Rect(x, y, w, h)).clone();
 
-        int cx = (int) (region.width() * 0.175);
-        int cy = (int) (region.height() * 0.175);
-        int cw = (int) (region.width() * 0.65);
-        int ch = (int) (region.height() * 0.65);
+        int cx = (int) (region.width() * 0.125);
+        int cy = (int) (region.height() * 0.125);
+        int cw = (int) (region.width() * 0.75);
+        int ch = (int) (region.height() * 0.75);
         if (cw < 4 || ch < 4) {
             region.release();
             return null;
@@ -875,10 +921,10 @@ public class ScreenPositionTracker {
             Mat resizedTemplate = new Mat();
             Imgproc.resize(championTemplate, resizedTemplate, new Size(targetSize, targetSize), 0, 0, Imgproc.INTER_AREA);
 
-            int cx = (int) (resizedTemplate.width() * 0.15);
-            int cy = (int) (resizedTemplate.height() * 0.15);
-            int cw = (int) (resizedTemplate.width() * 0.7);
-            int ch = (int) (resizedTemplate.height() * 0.7);
+            int cx = (int) (resizedTemplate.width() * 0.125);
+            int cy = (int) (resizedTemplate.height() * 0.125);
+            int cw = (int) (resizedTemplate.width() * 0.75);
+            int ch = (int) (resizedTemplate.height() * 0.75);
 
             if (cw <= 0 || ch <= 0) {
                 resizedTemplate.release();
