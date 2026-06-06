@@ -72,6 +72,16 @@ public class ScreenPositionTracker {
 
     private static final int MATCH_BLUR_KERNEL = 3;
 
+    private static final double PROXIMITY_BOOST_MAX = 0.50;
+    private static final double PROXIMITY_BOOST_RADIUS = 25.0;
+    private static final double CLONE_DETECT_THRESHOLD = 0.78;
+    private static final double MAX_HEALTHBAR_MATCH_DIST = 15.0;
+
+    private static final double BLIP_RADIUS_PER_MINIMAP_PX = 16.0 / 280.0;
+    private static final double BLIP_RADIUS_MIN_FACTOR = 0.60;
+    private static final double BLIP_RADIUS_MAX_FACTOR = 1.50;
+    private static final double BLIP_MIN_DIST_FACTOR = 0.65;
+
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
 
@@ -182,7 +192,18 @@ public class ScreenPositionTracker {
                     perfectMapSize, fullScreenMat.width(), fullScreenMat.height(), minimapMat);
         }
 
-        TemplateMatch champMatch = locateChampionViaTemplate(minimapMat, allyCircles);
+        float anchorX, anchorY;
+        if (healthBarCenter != null && cameraBox != null) {
+            float aHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
+            float aHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
+            anchorX = aHpX + healthBarCalibrateX;
+            anchorY = aHpY + healthBarCalibrateY;
+        } else {
+            anchorX = lastKnownX;
+            anchorY = lastKnownY;
+        }
+
+        TemplateMatch champMatch = locateChampionViaTemplate(minimapMat, allyCircles, anchorX, anchorY);
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
@@ -282,6 +303,12 @@ public class ScreenPositionTracker {
 
         float targetOffsetX = trueX - rawHpX;
         float targetOffsetY = trueY - rawHpY;
+
+        float rawMatchDist = (float) Math.hypot(targetOffsetX, targetOffsetY);
+        if (rawMatchDist > MAX_HEALTHBAR_MATCH_DIST) {
+            System.out.printf("[calibration] Match %.1f%% from health-bar projection — likely a clone, skipping frame.%n", rawMatchDist);
+            return;
+        }
 
         if (!tryAcceptCalibrationSample(targetOffsetX, targetOffsetY)) {
             System.out.printf("[calibration] Outlier rejected (%.2f, %.2f)%n", targetOffsetX, targetOffsetY);
@@ -389,6 +416,11 @@ public class ScreenPositionTracker {
         float trueY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
         double currentFrameDrift = Math.hypot(trueX - calibratedHpX, trueY - calibratedHpY);
+
+        if (currentFrameDrift > MAX_HEALTHBAR_MATCH_DIST) {
+            return;
+        }
+
         accumulatedDriftMagnitude += currentFrameDrift;
         driftSampleCount++;
 
@@ -860,7 +892,8 @@ public class ScreenPositionTracker {
         }
     }
 
-    private TemplateMatch locateChampionViaTemplate(Mat minimap, List<AllyCircle> allyCircles) {
+    private TemplateMatch locateChampionViaTemplate(Mat minimap, List<AllyCircle> allyCircles,
+                                                    double anchorX, double anchorY) {
         int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
 
@@ -877,26 +910,35 @@ public class ScreenPositionTracker {
             int ch = lockedCoreTemplate.height();
             List<CandidateMatch> candidates = new ArrayList<>();
 
+            int strongMatches = 0;
             for (AllyCircle ally : allyCircles) {
                 EvalResult eval = evaluateTemplateAtAlly(minimap, ally.center(), lockedCoreTemplate, lockedCoreTemplateEnhanced, 2);
                 if (eval == null) continue;
 
-                double score = eval.score();
+                double rawScore = eval.score();
                 Point candidateCenter = eval.center();
+
+                if (rawScore > CLONE_DETECT_THRESHOLD) strongMatches++;
 
                 double candidateX = (candidateCenter.x / minimap.width()) * 100.0;
                 double candidateY = 100.0 - ((candidateCenter.y / minimap.height()) * 100.0);
 
-                double dist = Math.hypot(candidateX - this.lastKnownX, candidateY - this.lastKnownY);
-                if (dist < 8.0) score += 0.50;
+                double dist = Math.hypot(candidateX - anchorX, candidateY - anchorY);
+                double boost = PROXIMITY_BOOST_MAX * Math.max(0.0, 1.0 - (dist / PROXIMITY_BOOST_RADIUS));
+                double score = rawScore + boost;
 
-                candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, eval.score()));
+                candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, rawScore));
 
                 if (score > bestScore) {
                     bestScore = score;
                     bestCenter = candidateCenter;
-                    rawScoreLog = eval.score();
+                    rawScoreLog = rawScore;
                 }
+            }
+
+            if (strongMatches >= 2) {
+                System.out.printf("[locateChampionViaTemplate] %d strong icon matches — clone likely present; anchoring to (%.1f, %.1f).%n",
+                        strongMatches, anchorX, anchorY);
             }
 
             drawTop10Debug(minimap, candidates);
@@ -1024,8 +1066,14 @@ public class ScreenPositionTracker {
                 Imgcodecs.imwrite("debug/debug_ally_mask.png", blurredMask);
             }
 
+            double expectedRadius = minimap.width() * BLIP_RADIUS_PER_MINIMAP_PX;
+            int minRadius = Math.max(4, (int) Math.round(expectedRadius * BLIP_RADIUS_MIN_FACTOR));
+            int maxRadius = (int) Math.round(expectedRadius * BLIP_RADIUS_MAX_FACTOR);
+            double minDist = Math.max(6.0, expectedRadius * BLIP_MIN_DIST_FACTOR);
+
             Mat circles = new Mat();
-            Imgproc.HoughCircles(blurredMask, circles, Imgproc.HOUGH_GRADIENT, 1.0, 10.0, 100.0, 14.0, 10, 22);
+            Imgproc.HoughCircles(blurredMask, circles, Imgproc.HOUGH_GRADIENT,
+                    1.0, minDist, 100.0, 14.0, minRadius, maxRadius);
 
             Mat debugDrawMap = WindowUtils.isWindowFocused("League of Legends (TM) Client")
                     ? minimap.clone() : null;
@@ -1139,5 +1187,20 @@ public class ScreenPositionTracker {
         Mat mat = new Mat(bounds.height, bounds.width, CvType.CV_8UC3);
         mat.put(0, 0, pixels);
         return mat;
+    }
+
+    public void release() {
+        if (championTemplate != null) {
+            championTemplate.release();
+            championTemplate = null;
+        }
+        if (lockedCoreTemplate != null) {
+            lockedCoreTemplate.release();
+            lockedCoreTemplate = null;
+        }
+        if (lockedCoreTemplateEnhanced != null) {
+            lockedCoreTemplateEnhanced.release();
+            lockedCoreTemplateEnhanced = null;
+        }
     }
 }
