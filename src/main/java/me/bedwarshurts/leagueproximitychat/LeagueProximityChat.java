@@ -42,6 +42,11 @@ public class LeagueProximityChat {
     private static ScreenPositionTracker tracker = null;
     private static CoordinateServer server = null;
 
+    private static long gameEndCheckLastMs = 0;
+    private static int gameEndFailureStreak = 0;
+    private static final long GAME_END_CHECK_INTERVAL_MS = 2000;
+    private static final int GAME_END_FAILURE_THRESHOLD = 3;
+
     public static LeaguePlayer findLocalPlayer(LeagueGame gameData, String localSummonerName) {
         for (LeaguePlayer p : gameData.players()) {
             if ((p.getRiotId() != null && p.getRiotId().equalsIgnoreCase(localSummonerName))) {
@@ -49,6 +54,48 @@ public class LeagueProximityChat {
             }
         }
         return null;
+    }
+
+    private static boolean isGameOver() {
+        long now = System.currentTimeMillis();
+        if (now - gameEndCheckLastMs < GAME_END_CHECK_INTERVAL_MS) {
+            return false;
+        }
+        gameEndCheckLastMs = now;
+
+        String playerList = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
+        if (playerList != null && !playerList.isEmpty()) {
+            gameEndFailureStreak = 0;
+            return false;
+        }
+
+        gameEndFailureStreak++;
+        return gameEndFailureStreak >= GAME_END_FAILURE_THRESHOLD;
+    }
+
+    private static void resetForNextGame() {
+        if (server != null) {
+            server.sendToActive("{\"type\":\"GAME_ENDED\"}");
+            server.setUserRequestedConnection(false);
+        }
+
+        activeRoom = null;
+        if (tracker != null) {
+            tracker.release();
+            tracker = null;
+        }
+
+        hasSentRoster = false;
+        hasConnectedToLiveKit = false;
+        isTrackerReady = false;
+        wasPaused = false;
+        detectedChampion = null;
+        roomLeaderRiotId = null;
+
+        RitoApiUtils.clearCache();
+
+        gameEndCheckLastMs = 0;
+        gameEndFailureStreak = 0;
     }
 
     public static void trackingLoop() throws InterruptedException, NoSuchAlgorithmException {
@@ -70,6 +117,13 @@ public class LeagueProximityChat {
         if (isAwaitingBrowser) {
             System.out.println("Browser WebSocket connected!");
             isAwaitingBrowser = false;
+        }
+
+        if (hasSentRoster && isGameOver()) {
+            System.out.println("Game ended. Resetting to wait for the next match.");
+            resetForNextGame();
+            Thread.sleep(1000);
+            return;
         }
 
         LeagueGame gameData = null;
@@ -251,7 +305,7 @@ public class LeagueProximityChat {
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
             Thread.sleep(1000);
-            //System.exit(0);
+            System.exit(0);
         }
 
         DiscordRPCManager.start();

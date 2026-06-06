@@ -89,6 +89,10 @@ public class RitoApiUtils {
         }
     }
 
+    public static void clearCache() {
+        cachedSummonerName = null;
+    }
+
     public static String getLocalSummonerName() {
         if (cachedSummonerName != null) {
             return cachedSummonerName;
