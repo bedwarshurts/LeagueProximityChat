@@ -187,12 +187,22 @@ public class ScreenPositionTracker {
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
 
-        if ((isScaleLocked || isBootstrapped) && healthBarCenter != null) {
+        if ((isScaleLocked || isBootstrapped) && healthBarCenter != null && cameraBox != null) {
             if (champMatch == null) {
-                lockedMatchFailures++;
-                if (lockedMatchFailures >= MAX_LOCKED_MATCH_FAILURES) {
-                    System.out.println("[bootstrap] Locked template failing repeatedly while champion is present — resetting to re-learn.");
-                    resetScaleLock();
+
+                float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
+                float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
+                float currentHpMapX = rawHpX + healthBarCalibrateX;
+                float currentHpMapY = rawHpY + healthBarCalibrateY;
+
+                double distanceMoved = Math.hypot(currentHpMapX - lastKnownX, currentHpMapY - lastKnownY);
+
+                if (!(distanceMoved < 1.5)) {
+                    lockedMatchFailures++;
+                    if (lockedMatchFailures >= MAX_LOCKED_MATCH_FAILURES) {
+                        System.out.println("[bootstrap] Locked template failing repeatedly while moving — resetting to re-learn.");
+                        resetScaleLock();
+                    }
                 }
             } else {
                 lockedMatchFailures = 0;
