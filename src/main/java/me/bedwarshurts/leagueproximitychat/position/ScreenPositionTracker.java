@@ -204,7 +204,7 @@ public class ScreenPositionTracker {
                     (float) champScore, perfectMapSize, fullScreenMat.width(), fullScreenMat.height());
         }
 
-        if (calibrationConverged && healthBarCenter != null && champMapCenter != null && champScore > 0.65) {
+        if (calibrationConverged && healthBarCenter != null && champMapCenter != null && cameraBox != null && champScore > 0.65) {
             monitorDrift(healthBarCenter, champMapCenter, cameraBox,
                     perfectMapSize, fullScreenMat.width(), fullScreenMat.height());
         }
