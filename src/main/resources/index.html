@@ -184,6 +184,40 @@
         }, 100);
     }
 
+    function resetToIdleState() {
+        try { if (room) room.disconnect(); } catch (e) {}
+
+        Object.keys(remoteAudioNodes).forEach(cleanupRemoteAudio);
+        localPosition.x = 0;
+        localPosition.y = 0;
+        localPosition.isDead = false;
+
+        isWaitingForMatch = false;
+        connected = false;
+        micMuted = false;
+
+        const startBtn = document.getElementById('start-btn');
+        startBtn.style.display = 'block';
+        startBtn.style.backgroundColor = '#007bff';
+        startBtn.innerText = 'Connect to Audio';
+        document.getElementById('mute-btn').style.display = 'none';
+
+        const lkStatus = document.getElementById('lk-status');
+        lkStatus.className = 'status error';
+        lkStatus.innerText = 'LiveKit Audio Server: Waiting for token...';
+
+        localUserIdentity = null;
+        matchLeaderIdentity = null;
+        document.getElementById('roster-container').innerHTML =
+            '<div class="player-item" style="color:#666; font-style:italic;">Waiting for match to begin...</div>';
+
+        const coordEl = document.getElementById('local-coords');
+        if (coordEl) {
+            coordEl.innerText = "Waiting for data...";
+            coordEl.style.color = "#888";
+        }
+    }
+
     function buildRosterUI(players, localId, leaderId) {
         localUserIdentity = localId;
         matchLeaderIdentity = leaderId;
@@ -398,6 +432,11 @@
 
                 if (data.type === "SHUTDOWN") {
                     closeApplicationTab();
+                    return;
+                }
+
+                if (data.type === "GAME_ENDED") {
+                    resetToIdleState();
                     return;
                 }
 
