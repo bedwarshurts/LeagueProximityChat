@@ -230,7 +230,7 @@ public class ScreenPositionTracker {
             }
         }
 
-        if (healthBarCenter != null && champMapCenter != null && !calibrationConverged) {
+        if (healthBarCenter != null && champMapCenter != null && cameraBox != null && !calibrationConverged) {
             runCalibrationUpdate(healthBarCenter, champMapCenter, cameraBox,
                     (float) champScore, perfectMapSize, fullScreenMat.width(), fullScreenMat.height());
         }
