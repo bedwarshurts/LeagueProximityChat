@@ -68,7 +68,7 @@ public class ScreenPositionTracker {
     private static final double BOOTSTRAP_AMBIGUITY = 0.6;
 
     private int lockedMatchFailures = 0;
-    private static final int MAX_LOCKED_MATCH_FAILURES = 12;
+    private static final int MAX_LOCKED_MATCH_FAILURES = 25;
 
     private static final int MATCH_BLUR_KERNEL = 3;
 
