@@ -66,6 +66,7 @@ public class ScreenPositionTracker {
     private static final int BOOTSTRAP_CONFIRM_FRAMES = 3;
     private static final double BOOTSTRAP_MAX_DIST = 12.0;
     private static final double BOOTSTRAP_AMBIGUITY = 0.6;
+    private static final double ALLY_ISOLATION_FACTOR = 1.1;
 
     private int lockedMatchFailures = 0;
     private static final int MAX_LOCKED_MATCH_FAILURES = 25;
@@ -484,6 +485,13 @@ public class ScreenPositionTracker {
             return;
         }
 
+        if (!isAllyCircleIsolated(nearest, allies)) {
+            System.out.println("[bootstrap] Target overlapped by another ally icon — waiting for a clean frame.");
+            bootstrapConfidence = 0;
+            bootstrapLastPick = null;
+            return;
+        }
+
         if (bootstrapLastPick != null
                 && Math.hypot(nearest.center().x - bootstrapLastPick.x, nearest.center().y - bootstrapLastPick.y) < 5.0) {
             bootstrapConfidence++;
@@ -513,35 +521,54 @@ public class ScreenPositionTracker {
                 sigma, lockedCoreTemplateEnhanced != null ? " [CLAHE]" : "");
     }
 
+    private boolean isAllyCircleIsolated(AllyCircle target, List<AllyCircle> allies) {
+        for (AllyCircle other : allies) {
+            if (other == target) continue;
+            double dist = Math.hypot(other.center().x - target.center().x,
+                    other.center().y - target.center().y);
+            double minSeparation = (target.radius() + other.radius()) * ALLY_ISOLATION_FACTOR;
+            if (dist < minSeparation) return false;
+        }
+        return true;
+    }
+
     private boolean isRegionContaminatedByEnemy(Mat minimap, Point center, int radius) {
-        int checkRadius = (int) (radius * 1.3);
-        int x = (int) Math.max(0, center.x - checkRadius);
-        int y = (int) Math.max(0, center.y - checkRadius);
-        int w = Math.min(minimap.width() - x, checkRadius * 2);
-        int h = Math.min(minimap.height() - y, checkRadius * 2);
+        int expectedRadius = (int) Math.round(minimap.width() * BLIP_RADIUS_PER_MINIMAP_PX);
+        int checkRadius = Math.max((int) (radius * 1.6), (int) (expectedRadius * 1.6));
+
+        int x0 = (int) Math.max(0, center.x - checkRadius);
+        int y0 = (int) Math.max(0, center.y - checkRadius);
+        int x1 = (int) Math.min(minimap.width(), center.x + checkRadius);
+        int y1 = (int) Math.min(minimap.height(), center.y + checkRadius);
+        int w = x1 - x0;
+        int h = y1 - y0;
 
         if (w <= 0 || h <= 0) return true;
 
-        Mat roi = new Mat(minimap, new Rect(x, y, w, h));
+        Mat roi = new Mat(minimap, new Rect(x0, y0, w, h));
         Mat hsv = new Mat();
         Imgproc.cvtColor(roi, hsv, Imgproc.COLOR_BGR2HSV);
 
         Mat maskLower = new Mat();
         Mat maskUpper = new Mat();
-        Core.inRange(hsv, new Scalar(0, 140, 140), new Scalar(6, 255, 230), maskLower);
-        Core.inRange(hsv, new Scalar(174, 140, 140), new Scalar(179, 255, 230), maskUpper);
+        Core.inRange(hsv, new Scalar(0, 110, 120), new Scalar(9, 255, 255), maskLower);
+        Core.inRange(hsv, new Scalar(173, 110, 120), new Scalar(179, 255, 255), maskUpper);
 
         Mat redMask = new Mat();
         Core.bitwise_or(maskLower, maskUpper, redMask);
 
-        Point roiCenter = new Point(w / 2.0, h / 2.0);
-        int ignoreRadius = (int) (radius * 0.85);
+        Point roiCenter = new Point(center.x - x0, center.y - y0);
+        int ignoreRadius = (int) (radius * 1.05);
         Imgproc.circle(redMask, roiCenter, ignoreRadius, new Scalar(0), -1);
 
         int redPixelCount = Core.countNonZero(redMask);
 
-        double totalCheckedPixels = (w * h) - (Math.PI * Math.pow(ignoreRadius, 2));
+        double totalCheckedPixels = Math.max(1.0, (w * (double) h) - (Math.PI * ignoreRadius * (double) ignoreRadius));
         double redRatio = redPixelCount / totalCheckedPixels;
+
+        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            Imgcodecs.imwrite("debug/debug_enemy_red_mask.png", redMask);
+        }
 
         roi.release();
         hsv.release();
@@ -549,7 +576,7 @@ public class ScreenPositionTracker {
         maskUpper.release();
         redMask.release();
 
-        return redRatio > 0.015;
+        return redRatio > 0.01;
     }
 
     private Mat extractIconTemplate(Mat minimap, Point center, int radius) {
