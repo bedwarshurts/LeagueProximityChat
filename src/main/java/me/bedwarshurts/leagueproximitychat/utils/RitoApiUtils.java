@@ -159,6 +159,31 @@ public class RitoApiUtils {
         return null;
     }
 
+    public static String getGameflowPhase() {
+        try {
+            Path lockfilePath = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
+            if (!Files.exists(lockfilePath)) {
+                return null;
+            }
+
+            String lockfileData = Files.readString(lockfilePath);
+            String[] lockfileParts = lockfileData.split(":");
+            String port = lockfileParts[2];
+            String password = lockfileParts[3];
+
+            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
+            String response = executeGetRequest("https://127.0.0.1:" + port + "/lol-gameflow/v1/gameflow-phase", base64Auth);
+
+            if (response == null) {
+                return null;
+            }
+
+            return response.replace("\"", "").trim();
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
     public static String getRiotIdFromSummonerId(String port, String base64Auth, long summonerId) {
         try {
             String response = executeGetRequest("https://127.0.0.1:" + port + "/lol-summoner/v1/summoners/" + summonerId, base64Auth);

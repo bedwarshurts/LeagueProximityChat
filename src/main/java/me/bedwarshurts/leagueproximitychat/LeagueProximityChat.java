@@ -63,6 +63,17 @@ public class LeagueProximityChat {
         }
         gameEndCheckLastMs = now;
 
+        String phase = RitoApiUtils.getGameflowPhase();
+        if (phase != null) {
+            if (phase.equalsIgnoreCase("InProgress")
+                    || phase.equalsIgnoreCase("Reconnect")
+                    || phase.equalsIgnoreCase("GameStart")) {
+                gameEndFailureStreak = 0;
+                return false;
+            }
+            return true;
+        }
+
         String playerList = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
         if (playerList != null && !playerList.isEmpty()) {
             gameEndFailureStreak = 0;
