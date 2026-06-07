@@ -65,7 +65,8 @@ public class ScreenPositionTracker {
     private Point bootstrapLastPick = null;
     private static final int BOOTSTRAP_CONFIRM_FRAMES = 3;
     private static final double BOOTSTRAP_MAX_DIST = 12.0;
-    private static final double BOOTSTRAP_AMBIGUITY = 0.6;
+    private static final double BOOTSTRAP_MIN_CHAMPION_MATCH = 0.30;
+    private static final double BOOTSTRAP_MATCH_MARGIN = 0.10;
     private static final double ALLY_ISOLATION_FACTOR = 1.1;
 
     private int lockedMatchFailures = 0;
@@ -458,26 +459,39 @@ public class ScreenPositionTracker {
         float projY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, screenHeight) + healthBarCalibrateY;
 
         AllyCircle nearest = null;
-        double nearestDist = Double.MAX_VALUE;
-        double secondDist = Double.MAX_VALUE;
+        double bestScore = -1.0;
+        double secondScore = -1.0;
 
         for (AllyCircle a : allies) {
             double ax = (a.center().x / minimap.width()) * 100.0;
             double ay = 100.0 - ((a.center().y / minimap.height()) * 100.0);
-            double d = Math.hypot(ax - projX, ay - projY);
-            if (d < nearestDist) {
-                secondDist = nearestDist;
-                nearestDist = d;
+            if (Math.hypot(ax - projX, ay - projY) > BOOTSTRAP_MAX_DIST) continue;
+
+            Mat patch = extractIconTemplate(minimap, a.center(), a.radius());
+            if (patch == null) continue;
+            double score = championMatchScore(patch);
+            patch.release();
+
+            System.out.printf("[bootstrap] candidate @(%.0f,%.0f) championMatch=%.2f%n",
+                    a.center().x, a.center().y, score);
+
+            if (score > bestScore) {
+                secondScore = bestScore;
+                bestScore = score;
                 nearest = a;
-            } else if (d < secondDist) {
-                secondDist = d;
+            } else if (score > secondScore) {
+                secondScore = score;
             }
         }
 
-        boolean unambiguous = (secondDist == Double.MAX_VALUE)
-                || (nearestDist < secondDist * BOOTSTRAP_AMBIGUITY)
-                || (nearestDist < 6.0);
-        if (nearest == null || nearestDist > BOOTSTRAP_MAX_DIST || !unambiguous) {
+        if (nearest == null || bestScore < BOOTSTRAP_MIN_CHAMPION_MATCH) {
+            bootstrapConfidence = 0;
+            bootstrapLastPick = null;
+            return;
+        }
+        if (secondScore >= 0 && (bestScore - secondScore) < BOOTSTRAP_MATCH_MARGIN) {
+            System.out.printf("[bootstrap] Ambiguous appearance match (%.2f vs %.2f) — waiting for separation.%n",
+                    bestScore, secondScore);
             bootstrapConfidence = 0;
             bootstrapLastPick = null;
             return;
