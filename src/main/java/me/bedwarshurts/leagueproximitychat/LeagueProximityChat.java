@@ -47,6 +47,8 @@ public class LeagueProximityChat {
     private static final long GAME_END_CHECK_INTERVAL_MS = 2000;
     private static final int GAME_END_FAILURE_THRESHOLD = 3;
 
+    private static final double GAME_START_MIN_TIME = 1.0;
+
     public static LeaguePlayer findLocalPlayer(LeagueGame gameData, String localSummonerName) {
         for (LeaguePlayer p : gameData.players()) {
             if ((p.getRiotId() != null && p.getRiotId().equalsIgnoreCase(localSummonerName))) {
@@ -82,6 +84,10 @@ public class LeagueProximityChat {
 
         gameEndFailureStreak++;
         return gameEndFailureStreak >= GAME_END_FAILURE_THRESHOLD;
+    }
+
+    private static boolean hasGameStarted() {
+        return RitoApiUtils.getGameTime() > GAME_START_MIN_TIME;
     }
 
     private static void resetForNextGame() {
@@ -177,6 +183,12 @@ public class LeagueProximityChat {
         }
 
         if (!server.isUserRequestedConnection()) {
+            CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
+            Thread.sleep(1000);
+            return;
+        }
+
+        if (isInGame && !hasConnectedToLiveKit && !hasGameStarted()) {
             CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
             Thread.sleep(1000);
             return;
