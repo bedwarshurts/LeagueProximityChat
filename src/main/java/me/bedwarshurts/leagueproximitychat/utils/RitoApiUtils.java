@@ -24,6 +24,7 @@ public class RitoApiUtils {
 
     private static boolean sslBypassed = false;
     private static String cachedSummonerName = null;
+    private static final Path LOCKFILE_PATH = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
 
     public static void disableSSLChecks() {
         if (sslBypassed) return;
@@ -89,6 +90,21 @@ public class RitoApiUtils {
         }
     }
 
+    private static String fetchClientAPI(String path) {
+        try {
+            if (!Files.exists(LOCKFILE_PATH)) {
+                return null;
+            }
+            String[] lockfileParts = Files.readString(LOCKFILE_PATH).split(":");
+            String port = lockfileParts[2];
+            String password = lockfileParts[3];
+            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
+            return executeGetRequest("https://127.0.0.1:" + port + path, base64Auth);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     public static void clearCache() {
         cachedSummonerName = null;
     }
@@ -123,19 +139,7 @@ public class RitoApiUtils {
 
     public static String getLobbyLeader() {
         try {
-            Path lockfilePath = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
-            if (!Files.exists(lockfilePath)) {
-                return null;
-            }
-
-            String lockfileData = Files.readString(lockfilePath);
-            String[] lockfileParts = lockfileData.split(":");
-            String port = lockfileParts[2];
-            String password = lockfileParts[3];
-
-            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
-            String response = executeGetRequest("https://127.0.0.1:" + port + "/lol-lobby/v2/lobby", base64Auth);
-
+            String response = fetchClientAPI("/lol-lobby/v2/lobby");
             if (response == null) {
                 return null;
             }
@@ -149,7 +153,7 @@ public class RitoApiUtils {
                     if (member.optBoolean("isLeader", false)) {
                         long leaderId = member.optLong("summonerId", 0);
                         if (leaderId != 0) {
-                            return getRiotIdFromSummonerId(port, base64Auth, leaderId);
+                            return getRiotIdFromSummonerId(leaderId);
                         }
                     }
                 }
@@ -160,33 +164,16 @@ public class RitoApiUtils {
     }
 
     public static String getGameflowPhase() {
-        try {
-            Path lockfilePath = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
-            if (!Files.exists(lockfilePath)) {
-                return null;
-            }
-
-            String lockfileData = Files.readString(lockfilePath);
-            String[] lockfileParts = lockfileData.split(":");
-            String port = lockfileParts[2];
-            String password = lockfileParts[3];
-
-            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
-            String response = executeGetRequest("https://127.0.0.1:" + port + "/lol-gameflow/v1/gameflow-phase", base64Auth);
-
-            if (response == null) {
-                return null;
-            }
-
-            return response.replace("\"", "").trim();
-        } catch (Exception ignored) {
+        String response = fetchClientAPI("/lol-gameflow/v1/gameflow-phase");
+        if (response == null) {
+            return null;
         }
-        return null;
+        return response.replace("\"", "").trim();
     }
 
-    public static String getRiotIdFromSummonerId(String port, String base64Auth, long summonerId) {
+    private static String getRiotIdFromSummonerId(long summonerId) {
         try {
-            String response = executeGetRequest("https://127.0.0.1:" + port + "/lol-summoner/v1/summoners/" + summonerId, base64Auth);
+            String response = fetchClientAPI("/lol-summoner/v1/summoners/" + summonerId);
 
             if (response == null) return "Unknown";
 
@@ -199,6 +186,18 @@ public class RitoApiUtils {
         } catch (Exception e) {
             System.err.println("Failed to resolve Summoner ID: " + e.getMessage());
             return "Unknown";
+        }
+    }
+
+    public static double getGameTime() {
+        String json = fetchAPI("https://127.0.0.1:2999/liveclientdata/gamestats");
+        if (json == null || json.isEmpty()) {
+            return -1.0;
+        }
+        try {
+            return new JSONObject(json).optDouble("gameTime", -1.0);
+        } catch (Exception e) {
+            return -1.0;
         }
     }
 
