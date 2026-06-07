@@ -121,10 +121,15 @@ public class ScreenPositionTracker {
 
     public TrackResult trackPlayerPosition() {
         boolean isDead = checkDeathState();
+
+        if (isDead) {
+            return new TrackResult(lastKnownX, lastKnownY, true);
+        }
+
         Rectangle gameBounds = WindowUtils.getGameWindowBounds("League of Legends (TM) Client");
 
         if (gameBounds == null) {
-            return new TrackResult(lastKnownX, lastKnownY, isDead);
+            return new TrackResult(lastKnownX, lastKnownY, false);
         }
 
         Mat fullScreenMat = captureScreen(gameBounds);
@@ -269,19 +274,19 @@ public class ScreenPositionTracker {
                 debugHealthLoc.release();
             }
 
-            result = new TrackResult(lastKnownX, lastKnownY, isDead);
+            result = new TrackResult(lastKnownX, lastKnownY, false);
 
         } else if (champMapCenter != null) {
             this.lastKnownX = ((float) champMapCenter.x / perfectMapSize) * 100f;
             this.lastKnownY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
             System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
-            result = new TrackResult(lastKnownX, lastKnownY, isDead);
+            result = new TrackResult(lastKnownX, lastKnownY, false);
 
         } else {
             System.out.printf("[trackPlayerPosition] No detection — returning last known -> X: %.2f%% | Y: %.2f%%%n",
                     lastKnownX, lastKnownY);
-            result = new TrackResult(lastKnownX, lastKnownY, isDead);
+            result = new TrackResult(lastKnownX, lastKnownY, false);
         }
 
         fullScreenMat.release();
@@ -505,6 +510,10 @@ public class ScreenPositionTracker {
         Mat core = extractIconTemplate(minimap, nearest.center(), nearest.radius());
         if (core == null) return;
 
+        double validationScore = championMatchScore(core);
+        System.out.printf("[bootstrap] Learned-vs-DDragon validation score: %.2f%n", validationScore);
+        saveLockSnapshot(minimap, nearest, core, validationScore);
+
         if (lockedCoreTemplate != null) lockedCoreTemplate.release();
         if (lockedCoreTemplateEnhanced != null) lockedCoreTemplateEnhanced.release();
         lockedCoreTemplate = core;
@@ -530,6 +539,49 @@ public class ScreenPositionTracker {
             if (dist < minSeparation) return false;
         }
         return true;
+    }
+
+    private double championMatchScore(Mat learnedCore) {
+        if (championTemplate == null || learnedCore.empty()) return -1.0;
+        Mat ddragonCore = null;
+        Mat ref = new Mat();
+        Mat result = new Mat();
+        try {
+            int cx = (int) (championTemplate.width() * 0.125);
+            int cy = (int) (championTemplate.height() * 0.125);
+            int cw = (int) (championTemplate.width() * 0.75);
+            int ch = (int) (championTemplate.height() * 0.75);
+            if (cw < 4 || ch < 4) return -1.0;
+            ddragonCore = new Mat(championTemplate, new Rect(cx, cy, cw, ch));
+
+            int refW = Math.max(4, (int) (learnedCore.width() * 0.85));
+            int refH = Math.max(4, (int) (learnedCore.height() * 0.85));
+            if (refW > learnedCore.width() || refH > learnedCore.height()) return -1.0;
+            Imgproc.resize(ddragonCore, ref, new Size(refW, refH), 0, 0, Imgproc.INTER_AREA);
+
+            Imgproc.matchTemplate(learnedCore, ref, result, Imgproc.TM_CCOEFF_NORMED);
+            return Core.minMaxLoc(result).maxVal;
+        } catch (Exception e) {
+            return -1.0;
+        } finally {
+            if (ddragonCore != null) ddragonCore.release();
+            ref.release();
+            result.release();
+        }
+    }
+
+    private void saveLockSnapshot(Mat minimap, AllyCircle pick, Mat core, double score) {
+        try {
+            String tag = String.format("%d_score%02d", System.currentTimeMillis(), (int) Math.round(score * 100));
+            Imgcodecs.imwrite("debug/lock_core_" + tag + ".png", core);
+
+            Mat ctx = minimap.clone();
+            Imgproc.circle(ctx, pick.center(), pick.radius(), new Scalar(0, 255, 0), 1);
+            Imgproc.circle(ctx, pick.center(), 1, new Scalar(0, 0, 255), -1);
+            Imgcodecs.imwrite("debug/lock_minimap_" + tag + ".png", ctx);
+            ctx.release();
+        } catch (Exception ignored) {
+        }
     }
 
     private boolean isRegionContaminatedByEnemy(Mat minimap, Point center, int radius) {
