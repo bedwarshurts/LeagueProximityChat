@@ -143,6 +143,7 @@
 
     let room = null;
     let audioCtx;
+    let masterLimiter = null;
     const remoteAudioNodes = {};
     const remotePositions = {};
     const localPosition = {x: 0, y: 0, isDead: false};
@@ -310,6 +311,20 @@
         }
     }
 
+    function getMasterLimiter() {
+        if (!audioCtx) return null;
+        if (!masterLimiter) {
+            masterLimiter = audioCtx.createDynamicsCompressor();
+            masterLimiter.threshold.value = -6;
+            masterLimiter.knee.value = 0;
+            masterLimiter.ratio.value = 20;
+            masterLimiter.attack.value = 0.003;
+            masterLimiter.release.value = 0.25;
+            masterLimiter.connect(audioCtx.destination);
+        }
+        return masterLimiter;
+    }
+
     function updateListenerPosition() {
         if (!audioCtx) return;
         const now = audioCtx.currentTime;
@@ -325,8 +340,21 @@
         if (!nodeData || !remotePos) return;
 
         const distance = Math.hypot(remotePos.x - localPosition.x, remotePos.y - localPosition.y);
+
         const maxDist = 12.2;
-        let volume = distance > maxDist ? 0 : Math.sqrt(Math.max(0, 1 - (distance / maxDist)));
+        const fullDist = 3.0;
+        const maxVolume = 2.0;
+        const falloffExp = 0.6;
+
+        let volume;
+        if (distance >= maxDist) {
+            volume = 0;
+        } else if (distance <= fullDist) {
+            volume = maxVolume;
+        } else {
+            const t = (distance - fullDist) / (maxDist - fullDist);
+            volume = maxVolume * Math.pow(1 - t, falloffExp);
+        }
         if (remotePos.isDead) volume = 0;
 
         const now = audioCtx.currentTime;
@@ -607,7 +635,7 @@
             panner.coneInnerAngle = 360;
             source.connect(panner);
             panner.connect(gain);
-            gain.connect(audioCtx.destination);
+            gain.connect(getMasterLimiter() || audioCtx.destination);
             remoteAudioNodes[participant.identity] = {source, panner, gain, hiddenElement};
             await ensurePlaybackUnlocked();
             updateRemoteAudio(participant.identity);
@@ -668,9 +696,16 @@
                     if (isKrispNoiseFilterSupported()) {
                         const krispProcessor = KrispNoiseFilter();
                         await audioPublications[0].track.setProcessor(krispProcessor);
+                        console.log('[Krisp] Noise cancellation active.');
+                    } else {
+                        console.warn('[Krisp] Not supported in this browser — noise cancellation disabled.');
                     }
+                } else {
+                    console.warn('[Krisp] No local audio track found — noise cancellation not applied.');
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error('[Krisp] Failed to apply noise filter:', e);
+            }
             return true;
 
         } catch (error) {
