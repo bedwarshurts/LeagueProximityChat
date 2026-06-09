@@ -24,6 +24,7 @@ public final class MathUtils {
     private static final int RANSAC_TRIALS = 80;          // random 3-point samples per circle
     private static final int RANSAC_MIN_INLIERS = 10;     // min points on a circle to accept it
     private static final double RANSAC_MIN_ARC_DEG = 120;  // inliers must span at least this arc (rejects spurious fits)
+    private static final double RANSAC_MIN_ARC_DENSITY = 0.45; // min inliers per pixel of covered arc length
 
     /**
      * RANSAC multi-circle extraction: repeatedly find the circle (from random 3-point samples) with the
@@ -54,7 +55,11 @@ public final class MathUtils {
                 if (inliers.size() < RANSAC_MIN_INLIERS) continue;
                 // Reject circles whose inliers don't form a wide contiguous arc — the signature of a
                 // spurious fit through unrelated parts of a messy multi-ring contour.
-                if (arcCoverageDeg(inliers, cc[0], cc[1]) < RANSAC_MIN_ARC_DEG) continue;
+                double arcDeg = arcCoverageDeg(inliers, cc[0], cc[1]);
+                if (arcDeg < RANSAC_MIN_ARC_DEG) continue;
+                // A real ring boundary is a contiguous pixel chain (~0.8 points per pixel of arc);
+                // a circle stitched through scattered glyph/dot pixels covers its arc sparsely.
+                if (inliers.size() < Math.toRadians(arcDeg) * cc[2] * RANSAC_MIN_ARC_DENSITY) continue;
                 if (bestInliers == null || inliers.size() > bestInliers.size()) bestInliers = inliers;
             }
 
@@ -144,5 +149,45 @@ public final class MathUtils {
                                double d, double e, double f,
                                double g, double h, double i) {
         return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    }
+
+    /**
+     * Zero-mean normalized cross-correlation between two interleaved pixel buffers, computed only over
+     * the pixels marked visible. Both buffers must be the same length (visible.length * channels).
+     * Returns a score in [-1, 1] comparable to TM_CCOEFF_NORMED, or -1 if degenerate (no visible
+     * pixels / zero variance).
+     */
+    public static double maskedZncc(byte[] a, byte[] b, boolean[] visible, int channels) {
+        long count = 0;
+        double sumA = 0, sumB = 0;
+        for (int p = 0; p < visible.length; p++) {
+            if (!visible[p]) continue;
+            int base = p * channels;
+            for (int c = 0; c < channels; c++) {
+                sumA += (a[base + c] & 0xFF);
+                sumB += (b[base + c] & 0xFF);
+            }
+            count++;
+        }
+        if (count == 0) return -1.0;
+
+        double n = (double) count * channels;
+        double meanA = sumA / n;
+        double meanB = sumB / n;
+
+        double num = 0, varA = 0, varB = 0;
+        for (int p = 0; p < visible.length; p++) {
+            if (!visible[p]) continue;
+            int base = p * channels;
+            for (int c = 0; c < channels; c++) {
+                double va = (a[base + c] & 0xFF) - meanA;
+                double vb = (b[base + c] & 0xFF) - meanB;
+                num += va * vb;
+                varA += va * va;
+                varB += vb * vb;
+            }
+        }
+        if (varA < 1e-9 || varB < 1e-9) return -1.0;
+        return num / Math.sqrt(varA * varB);
     }
 }

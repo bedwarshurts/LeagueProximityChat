@@ -73,6 +73,10 @@ public class ScreenPositionTracker {
     private int lockedMatchFailures = 0;
     private static final int MAX_LOCKED_MATCH_FAILURES = 25;
 
+    private int lockedBlipRadius = 0;
+    private static final double BLIP_RADIUS_LOCKED_MIN = 0.7;
+    private static final double BLIP_RADIUS_LOCKED_MAX = 1.45;
+
     private static final int MATCH_BLUR_KERNEL = 3;
 
     private static final double PROXIMITY_BOOST_MAX = 0.50;
@@ -87,7 +91,12 @@ public class ScreenPositionTracker {
     private static final double BLIP_RADIUS_PER_MINIMAP_PX = 16.0 / 280.0;
 
     private static final double ALLY_RING_CLOSE_FACTOR = 0.01;
-    private static final double ALLY_PEAK_DEDUP_FACTOR = 0.7;
+    private static final double ALLY_PEAK_DEDUP_FACTOR = 0.45;
+    private static final double ALLY_MIN_RADIUS_FACTOR = 0.025;
+    private static final double ALLY_MAX_RADIUS_FACTOR = 0.10;
+
+    private static final double OCCLUSION_MIN_VISIBLE_FRACTION = 0.25;
+    private static final int OCCLUSION_JITTER_PX = 3;
 
     private static final double ICON_CORE_CROP = 0.65;
     private static final double ICON_CORE_MARGIN = (1.0 - ICON_CORE_CROP) / 2.0;
@@ -202,6 +211,7 @@ public class ScreenPositionTracker {
         CameraBox cameraBox = (healthBarCenter != null) ? locateMinimapCameraBox(minimapMat, fullScreenMat.width(), fullScreenMat.height()) : null;
 
         List<AllyCircle> allyCircles = findAllyLocations(minimapMat);
+        List<AllyCircle> enemyCircles = findEnemyCircles(minimapMat);
 
         if (!isBootstrapped && healthBarCenter != null && cameraBox != null && !allyCircles.isEmpty()) {
             bootstrapTemplateFromHealthBar(minimapMat, allyCircles, cameraBox, healthBarCenter,
@@ -219,7 +229,7 @@ public class ScreenPositionTracker {
             anchorY = lastKnownY;
         }
 
-        TemplateMatch champMatch = locateChampionViaTemplate(minimapMat, allyCircles, anchorX, anchorY);
+        TemplateMatch champMatch = locateChampionViaTemplate(minimapMat, allyCircles, enemyCircles, anchorX, anchorY);
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
@@ -576,6 +586,7 @@ public class ScreenPositionTracker {
         if (lockedCoreTemplate != null) lockedCoreTemplate.release();
         if (lockedCoreTemplateEnhanced != null) lockedCoreTemplateEnhanced.release();
         lockedCoreTemplate = core;
+        lockedBlipRadius = nearest.radius();
         isScaleLocked = true;
         isBootstrapped = true;
         lockedMatchFailures = 0;
@@ -769,6 +780,7 @@ public class ScreenPositionTracker {
         isBootstrapped = false;
         lockedMatchFailures = 0;
         wrongLockStreak = 0;
+        lockedBlipRadius = 0;
         bootstrapConfidence = 0;
         bootstrapLastPick = null;
     }
@@ -1072,7 +1084,83 @@ public class ScreenPositionTracker {
         }
     }
 
+    private List<AllyCircle> overlappingNeighbors(AllyCircle self, List<AllyCircle> allies, List<AllyCircle> enemies) {
+        List<AllyCircle> neighbors = new ArrayList<>();
+        for (AllyCircle other : allies) {
+            if (other == self) continue;
+            if (circlesOverlap(self, other)) neighbors.add(other);
+        }
+        for (AllyCircle other : enemies) {
+            if (circlesOverlap(self, other)) neighbors.add(other);
+        }
+        return neighbors;
+    }
+
+    private static boolean circlesOverlap(AllyCircle a, AllyCircle b) {
+        double sep = Math.hypot(a.center().x - b.center().x, a.center().y - b.center().y);
+        return sep < a.radius() + b.radius();
+    }
+
+    private EvalResult evaluateOccludedAlly(Mat minimap, AllyCircle self, List<AllyCircle> occluders, Mat template) {
+        int cw = template.width();
+        int ch = template.height();
+        int channels = template.channels();
+        if (channels != minimap.channels()) return null;
+
+        byte[] tpl = new byte[cw * ch * channels];
+        template.get(0, 0, tpl);
+
+        byte[] patch = new byte[cw * ch * channels];
+        boolean[] visible = new boolean[cw * ch];
+        int minVisible = (int) (cw * ch * OCCLUSION_MIN_VISIBLE_FRACTION);
+
+        double bestScore = -1.0;
+        Point bestCenter = null;
+
+        for (int dy = -OCCLUSION_JITTER_PX; dy <= OCCLUSION_JITTER_PX; dy++) {
+            for (int dx = -OCCLUSION_JITTER_PX; dx <= OCCLUSION_JITTER_PX; dx++) {
+                int x0 = (int) Math.round(self.center().x + dx - cw / 2.0);
+                int y0 = (int) Math.round(self.center().y + dy - ch / 2.0);
+                if (x0 < 0 || y0 < 0 || x0 + cw > minimap.width() || y0 + ch > minimap.height()) continue;
+
+                int visibleCount = 0;
+                for (int y = 0; y < ch; y++) {
+                    for (int x = 0; x < cw; x++) {
+                        double gx = x0 + x + 0.5;
+                        double gy = y0 + y + 0.5;
+                        double dSelf = Math.hypot(gx - self.center().x, gy - self.center().y);
+                        boolean v = true;
+                        for (AllyCircle occ : occluders) {
+                            double dOcc = Math.hypot(gx - occ.center().x, gy - occ.center().y);
+                            if (dOcc < occ.radius() && dOcc < dSelf) {
+                                v = false;
+                                break;
+                            }
+                        }
+                        visible[y * cw + x] = v;
+                        if (v) visibleCount++;
+                    }
+                }
+                if (visibleCount < minVisible) continue;
+
+                Mat patchMat = new Mat(minimap, new Rect(x0, y0, cw, ch)).clone();
+                patchMat.get(0, 0, patch);
+                patchMat.release();
+
+                double score = MathUtils.maskedZncc(tpl, patch, visible, channels);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCenter = new Point(x0 + (cw / 2.0), y0 + (ch / 2.0));
+                }
+            }
+        }
+
+        if (bestCenter == null || bestScore <= 0) return null;
+        return new EvalResult(bestCenter, bestScore);
+    }
+
     private TemplateMatch locateChampionViaTemplate(Mat minimap, List<AllyCircle> allyCircles,
+                                                    List<AllyCircle> enemyCircles,
                                                     double anchorX, double anchorY) {
         int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
@@ -1100,6 +1188,15 @@ public class ScreenPositionTracker {
 
                 double rawScore = eval.score();
                 Point candidateCenter = eval.center();
+
+                List<AllyCircle> occluders = overlappingNeighbors(ally, allyCircles, enemyCircles);
+                if (!occluders.isEmpty()) {
+                    EvalResult occluded = evaluateOccludedAlly(minimap, ally, occluders, lockedCoreTemplate);
+                    if (occluded != null && occluded.score() > rawScore) {
+                        rawScore = occluded.score();
+                        candidateCenter = occluded.center();
+                    }
+                }
 
                 if (rawScore > CLONE_DETECT_THRESHOLD) strongMatches++;
 
@@ -1222,6 +1319,7 @@ public class ScreenPositionTracker {
             }
 
             Imgcodecs.imwrite("debug/debug_locked_template.png", lockedCoreTemplate);
+            this.lockedBlipRadius = Math.max(1, globalBestSize / 2);
             this.isScaleLocked = true;
             this.lockedMatchFailures = 0;
 
@@ -1236,12 +1334,9 @@ public class ScreenPositionTracker {
     }
 
     private List<AllyCircle> findAllyLocations(Mat minimap) {
-        List<AllyCircle> centers = new ArrayList<>();
+        List<AllyCircle> centers;
         Mat hsv = new Mat();
         Mat mask = new Mat();
-        Mat closed = new Mat();
-        Mat hierarchy = new Mat();
-        List<MatOfPoint> contours = new ArrayList<>();
 
         try {
             Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
@@ -1251,41 +1346,7 @@ public class ScreenPositionTracker {
                 Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
             }
 
-            int closeK = Math.max(3, (int) Math.round(minimap.width() * ALLY_RING_CLOSE_FACTOR));
-            Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(closeK, closeK));
-            Imgproc.morphologyEx(mask, closed, Imgproc.MORPH_CLOSE, closeKernel);
-            closeKernel.release();
-
-            Imgproc.findContours(closed, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_NONE);
-
-            double minR = minimap.width() * 0.012;
-            double maxR = minimap.width() * 0.10;
-            double inlierTol = Math.max(2.5, minimap.width() * 0.005);
-            List<MathUtils.CircleFit> rawFits = new ArrayList<>();
-            for (MatOfPoint c : contours) {
-                rawFits.addAll(MathUtils.extractCircles(c.toArray(), minR, maxR, inlierTol));
-            }
-
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
-                Mat raw = minimap.clone();
-                for (MathUtils.CircleFit f : rawFits) {
-                    Imgproc.circle(raw, new Point(f.cx(), f.cy()), (int) Math.round(f.radius()),
-                            new Scalar(0, 255, 255), 1);
-                }
-                Imgcodecs.imwrite("debug/debug_ransac_raw.png", raw);
-                raw.release();
-            }
-
-            for (MathUtils.CircleFit fit : rawFits) {
-                int cr = (int) Math.round(fit.radius());
-                if (cr < minR || cr > maxR) continue;
-                if (fit.residual() > fit.radius() * 0.25) continue;
-                int cx = (int) Math.round(fit.cx());
-                int cy = (int) Math.round(fit.cy());
-                if (cx < 0 || cy < 0 || cx >= minimap.width() || cy >= minimap.height()) continue;
-                Point ctr = new Point(cx, cy);
-                if (!isCovered(ctr, cr, centers)) centers.add(new AllyCircle(ctr, cr));
-            }
+            centers = circlesFromRingMask(minimap, mask, "debug/debug_ransac_raw.png");
 
             if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
                 Mat debugDrawMap = minimap.clone();
@@ -1300,6 +1361,86 @@ public class ScreenPositionTracker {
         } finally {
             hsv.release();
             mask.release();
+        }
+
+        return centers;
+    }
+
+    private List<AllyCircle> findEnemyCircles(Mat minimap) {
+        List<AllyCircle> centers;
+        Mat mask = new Mat();
+
+        try {
+            enemyRedMask(minimap, mask);
+            centers = circlesFromRingMask(minimap, mask, null);
+
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                Mat debugDrawMap = minimap.clone();
+                for (AllyCircle c : centers) {
+                    Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(0, 0, 255), 2);
+                }
+                Imgcodecs.imwrite("debug/debug_enemy_circles.png", debugDrawMap);
+                debugDrawMap.release();
+            }
+        } finally {
+            mask.release();
+        }
+
+        return centers;
+    }
+
+    private List<AllyCircle> circlesFromRingMask(Mat minimap, Mat mask, String rawFitsDebugPath) {
+        List<AllyCircle> centers = new ArrayList<>();
+        Mat closed = new Mat();
+        Mat hierarchy = new Mat();
+        List<MatOfPoint> contours = new ArrayList<>();
+
+        try {
+            int closeK = Math.max(3, (int) Math.round(minimap.width() * ALLY_RING_CLOSE_FACTOR));
+            Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(closeK, closeK));
+            Imgproc.morphologyEx(mask, closed, Imgproc.MORPH_CLOSE, closeKernel);
+            closeKernel.release();
+
+            Imgproc.findContours(closed, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_NONE);
+
+            double minR = minimap.width() * ALLY_MIN_RADIUS_FACTOR;
+            double maxR = minimap.width() * ALLY_MAX_RADIUS_FACTOR;
+
+            if (lockedBlipRadius > 0) {
+                minR = Math.max(minR, lockedBlipRadius * BLIP_RADIUS_LOCKED_MIN);
+                maxR = Math.min(maxR, lockedBlipRadius * BLIP_RADIUS_LOCKED_MAX);
+            }
+            double inlierTol = Math.max(2.5, minimap.width() * 0.005);
+            List<MathUtils.CircleFit> rawFits = new ArrayList<>();
+            for (MatOfPoint c : contours) {
+                rawFits.addAll(MathUtils.extractCircles(c.toArray(), minR, maxR, inlierTol));
+            }
+
+            if (rawFitsDebugPath != null && WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                Mat raw = minimap.clone();
+                for (MathUtils.CircleFit f : rawFits) {
+                    Imgproc.circle(raw, new Point(f.cx(), f.cy()), (int) Math.round(f.radius()),
+                            new Scalar(0, 255, 255), 1);
+                }
+                Imgcodecs.imwrite(rawFitsDebugPath, raw);
+                raw.release();
+            }
+
+            rawFits.sort(Comparator.comparingDouble(MathUtils.CircleFit::residual));
+
+            for (MathUtils.CircleFit fit : rawFits) {
+                int cr = (int) Math.round(fit.radius());
+                if (cr < minR || cr > maxR) continue;
+                if (fit.residual() > fit.radius() * 0.25) continue;
+                int cx = (int) Math.round(fit.cx());
+                int cy = (int) Math.round(fit.cy());
+                if (cx < 0 || cy < 0 || cx >= minimap.width() || cy >= minimap.height()) continue;
+                Point ctr = new Point(cx, cy);
+                if (isCovered(ctr, cr, centers)) continue;
+                if (swallowsMultipleCenters(ctr, cr, centers)) continue;
+                centers.add(new AllyCircle(ctr, cr));
+            }
+        } finally {
             closed.release();
             hierarchy.release();
             for (MatOfPoint c : contours) c.release();
@@ -1314,6 +1455,15 @@ public class ScreenPositionTracker {
             if (sep < Math.min(k.radius(), radius) * ALLY_PEAK_DEDUP_FACTOR) return true;
         }
         return false;
+    }
+
+    private boolean swallowsMultipleCenters(Point center, int radius, List<AllyCircle> kept) {
+        int contained = 0;
+        for (AllyCircle k : kept) {
+            double sep = Math.hypot(center.x - k.center().x, center.y - k.center().y);
+            if (sep < radius * 0.8) contained++;
+        }
+        return contained >= 2;
     }
 
     private void drawCroppedTemplates(List<Mat> crops) {
