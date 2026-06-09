@@ -16,7 +16,6 @@ import java.awt.image.DataBufferByte;
 import java.util.*;
 import java.util.List;
 
-// TODO: Fix wrong lock not resetting being mistaken for clone.
 public class ScreenPositionTracker {
 
     private Robot robot;
@@ -80,6 +79,10 @@ public class ScreenPositionTracker {
     private static final double PROXIMITY_BOOST_RADIUS = 25.0;
     private static final double CLONE_DETECT_THRESHOLD = 0.78;
     private static final double MAX_HEALTHBAR_MATCH_DIST = 15.0;
+
+    private int lastStrongMatchCount = 0;
+    private int wrongLockStreak = 0;
+    private static final int MAX_WRONG_LOCK_STREAK = 30;
 
     private static final double BLIP_RADIUS_PER_MINIMAP_PX = 16.0 / 280.0;
 
@@ -222,13 +225,12 @@ public class ScreenPositionTracker {
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
 
         if ((isScaleLocked || isBootstrapped) && healthBarCenter != null && cameraBox != null) {
+            float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
+            float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
+            float currentHpMapX = rawHpX + healthBarCalibrateX;
+            float currentHpMapY = rawHpY + healthBarCalibrateY;
+
             if (champMatch == null) {
-
-                float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
-                float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
-                float currentHpMapX = rawHpX + healthBarCalibrateX;
-                float currentHpMapY = rawHpY + healthBarCalibrateY;
-
                 double distanceMoved = Math.hypot(currentHpMapX - lastKnownX, currentHpMapY - lastKnownY);
 
                 if (!(distanceMoved < 1.5)) {
@@ -240,6 +242,22 @@ public class ScreenPositionTracker {
                 }
             } else {
                 lockedMatchFailures = 0;
+
+                float matchX = (float) (champMapCenter.x / (double) perfectMapSize) * 100f;
+                float matchY = 100f - (float) ((champMapCenter.y / (double) perfectMapSize) * 100f);
+                double matchToHpDist = Math.hypot(matchX - currentHpMapX, matchY - currentHpMapY);
+
+                if (matchToHpDist > MAX_HEALTHBAR_MATCH_DIST && lastStrongMatchCount < 2) {
+                    wrongLockStreak++;
+                    System.out.printf("[bootstrap] Locked match %.1f%% from health bar with only %d strong match(es) — possible wrong lock (%d/%d).%n",
+                            matchToHpDist, lastStrongMatchCount, wrongLockStreak, MAX_WRONG_LOCK_STREAK);
+                    if (wrongLockStreak >= MAX_WRONG_LOCK_STREAK) {
+                        System.out.println("[bootstrap] Wrong lock confirmed (lone far match, not a clone) — resetting to re-learn.");
+                        resetScaleLock();
+                    }
+                } else {
+                    wrongLockStreak = 0;
+                }
             }
         }
 
@@ -332,7 +350,13 @@ public class ScreenPositionTracker {
 
         float rawMatchDist = (float) Math.hypot(targetOffsetX, targetOffsetY);
         if (rawMatchDist > MAX_HEALTHBAR_MATCH_DIST) {
-            System.out.printf("[calibration] Match %.1f%% from health-bar projection — likely a clone, skipping frame.%n", rawMatchDist);
+            if (lastStrongMatchCount >= 2) {
+                System.out.printf("[calibration] Match %.1f%% from health-bar projection with %d strong matches — likely a clone, skipping frame.%n",
+                        rawMatchDist, lastStrongMatchCount);
+            } else {
+                System.out.printf("[calibration] Match %.1f%% from health-bar projection with only %d strong match — wrong lock suspected, skipping frame.%n",
+                        rawMatchDist, lastStrongMatchCount);
+            }
             return;
         }
 
@@ -744,6 +768,7 @@ public class ScreenPositionTracker {
         isScaleLocked = false;
         isBootstrapped = false;
         lockedMatchFailures = 0;
+        wrongLockStreak = 0;
         bootstrapConfidence = 0;
         bootstrapLastPick = null;
     }
@@ -1051,6 +1076,7 @@ public class ScreenPositionTracker {
                                                     double anchorX, double anchorY) {
         int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
+        lastStrongMatchCount = 0;
 
         if (allyCircles.isEmpty()) {
             System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
@@ -1092,6 +1118,8 @@ public class ScreenPositionTracker {
                     rawScoreLog = rawScore;
                 }
             }
+
+            lastStrongMatchCount = strongMatches;
 
             if (strongMatches >= 2) {
                 System.out.printf("[locateChampionViaTemplate] %d strong icon matches — clone likely present; anchoring to (%.1f, %.1f).%n",
