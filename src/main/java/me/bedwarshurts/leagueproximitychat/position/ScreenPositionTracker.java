@@ -2,6 +2,7 @@ package me.bedwarshurts.leagueproximitychat.position;
 
 import me.bedwarshurts.leagueproximitychat.utils.ImageUtils;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
+import me.bedwarshurts.leagueproximitychat.utils.MathUtils;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import org.opencv.core.*;
@@ -15,6 +16,7 @@ import java.awt.image.DataBufferByte;
 import java.util.*;
 import java.util.List;
 
+// TODO: Fix wrong lock not resetting being mistaken for clone.
 public class ScreenPositionTracker {
 
     private Robot robot;
@@ -82,7 +84,6 @@ public class ScreenPositionTracker {
     private static final double BLIP_RADIUS_PER_MINIMAP_PX = 16.0 / 280.0;
 
     private static final double ALLY_RING_CLOSE_FACTOR = 0.01;
-    private static final double ALLY_MIN_PEAK_FACTOR = 0.01;
     private static final double ALLY_PEAK_DEDUP_FACTOR = 0.7;
 
     private static final double ICON_CORE_CROP = 0.65;
@@ -190,6 +191,7 @@ public class ScreenPositionTracker {
         if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
             Imgcodecs.imwrite("debug/debug_screen.png", fullScreenMat);
             Imgcodecs.imwrite("debug/debug_minimap.png", minimapMat);
+            debugEnemyIndicators(minimapMat);
         }
 
         Point healthBarCenter = locateSelfHealthBar(fullScreenMat);
@@ -655,16 +657,8 @@ public class ScreenPositionTracker {
         if (w <= 0 || h <= 0) return true;
 
         Mat roi = new Mat(minimap, new Rect(x0, y0, w, h));
-        Mat hsv = new Mat();
-        Imgproc.cvtColor(roi, hsv, Imgproc.COLOR_BGR2HSV);
-
-        Mat maskLower = new Mat();
-        Mat maskUpper = new Mat();
-        Core.inRange(hsv, new Scalar(0, 110, 120), new Scalar(9, 255, 255), maskLower);
-        Core.inRange(hsv, new Scalar(173, 110, 120), new Scalar(179, 255, 255), maskUpper);
-
         Mat redMask = new Mat();
-        Core.bitwise_or(maskLower, maskUpper, redMask);
+        enemyRedMask(roi, redMask);
 
         Point roiCenter = new Point(center.x - x0, center.y - y0);
         int ignoreRadius = (int) (radius * 1.05);
@@ -680,12 +674,38 @@ public class ScreenPositionTracker {
         }
 
         roi.release();
-        hsv.release();
-        maskLower.release();
-        maskUpper.release();
         redMask.release();
 
         return redRatio > 0.01;
+    }
+
+    private void enemyRedMask(Mat bgr, Mat out) {
+        Mat hsv = new Mat();
+        Mat lower = new Mat();
+        Mat upper = new Mat();
+        try {
+            Imgproc.cvtColor(bgr, hsv, Imgproc.COLOR_BGR2HSV);
+            Core.inRange(hsv, new Scalar(0, 110, 120), new Scalar(9, 255, 255), lower);
+            Core.inRange(hsv, new Scalar(173, 110, 120), new Scalar(179, 255, 255), upper);
+            Core.bitwise_or(lower, upper, out);
+        } finally {
+            hsv.release();
+            lower.release();
+            upper.release();
+        }
+    }
+
+    private void debugEnemyIndicators(Mat minimap) {
+        Mat redMask = new Mat();
+        Mat overlay = minimap.clone();
+        try {
+            enemyRedMask(minimap, redMask);
+            overlay.setTo(new Scalar(0, 255, 0), redMask);
+            Imgcodecs.imwrite("debug/debug_enemy_indicators.png", overlay);
+        } finally {
+            redMask.release();
+            overlay.release();
+        }
     }
 
     private Mat extractIconTemplate(Mat minimap, Point center, int radius) {
@@ -1192,71 +1212,50 @@ public class ScreenPositionTracker {
         Mat hsv = new Mat();
         Mat mask = new Mat();
         Mat closed = new Mat();
-        Mat filled = Mat.zeros(minimap.size(), CvType.CV_8UC1);
         Mat hierarchy = new Mat();
-        Mat dist = new Mat();
-        Mat dilated = new Mat();
-        Mat strong = new Mat();
-        Mat peaks = new Mat();
-        Mat labels = new Mat();
-        Mat stats = new Mat();
-        Mat centroids = new Mat();
         List<MatOfPoint> contours = new ArrayList<>();
 
         try {
             Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
             Core.inRange(hsv, new Scalar(80, 140, 200), new Scalar(115, 255, 255), mask);
 
+            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
+            }
+
             int closeK = Math.max(3, (int) Math.round(minimap.width() * ALLY_RING_CLOSE_FACTOR));
             Mat closeKernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(closeK, closeK));
             Imgproc.morphologyEx(mask, closed, Imgproc.MORPH_CLOSE, closeKernel);
             closeKernel.release();
 
-            Imgproc.findContours(closed, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
-            Imgproc.drawContours(filled, contours, -1, new Scalar(255), -1);
+            Imgproc.findContours(closed, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_NONE);
+
+            double minR = minimap.width() * 0.012;
+            double maxR = minimap.width() * 0.10;
+            double inlierTol = Math.max(2.5, minimap.width() * 0.005);
+            List<MathUtils.CircleFit> rawFits = new ArrayList<>();
+            for (MatOfPoint c : contours) {
+                rawFits.addAll(MathUtils.extractCircles(c.toArray(), minR, maxR, inlierTol));
+            }
 
             if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
-                Imgcodecs.imwrite("debug/debug_ally_mask.png", filled);
+                Mat raw = minimap.clone();
+                for (MathUtils.CircleFit f : rawFits) {
+                    Imgproc.circle(raw, new Point(f.cx(), f.cy()), (int) Math.round(f.radius()),
+                            new Scalar(0, 255, 255), 1);
+                }
+                Imgcodecs.imwrite("debug/debug_ransac_raw.png", raw);
+                raw.release();
             }
 
-            Imgproc.distanceTransform(filled, dist, Imgproc.DIST_L2, 3);
-
-            Mat lmKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
-            Imgproc.dilate(dist, dilated, lmKernel);
-            lmKernel.release();
-            Core.compare(dist, dilated, peaks, Core.CMP_GE);
-
-            double minPeak = Math.max(2.0, minimap.width() * ALLY_MIN_PEAK_FACTOR);
-            Imgproc.threshold(dist, strong, minPeak, 255, Imgproc.THRESH_BINARY);
-            strong.convertTo(strong, CvType.CV_8U);
-            Core.bitwise_and(peaks, strong, peaks);
-
-            int n = Imgproc.connectedComponentsWithStats(peaks, labels, stats, centroids);
-
-            List<AllyCircle> diskPeaks = new ArrayList<>();
-            for (int i = 1; i < n; i++) {
-                int px = (int) Math.round(centroids.get(i, 0)[0]);
-                int py = (int) Math.round(centroids.get(i, 1)[0]);
-                if (px < 0 || py < 0 || px >= dist.cols() || py >= dist.rows()) continue;
-                int radius = (int) Math.round(dist.get(py, px)[0]);
-                if (radius > 0) diskPeaks.add(new AllyCircle(new Point(px, py), radius));
-            }
-
-            diskPeaks.sort((a, b) -> Integer.compare(b.radius(), a.radius()));
-            for (AllyCircle cand : diskPeaks) {
-                if (!isCovered(cand.center(), cand.radius(), centers)) centers.add(cand);
-            }
-
-            double minContourR = minimap.width() * 0.012;
-            double maxContourR = minimap.width() * 0.10;
-            for (MatOfPoint c : contours) {
-                MatOfPoint2f c2f = new MatOfPoint2f(c.toArray());
-                float[] r = new float[1];
-                Point ctr = new Point();
-                Imgproc.minEnclosingCircle(c2f, ctr, r);
-                c2f.release();
-                int cr = Math.round(r[0]);
-                if (cr < minContourR || cr > maxContourR) continue;
+            for (MathUtils.CircleFit fit : rawFits) {
+                int cr = (int) Math.round(fit.radius());
+                if (cr < minR || cr > maxR) continue;
+                if (fit.residual() > fit.radius() * 0.25) continue;
+                int cx = (int) Math.round(fit.cx());
+                int cy = (int) Math.round(fit.cy());
+                if (cx < 0 || cy < 0 || cx >= minimap.width() || cy >= minimap.height()) continue;
+                Point ctr = new Point(cx, cy);
                 if (!isCovered(ctr, cr, centers)) centers.add(new AllyCircle(ctr, cr));
             }
 
@@ -1274,15 +1273,7 @@ public class ScreenPositionTracker {
             hsv.release();
             mask.release();
             closed.release();
-            filled.release();
             hierarchy.release();
-            dist.release();
-            dilated.release();
-            strong.release();
-            peaks.release();
-            labels.release();
-            stats.release();
-            centroids.release();
             for (MatOfPoint c : contours) c.release();
         }
 
