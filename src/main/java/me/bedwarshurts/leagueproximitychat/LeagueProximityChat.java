@@ -250,7 +250,7 @@ public class LeagueProximityChat {
         server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead());
 
         long elapsedTime = System.currentTimeMillis() - startTime;
-        long sleepTime = Math.max(10, 30 - elapsedTime);
+        long sleepTime = Math.max(10, 60 - elapsedTime);
 
         Thread.sleep(sleepTime);
     }
