@@ -42,7 +42,7 @@
                 linear-gradient(180deg, #04090f, var(--bg-0) 55%, #020509);
             overflow: hidden;
         }
-        /* faint gold dust matrix, fading toward the edges */
+
         body::before {
             content: '';
             position: fixed;
@@ -63,7 +63,6 @@
             padding: 18px 20px;
         }
 
-        /* ===== hextech frame: gold rim + chamfered corners ===== */
         .panel {
             position: relative;
             z-index: 0;
@@ -89,7 +88,6 @@
                 calc(100% - 13px) 100%, 13px 100%, 0 calc(100% - 13px), 0 13px);
         }
 
-        /* ===== command bar ===== */
         .command-bar {
             display: flex;
             align-items: center;
@@ -130,7 +128,7 @@
             color: var(--ink-2);
             white-space: nowrap;
         }
-        /* diamond status gems */
+
         .status::before {
             content: '';
             width: 7px;
@@ -148,7 +146,6 @@
         .status.loading::before { background: var(--warn); box-shadow: 0 0 8px rgba(240, 178, 50, 0.6); animation: pulse 1.1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        /* ===== match roster ===== */
         .squad-panel { display: flex; flex-direction: column; padding: 18px 20px; }
         .roster-head {
             position: relative;
@@ -253,7 +250,6 @@
         .status-connected { color: var(--teal); }
         .banned-name { text-decoration: line-through; color: var(--ink-3); }
 
-        /* ===== buttons ===== */
         button {
             cursor: pointer;
             border: none;
@@ -490,7 +486,7 @@
 <div id="hidden-audio-container" style="display: none;"></div>
 
 <script>
-    const LIVEKIT_URL = 'wss://league-proximity-chat-3q7it5ix.livekit.cloud';
+    const LIVEKIT_URL = 'https://league-proximity-chat-3q7it5ix.livekit.cloud';
 
     let room = null;
     let audioCtx;
