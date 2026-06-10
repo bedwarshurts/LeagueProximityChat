@@ -5,135 +5,486 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>League of Legends Proximity Chat</title>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            background-color: #121212;
-            color: #e0e0e0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 30px;
-            max-width: 600px;
-            margin: 0 auto;
+        :root {
+            --bg-0: #02060c;
+            --panel-hi: rgba(12, 22, 36, 0.94);
+            --panel-lo: rgba(6, 12, 22, 0.96);
+            --hairline: rgba(200, 170, 110, 0.16);
+            --hairline-soft: rgba(240, 230, 210, 0.07);
+            --ink-1: #f0e6d2;
+            --ink-2: #a8a290;
+            --ink-3: #6b7585;
+            --gold: #c8aa6e;
+            --gold-soft: #cdbe91;
+            --gold-deep: #785a28;
+            --teal: #0ac8b9;
+            --danger: #e8455a;
+            --warn: #f0b232;
+            --display: 'Cinzel', 'Times New Roman', serif;
+            --mono: 'Cascadia Mono', ui-monospace, 'SF Mono', Consolas, monospace;
         }
 
-        h2 {
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+
+        body {
+            margin: 0;
+            color: var(--ink-1);
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            background:
+                radial-gradient(1100px 620px at 78% -12%, rgba(10, 200, 185, 0.09), transparent 60%),
+                radial-gradient(900px 560px at 6% 112%, rgba(200, 170, 110, 0.07), transparent 55%),
+                linear-gradient(180deg, #04090f, var(--bg-0) 55%, #020509);
+            overflow: hidden;
         }
+        /* faint gold dust matrix, fading toward the edges */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image: radial-gradient(rgba(200, 170, 110, 0.10) 1px, transparent 1.6px);
+            background-size: 30px 30px;
+            -webkit-mask-image: radial-gradient(circle at 50% 38%, #000, transparent 85%);
+            mask-image: radial-gradient(circle at 50% 38%, #000, transparent 85%);
+        }
+
+        #main-ui {
+            position: relative;
+            height: 100vh;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 14px;
+            padding: 18px 20px;
+        }
+
+        /* ===== hextech frame: gold rim + chamfered corners ===== */
+        .panel {
+            position: relative;
+            z-index: 0;
+            min-height: 0;
+            background: linear-gradient(165deg,
+                rgba(200, 170, 110, 0.60),
+                rgba(200, 170, 110, 0.13) 30%,
+                rgba(10, 200, 185, 0.15) 70%,
+                rgba(200, 170, 110, 0.42));
+            clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px),
+                calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px);
+            filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.45));
+        }
+        .panel::before {
+            content: '';
+            position: absolute;
+            inset: 1px;
+            z-index: -1;
+            background:
+                radial-gradient(130% 100% at 50% 0%, rgba(18, 34, 52, 0.55), transparent 55%),
+                linear-gradient(180deg, var(--panel-hi), var(--panel-lo));
+            clip-path: polygon(13px 0, calc(100% - 13px) 0, 100% 13px, 100% calc(100% - 13px),
+                calc(100% - 13px) 100%, 13px 100%, 0 calc(100% - 13px), 0 13px);
+        }
+
+        /* ===== command bar ===== */
+        .command-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px 18px;
+            padding: 12px 20px;
+        }
+        .brand { display: flex; align-items: center; gap: 14px; }
+        .brand-mark { width: 40px; height: 44px; flex-shrink: 0; }
+        .brand-mark svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 9px rgba(10, 200, 185, 0.35)); }
+        .brand h1 {
+            margin: 0;
+            font-family: var(--display);
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            background: linear-gradient(180deg, #f0e6d2 15%, #c8aa6e 80%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .brand p { margin: 3px 0 0; font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.02em; }
+
+        .hud-status { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
         .status {
-            padding: 12px;
-            margin-bottom: 12px;
-            border-radius: 4px;
-            background: #1e1e1e;
-            font-size: 14px;
-            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            padding: 7px 12px;
+            border-radius: 2px;
+            background: rgba(3, 9, 16, 0.55);
+            border: 1px solid var(--hairline);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--ink-2);
+            white-space: nowrap;
         }
-
-        .success { border-left: 5px solid #28a745; color: #28a745; }
-        .error { border-left: 5px solid #dc3545; color: #dc3545; }
-        .loading { border-left: 5px solid #ffc107; color: #ffc107; }
-
-        .pos-tracker {
-            background: #1e1e1e;
-            padding: 12px;
-            margin-bottom: 12px;
-            border-radius: 4px;
-            border-left: 5px solid #17a2b8;
-            font-family: monospace;
-            font-size: 13px;
-            color: #888;
-            display: flex;
-            justify-content: space-between;
-        }
-        .pos-tracker span.highlight {
-            color: #17a2b8;
-            font-weight: bold;
-        }
-
-        button {
-            width: 100%;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            color: white;
-            border: none;
-            border-radius: 4px;
+        /* diamond status gems */
+        .status::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            flex-shrink: 0;
+            transform: rotate(45deg);
+            background: var(--ink-3);
             transition: 0.2s;
-            margin-bottom: 20px;
         }
+        .status.success { color: var(--ink-1); border-color: rgba(10, 200, 185, 0.35); }
+        .status.success::before { background: var(--teal); box-shadow: 0 0 8px rgba(10, 200, 185, 0.75); }
+        .status.error { border-color: rgba(232, 69, 90, 0.30); }
+        .status.error::before { background: var(--danger); box-shadow: 0 0 8px rgba(232, 69, 90, 0.55); }
+        .status.loading { color: var(--ink-1); border-color: rgba(240, 178, 50, 0.35); }
+        .status.loading::before { background: var(--warn); box-shadow: 0 0 8px rgba(240, 178, 50, 0.6); animation: pulse 1.1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        button:hover { filter: brightness(0.92); }
-
-        .roster-panel {
-            background: #1e1e1e;
-            border-radius: 6px;
-            padding: 15px;
-            margin-top: 20px;
+        /* ===== match roster ===== */
+        .squad-panel { display: flex; flex-direction: column; padding: 18px 20px; }
+        .roster-head {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 12px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid var(--hairline);
         }
-
-        .roster-panel h3 {
-            margin-top: 0;
-            color: #c8aa6e;
-            border-bottom: 1px solid #333;
-            padding-bottom: 8px;
-            font-size: 16px;
+        .roster-head::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -4px;
+            width: 7px;
+            height: 7px;
+            transform: translateX(-50%) rotate(45deg);
+            background: #0a1420;
+            border: 1px solid rgba(200, 170, 110, 0.45);
         }
+        .section-label {
+            margin: 0;
+            font-family: var(--display);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--gold-soft);
+        }
+        .roster-count {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gold-soft);
+            background: rgba(200, 170, 110, 0.08);
+            border: 1px solid var(--hairline);
+            border-radius: 2px;
+            padding: 2px 9px;
+        }
+        #roster-container { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 0 2px; scrollbar-width: thin; scrollbar-color: rgba(200, 170, 110, 0.3) transparent; }
+        #roster-container::-webkit-scrollbar { width: 8px; }
+        #roster-container::-webkit-scrollbar-thumb { background: rgba(200, 170, 110, 0.22); border-radius: 4px; }
 
         .player-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #2a2a2a;
+            gap: 10px;
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--hairline-soft);
             font-size: 14px;
+            transition: background 0.12s;
+        }
+        .player-item:hover { background: rgba(200, 170, 110, 0.045); }
+        .player-item:last-child { border-bottom: none; }
+        .empty-row { color: var(--ink-3); font-style: italic; font-size: 13px; padding: 36px 0; justify-content: center; }
+        .empty-row:hover { background: transparent; }
+
+        .player-meta { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+        .avatar {
+            position: relative;
+            z-index: 0;
+            width: 36px;
+            height: 41px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--display);
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--gold-soft);
+            clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+            background: linear-gradient(180deg, rgba(240, 230, 210, 0.65), rgba(120, 90, 40, 0.55));
+        }
+        .avatar::before {
+            content: '';
+            position: absolute;
+            inset: 1.5px;
+            z-index: -1;
+            background: linear-gradient(180deg, #16242f, #0a1018);
+            clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+        }
+        .player-name { font-weight: 600; font-size: 13.5px; color: var(--ink-1); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .you-tag {
+            flex-shrink: 0;
+            font-family: var(--mono);
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: var(--teal);
+            background: rgba(10, 200, 185, 0.07);
+            border: 1px solid rgba(10, 200, 185, 0.40);
+            padding: 1px 6px;
+            border-radius: 2px;
         }
 
-        .player-item:last-child { border-bottom: none; }
-        .player-name { font-weight: 600; transition: color 0.3s; }
-        .player-status { font-size: 12px; font-weight: bold; }
+        .player-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+        .player-status::before { content: ''; width: 6px; height: 6px; transform: rotate(45deg); background: currentColor; box-shadow: 0 0 7px currentColor; flex-shrink: 0; }
+        .status-offline { color: var(--ink-3); }
+        .status-connected { color: var(--teal); }
+        .banned-name { text-decoration: line-through; color: var(--ink-3); }
 
-        .status-offline { color: #dc3545; }
-        .status-connected { color: #28a745; }
-        .banned-name { text-decoration: line-through; color: #666; }
+        /* ===== buttons ===== */
+        button {
+            cursor: pointer;
+            border: none;
+            color: var(--ink-1);
+            font-family: inherit;
+            font-weight: 600;
+            transition: filter 0.15s, background 0.15s, color 0.15s, border-color 0.15s, transform 0.04s;
+        }
+        button:active { transform: translateY(1px); }
 
-        .action-btn { width: auto; padding: 6px 12px; font-size: 12px; margin: 0; }
-        .kick-btn { background-color: #dc3545; }
-        .revoke-btn { background-color: #ff9800; color: #000; }
+        .action-btn { padding: 6px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 2px; }
+        .kick-btn { color: #ffb9c1; background: rgba(232, 69, 90, 0.12); border: 1px solid rgba(232, 69, 90, 0.55); }
+        .kick-btn:hover { background: rgba(232, 69, 90, 0.30); color: #fff; }
+        .revoke-btn { color: #ffd98a; background: rgba(240, 178, 50, 0.10); border: 1px solid rgba(240, 178, 50, 0.50); }
+        .revoke-btn:hover { background: rgba(240, 178, 50, 0.25); }
+        .local-mute-btn { padding: 5px 9px; font-size: 13px; line-height: 1; background: rgba(10, 20, 34, 0.7); border: 1px solid var(--hairline); border-radius: 2px; }
+        .local-mute-btn:hover { border-color: rgba(200, 170, 110, 0.5); }
+        .local-mute-btn.muted { background: rgba(232, 69, 90, 0.18); border-color: rgba(232, 69, 90, 0.6); }
 
         .distance-badge {
-            background: #121212;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-family: monospace;
-            font-size: 11px;
-            color: #888;
             display: none;
+            padding: 3px 9px;
+            border-radius: 2px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--ink-2);
+            background: rgba(2, 6, 12, 0.7);
+            border: 1px solid var(--hairline);
+        }
+
+        /* ===== bottom control dock ===== */
+        .dock {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 14px 22px;
+            padding: 14px 22px;
+        }
+        .pos-tracker { display: flex; flex-direction: column; gap: 4px; min-width: 185px; }
+        .pt-label {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+        }
+        .highlight { font-family: var(--mono); font-size: 13.5px; font-weight: 600; color: var(--ink-3); }
+
+        .dock-center { flex: 1 1 260px; min-width: 240px; }
+
+        .btn-primary {
+            position: relative;
+            z-index: 0;
+            display: block;
+            width: 100%;
+            height: 48px;
+            padding: 0 18px;
+            font-family: var(--display);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--ink-1);
+            background: linear-gradient(165deg, #f0e6d2, #c8aa6e 30%, #785a28 78%, #c8aa6e);
+            clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px),
+                calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+            filter: drop-shadow(0 4px 14px rgba(200, 170, 110, 0.18));
+        }
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            inset: 1.5px;
+            z-index: -1;
+            background: linear-gradient(180deg, #13253a, #0a1523);
+            clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 9px, 100% calc(100% - 9px),
+                calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
+            transition: background 0.15s;
+        }
+        .btn-primary:hover { filter: drop-shadow(0 4px 18px rgba(200, 170, 110, 0.38)); }
+        .btn-primary:hover::before { background: linear-gradient(180deg, #1b3349, #0e1d30); }
+        .btn-primary.is-waiting {
+            color: #ffd98a;
+            background: linear-gradient(165deg, #ffd98a, #f0b232 30%, #8a5a14 78%, #f0b232);
+            filter: drop-shadow(0 4px 14px rgba(240, 178, 50, 0.22));
+        }
+        .btn-primary.is-waiting::before {
+            background:
+                repeating-linear-gradient(-45deg, rgba(240, 178, 50, 0.08) 0 8px, transparent 8px 16px),
+                linear-gradient(180deg, #1d1708, #120e05);
+            animation: march 1.2s linear infinite;
+        }
+        @keyframes march { to { background-position: 22.6px 0, 0 0; } }
+
+        .controls-row { display: none; gap: 10px; }
+        .btn-control {
+            flex: 1;
+            height: 48px;
+            padding: 0 12px;
+            font-size: 13px;
+            letter-spacing: 0.03em;
+            color: var(--ink-1);
+            background: rgba(10, 20, 34, 0.8);
+            border: 1px solid var(--hairline);
+            border-radius: 2px;
+        }
+        .btn-control:hover { border-color: rgba(200, 170, 110, 0.5); background: rgba(19, 32, 50, 0.9); }
+        .btn-control.active {
+            color: #ffccd2;
+            background: linear-gradient(180deg, rgba(232, 69, 90, 0.22), rgba(232, 69, 90, 0.10));
+            border-color: rgba(232, 69, 90, 0.65);
+        }
+
+        .settings-panel {
+            display: flex;
+            align-items: center;
+            padding: 8px 14px;
+            border-radius: 2px;
+            background: rgba(3, 9, 16, 0.5);
+            border: 1px solid var(--hairline);
+        }
+        .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .s-title { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; font-weight: 600; }
+        .setting-hint { font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--ink-3); }
+
+        .switch { position: relative; display: inline-block; width: 42px; height: 22px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider-track {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: #18232f;
+            border: 1px solid var(--hairline);
+            border-radius: 2px;
+            transition: 0.2s;
+        }
+        .slider-track:before {
+            content: "";
+            position: absolute;
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background: #8c95a8;
+            border-radius: 1px;
+            transition: 0.2s;
+        }
+        .switch input:checked + .slider-track { background: linear-gradient(180deg, #b89a5e, #785a28); border-color: rgba(240, 230, 210, 0.45); }
+        .switch input:checked + .slider-track:before { transform: translateX(20px); background: #f0e6d2; }
+
+        @media (max-width: 840px) {
+            body { overflow: auto; }
+            #main-ui { height: auto; min-height: 100vh; }
+            .squad-panel { min-height: 340px; }
+            .dock { align-items: stretch; flex-direction: column; }
+            .pos-tracker { flex-direction: row; align-items: baseline; justify-content: space-between; }
+            .settings-panel { width: 100%; }
+            .settings-panel .setting-row { width: 100%; }
         }
     </style>
 </head>
 <body>
 
 <div id="main-ui">
-    <h2>League Proximity Chat</h2>
-
-    <div id="lk-status" class="status error">LiveKit Audio Server: Waiting for token...</div>
-    <div id="ws-status" class="status error">Yowaimo Local Position Tracker: Disconnected</div>
-
-    <div class="pos-tracker">
-        <span>📍 Local Pos:</span>
-        <span id="local-coords" class="highlight">Waiting for data...</span>
-    </div>
-
-    <button id="start-btn" style="background-color:#007bff;">Connect to Audio</button>
-    <button id="mute-btn" style="display:none; background-color:#dc3545;">Mute Microphone</button>
-
-    <div class="roster-panel">
-        <h3>Players</h3>
-        <div id="roster-container">
-            <div class="player-item" style="color:#666; font-style:italic;">Waiting for match to begin...</div>
+    <header class="panel command-bar">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 40 44" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="rim-gold" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" stop-color="#f0e6d2"/>
+                            <stop offset="1" stop-color="#785a28"/>
+                        </linearGradient>
+                        <linearGradient id="core-teal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0" stop-color="#0ac8b9"/>
+                            <stop offset="1" stop-color="#005a82"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M20 1.5 37.5 11.6v20.8L20 42.5 2.5 32.4V11.6Z" fill="rgba(5, 12, 22, 0.9)" stroke="url(#rim-gold)" stroke-width="1.5"/>
+                    <path d="M20 9.5 29.5 22 20 34.5 10.5 22Z" fill="url(#core-teal)"/>
+                    <path d="M20 15 25 22l-5 7-5-7Z" fill="#02060c" opacity="0.5"/>
+                </svg>
+            </div>
+            <div>
+                <h1>League Proximity Chat</h1>
+                <p>Spatial voice for allies &amp; enemies on the Rift</p>
+            </div>
         </div>
-    </div>
+        <div class="hud-status">
+            <div id="ws-status" class="status error">Position Tracker: Disconnected</div>
+            <div id="lk-status" class="status error">Audio Server: Waiting for token...</div>
+        </div>
+    </header>
+
+    <main class="panel squad-panel">
+        <div class="roster-head">
+            <span class="section-label">Match Roster</span>
+            <span class="roster-count" id="roster-count">—</span>
+        </div>
+        <div id="roster-container">
+            <div class="player-item empty-row">Waiting for match to begin…</div>
+        </div>
+    </main>
+
+    <footer class="panel dock">
+        <div class="pos-tracker">
+            <span class="pt-label">Your Position</span>
+            <span id="local-coords" class="highlight">Waiting for data...</span>
+        </div>
+
+        <div class="dock-center">
+            <button id="start-btn" class="btn-primary">Connect to Audio</button>
+            <div id="voice-controls" class="controls-row">
+                <button id="mute-btn" class="btn-control btn-mute">🎤 Mute</button>
+                <button id="deafen-btn" class="btn-control btn-deafen">🎧 Deafen</button>
+            </div>
+        </div>
+
+        <div class="settings-panel">
+            <div class="setting-row">
+                <span class="s-title">
+                    Noise Cancellation
+                    <span class="setting-hint">Krisp <span id="krisp-status"></span></span>
+                </span>
+                <label class="switch">
+                    <input type="checkbox" id="krisp-toggle">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+        </div>
+    </footer>
 </div>
 
 <div id="hidden-audio-container" style="display: none;"></div>
@@ -149,6 +500,12 @@
     const localPosition = {x: 0, y: 0, isDead: false};
 
     let micMuted = false;
+    let isDeafened = false;
+    let micMutedBeforeDeafen = false;
+    let masterGain = null;
+    let krispProcessor = null;
+    let krispEnabled = localStorage.getItem('krispEnabled') !== 'false';
+    const locallyMuted = new Set();
     let connected = false;
     let isWaitingForMatch = false;
     let trackerSocket = null;
@@ -162,18 +519,14 @@
         try { if (room) room.disconnect(); } catch (e) {}
 
         document.body.innerHTML = `
-            <div style="display:flex; height:100vh; text-align:center; align-items:center; justify-content:center; flex-direction:column; background-color:#121212; color:#e0e0e0; margin:0; position:absolute; top:0; left:0; right:0; bottom:0;">
-                <div style="background: #1e1e1e; padding: 40px; border-radius: 8px; border-top: 5px solid #dc3545; box-shadow: 0 4px 15px rgba(0,0,0,0.5); max-width: 400px; width: 90%;">
-                    <h2 style="color:#dc3545; margin-top:0; border:none; padding-bottom: 0;">Application Terminated</h2>
-                    <p style="color:#aaa; font-size: 15px;">The Yowaimo Java backend has successfully shut down.</p>
-
-                    <div style="margin: 25px 0; padding: 15px; background: rgba(40, 167, 69, 0.1); border-radius: 6px; border: 1px solid #28a745;">
-                        <span style="color:#28a745; font-weight:bold; font-size: 16px;">🎤 Microphone Disconnected</span>
-                    </div>
-
-                    <p style="margin-top: 20px; font-size: 13px; color: #666; line-height: 1.5;">
-                        Browser security prevents this tab from closing automatically.<br>
-                        <strong>You may safely close this window.</strong>
+            <div style="display:flex; min-height:100vh; align-items:center; justify-content:center; padding:24px;">
+                <div style="background:linear-gradient(180deg,#0c1626,#060d17); border:1px solid rgba(200,170,110,0.35); border-radius:3px; box-shadow:0 18px 50px -12px rgba(0,0,0,0.7); padding:38px; max-width:420px; width:100%; text-align:center;">
+                    <div style="width:54px; height:54px; margin:0 auto 18px; display:flex; align-items:center; justify-content:center; font-size:24px; border-radius:3px; color:#f0e6d2; background:linear-gradient(135deg,#e8455a,#8e1f2c); box-shadow:0 8px 22px -6px rgba(232,69,90,0.45);">⏻</div>
+                    <h2 style="margin:0 0 8px; font-family:Cinzel,serif; letter-spacing:0.08em; font-size:18px; color:#f0e6d2;">Application Closed</h2>
+                    <p style="margin:0 0 22px; color:#a8a290; font-size:14px; line-height:1.5;">The backend has shut down and your microphone is disconnected.</p>
+                    <p style="margin:0; font-size:12.5px; color:#6b7585; line-height:1.55;">
+                        Your browser won't let this tab close itself —<br>
+                        <strong style="color:#a8a290;">you can safely close this window.</strong>
                     </p>
                 </div>
             </div>
@@ -196,26 +549,34 @@
         isWaitingForMatch = false;
         connected = false;
         micMuted = false;
+        isDeafened = false;
+        micMutedBeforeDeafen = false;
+        krispProcessor = null;
+        locallyMuted.clear();
+        if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
 
         const startBtn = document.getElementById('start-btn');
         startBtn.style.display = 'block';
-        startBtn.style.backgroundColor = '#007bff';
+        startBtn.classList.remove('is-waiting');
         startBtn.innerText = 'Connect to Audio';
-        document.getElementById('mute-btn').style.display = 'none';
+        showVoiceControls(false);
+        updateVoiceButtonsUI();
+        setKrispStatus(krispEnabled ? '(applies on connect)' : '(off)');
 
         const lkStatus = document.getElementById('lk-status');
         lkStatus.className = 'status error';
-        lkStatus.innerText = 'LiveKit Audio Server: Waiting for token...';
+        lkStatus.innerText = 'Audio Server: Waiting for token...';
 
         localUserIdentity = null;
         matchLeaderIdentity = null;
         document.getElementById('roster-container').innerHTML =
-            '<div class="player-item" style="color:#666; font-style:italic;">Waiting for match to begin...</div>';
+            '<div class="player-item empty-row">Waiting for match to begin…</div>';
+        document.getElementById('roster-count').innerText = '—';
 
         const coordEl = document.getElementById('local-coords');
         if (coordEl) {
             coordEl.innerText = "Waiting for data...";
-            coordEl.style.color = "#888";
+            coordEl.style.color = "#6b7585";
         }
     }
 
@@ -233,6 +594,15 @@
             div.className = 'player-item';
             div.id = `roster-${player.identity}`;
 
+            const meta = document.createElement('div');
+            meta.className = 'player-meta';
+
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            const initialMatch = (player.name || player.identity || '?').match(/[A-Za-z0-9]/);
+            avatar.innerText = initialMatch ? initialMatch[0].toUpperCase() : '?';
+            meta.appendChild(avatar);
+
             const nameSpan = document.createElement('span');
             nameSpan.className = 'player-name';
 
@@ -241,11 +611,19 @@
             } else {
                 nameSpan.innerText = player.name;
             }
+            meta.appendChild(nameSpan);
+
+            if (player.identity === localUserIdentity) {
+                const youTag = document.createElement('span');
+                youTag.className = 'you-tag';
+                youTag.innerText = 'YOU';
+                meta.appendChild(youTag);
+            }
 
             const controlsContainer = document.createElement('div');
             controlsContainer.style.display = 'flex';
             controlsContainer.style.alignItems = 'center';
-            controlsContainer.style.gap = '15px';
+            controlsContainer.style.gap = '10px';
 
             if (player.identity !== localUserIdentity && isAdmin) {
                 const distSpan = document.createElement('span');
@@ -262,6 +640,17 @@
 
             controlsContainer.appendChild(statusSpan);
 
+            if (player.identity !== localUserIdentity) {
+                const localMuteBtn = document.createElement('button');
+                const muted = locallyMuted.has(player.identity);
+                localMuteBtn.className = 'action-btn local-mute-btn' + (muted ? ' muted' : '');
+                localMuteBtn.id = `localmute-${player.identity}`;
+                localMuteBtn.innerText = muted ? '🔇' : '🔊';
+                localMuteBtn.title = muted ? 'Unmute (for you only)' : 'Mute (for you only)';
+                localMuteBtn.onclick = () => toggleLocalMute(player.identity);
+                controlsContainer.appendChild(localMuteBtn);
+            }
+
             if (localUserIdentity === matchLeaderIdentity && player.identity !== localUserIdentity) {
                 const actionBtn = document.createElement('button');
                 actionBtn.className = 'action-btn kick-btn';
@@ -272,10 +661,12 @@
                 controlsContainer.appendChild(actionBtn);
             }
 
-            div.appendChild(nameSpan);
+            div.appendChild(meta);
             div.appendChild(controlsContainer);
             container.appendChild(div);
         });
+
+        document.getElementById('roster-count').innerText = players.length;
     }
 
     function handleModerationAction(identity, name) {
@@ -320,7 +711,10 @@
             masterLimiter.ratio.value = 20;
             masterLimiter.attack.value = 0.003;
             masterLimiter.release.value = 0.25;
-            masterLimiter.connect(audioCtx.destination);
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = isDeafened ? 0 : 1;
+            masterLimiter.connect(masterGain);
+            masterGain.connect(audioCtx.destination);
         }
         return masterLimiter;
     }
@@ -356,6 +750,7 @@
             volume = maxVolume * Math.pow(1 - t, falloffExp);
         }
         if (remotePos.isDead) volume = 0;
+        if (locallyMuted.has(identity)) volume = 0;
 
         const now = audioCtx.currentTime;
         nodeData.panner.positionX.setTargetAtTime(remotePos.x, now, 0.1);
@@ -367,10 +762,10 @@
         if (distSpan) {
             if (remotePos.isDead) {
                 distSpan.innerText = "DEAD";
-                distSpan.style.color = "#dc3545";
+                distSpan.style.color = "#e8455a";
             } else {
                 distSpan.innerText = `${distance.toFixed(1)}m`;
-                distSpan.style.color = (distance <= maxDist) ? "#28a745" : "#888";
+                distSpan.style.color = (distance <= maxDist) ? "#0ac8b9" : "#6b7585";
             }
         }
     }
@@ -405,26 +800,155 @@
         const btn = document.getElementById('start-btn');
         if (!isWaitingForMatch) {
             isWaitingForMatch = true;
-            btn.style.backgroundColor = '#ff9800';
-            btn.innerText = 'Will connect to Audio once match begins (Click to cancel)';
+            btn.classList.add('is-waiting');
+            btn.innerText = 'Waiting for match… (click to cancel)';
             trackerSocket.send("REQUEST_JOIN");
         } else {
             isWaitingForMatch = false;
-            btn.style.backgroundColor = '#007bff';
+            btn.classList.remove('is-waiting');
             btn.innerText = 'Connect to Audio';
             trackerSocket.send("CANCEL_JOIN");
         }
     });
 
+    function showVoiceControls(visible) {
+        document.getElementById('voice-controls').style.display = visible ? 'flex' : 'none';
+    }
+
+    function updateVoiceButtonsUI() {
+        const muteBtn = document.getElementById('mute-btn');
+        muteBtn.innerText = micMuted ? '🎤 Unmute' : '🎤 Mute';
+        muteBtn.classList.toggle('active', micMuted);
+
+        const deafenBtn = document.getElementById('deafen-btn');
+        deafenBtn.innerText = isDeafened ? '🎧 Undeafen' : '🎧 Deafen';
+        deafenBtn.classList.toggle('active', isDeafened);
+    }
+
+    async function setMicMuted(muted) {
+        micMuted = muted;
+        try { if (room) await room.localParticipant.setMicrophoneEnabled(!muted); } catch (e) {}
+        updateVoiceButtonsUI();
+    }
+
+    async function setDeafened(deafened) {
+        isDeafened = deafened;
+        if (masterGain && audioCtx) {
+            masterGain.gain.setTargetAtTime(deafened ? 0 : 1, audioCtx.currentTime, 0.05);
+        }
+
+        if (deafened) {
+            micMutedBeforeDeafen = micMuted;
+            await setMicMuted(true);
+        } else {
+            await setMicMuted(micMutedBeforeDeafen);
+        }
+    }
+
     document.getElementById('mute-btn').addEventListener('click', async () => {
         if (!connected || !room) return;
+        if (isDeafened) {
+            micMutedBeforeDeafen = false;
+            await setDeafened(false);
+            return;
+        }
+        await setMicMuted(!micMuted);
+    });
+
+    document.getElementById('deafen-btn').addEventListener('click', async () => {
+        if (!connected || !room) return;
+        await setDeafened(!isDeafened);
+    });
+
+    function toggleLocalMute(identity) {
+        if (locallyMuted.has(identity)) {
+            locallyMuted.delete(identity);
+        } else {
+            locallyMuted.add(identity);
+        }
+
+        const btn = document.getElementById(`localmute-${identity}`);
+        if (btn) {
+            const muted = locallyMuted.has(identity);
+            btn.innerText = muted ? '🔇' : '🔊';
+            btn.classList.toggle('muted', muted);
+            btn.title = muted ? 'Unmute (for you only)' : 'Mute (for you only)';
+        }
+
+        const nodeData = remoteAudioNodes[identity];
+        if (nodeData && audioCtx) {
+            if (locallyMuted.has(identity)) {
+                nodeData.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+            } else {
+                updateRemoteAudio(identity);
+            }
+        }
+    }
+
+    function setKrispStatus(text) {
+        const el = document.getElementById('krisp-status');
+        if (el) el.innerText = text;
+    }
+
+    async function applyKrispState() {
+        localStorage.setItem('krispEnabled', krispEnabled);
+
+        if (!connected || !room) {
+            setKrispStatus(krispEnabled ? '(applies on connect)' : '(off)');
+            return;
+        }
+
         try {
-            micMuted = !micMuted;
-            await room.localParticipant.setMicrophoneEnabled(!micMuted);
-            const muteBtn = document.getElementById('mute-btn');
-            muteBtn.innerText = micMuted ? 'Unmute Microphone' : 'Mute Microphone';
-            muteBtn.style.backgroundColor = micMuted ? '#28a745' : '#dc3545';
-        } catch (e) {}
+            const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
+            const track = (audioPublications.length > 0) ? audioPublications[0].track : null;
+            if (!track) {
+                console.warn('[Krisp] No local audio track found — noise cancellation not applied.');
+                setKrispStatus('(no mic track)');
+                return;
+            }
+
+            if (krispEnabled) {
+                if (krispProcessor && typeof krispProcessor.setEnabled === 'function') {
+                    await krispProcessor.setEnabled(true);
+                } else if (!krispProcessor) {
+                    const {
+                        KrispNoiseFilter,
+                        isKrispNoiseFilterSupported
+                    } = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
+                    if (!isKrispNoiseFilterSupported()) {
+                        console.warn('[Krisp] Not supported in this browser — noise cancellation disabled.');
+                        setKrispStatus('(unsupported)');
+                        return;
+                    }
+                    krispProcessor = KrispNoiseFilter();
+                    await track.setProcessor(krispProcessor);
+                }
+                console.log('[Krisp] Noise cancellation active.');
+                setKrispStatus('(active)');
+            } else {
+                if (krispProcessor) {
+                    if (typeof krispProcessor.setEnabled === 'function') {
+                        await krispProcessor.setEnabled(false);
+                    } else {
+                        await track.stopProcessor();
+                        krispProcessor = null;
+                    }
+                }
+                console.log('[Krisp] Noise cancellation off.');
+                setKrispStatus('(off)');
+            }
+        } catch (e) {
+            console.error('[Krisp] Failed to update noise filter:', e);
+            setKrispStatus('(error)');
+        }
+    }
+
+    const krispToggle = document.getElementById('krisp-toggle');
+    krispToggle.checked = krispEnabled;
+    setKrispStatus(krispEnabled ? '(applies on connect)' : '(off)');
+    krispToggle.addEventListener('change', async () => {
+        krispEnabled = krispToggle.checked;
+        await applyKrispState();
     });
 
     function reportPlayerStateToJava(type, participant) {
@@ -445,7 +969,7 @@
         trackerSocket = new WebSocket('ws://localhost:8887');
         trackerSocket.onopen = () => {
             document.getElementById('ws-status').className = 'status success';
-            document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Connected';
+            document.getElementById('ws-status').innerText = 'Position Tracker: Connected';
         };
 
         trackerSocket.onmessage = (event) => {
@@ -522,9 +1046,9 @@
                         coordEl.innerText = `X: ${localPosition.x.toFixed(1)}, Y: ${localPosition.y.toFixed(1)}`;
                         if (localPosition.isDead) {
                             coordEl.innerText += " (DEAD)";
-                            coordEl.style.color = "#dc3545";
+                            coordEl.style.color = "#e8455a";
                         } else {
-                            coordEl.style.color = "#17a2b8";
+                            coordEl.style.color = "#0ac8b9";
                         }
                     }
 
@@ -552,10 +1076,10 @@
             }
 
             document.getElementById('ws-status').className = 'status error';
-            document.getElementById('ws-status').innerText = 'Yowaimo Local Position Tracker: Disconnected';
+            document.getElementById('ws-status').innerText = 'Position Tracker: Disconnected';
 
             document.getElementById('local-coords').innerText = "Waiting for data...";
-            document.getElementById('local-coords').style.color = "#888";
+            document.getElementById('local-coords').style.color = "#6b7585";
 
             setTimeout(connectToLocalJavaTracker, 2000);
         };
@@ -584,15 +1108,18 @@
 
         room.on(LivekitClient.RoomEvent.Disconnected, () => {
             document.getElementById('lk-status').className = 'status error';
-            document.getElementById('lk-status').innerText = 'LiveKit Disconnected. Ready to retry.';
+            document.getElementById('lk-status').innerText = 'Audio Server: Disconnected — ready to retry.';
 
-            document.getElementById('start-btn').style.display = 'block';
-            document.getElementById('start-btn').style.backgroundColor = '#007bff';
-            document.getElementById('start-btn').innerText = 'Connect to Audio';
-            document.getElementById('mute-btn').style.display = 'none';
+            const sb = document.getElementById('start-btn');
+            sb.style.display = 'block';
+            sb.classList.remove('is-waiting');
+            sb.innerText = 'Connect to Audio';
+            showVoiceControls(false);
 
             connected = false;
             isWaitingForMatch = false;
+            krispProcessor = null;
+            setKrispStatus(krispEnabled ? '(applies on connect)' : '(off)');
 
             if (localUserIdentity) {
                 updatePlayerStatus(localUserIdentity, "Not Connected", "status-offline");
@@ -663,7 +1190,7 @@
         try {
             const statusEl = document.getElementById('lk-status');
             statusEl.className = 'status loading';
-            statusEl.innerText = 'LiveKit Audio Server: Connecting...';
+            statusEl.innerText = 'Audio Server: Connecting…';
 
             initializeFreshRoom();
 
@@ -678,44 +1205,33 @@
             reportPlayerStateToJava("PLAYER_JOINED", room.localParticipant);
 
             statusEl.className = 'status success';
-            statusEl.innerText = 'LiveKit Audio Server: Connected';
+            statusEl.innerText = 'Audio Server: Connected';
             document.getElementById('start-btn').style.display = 'none';
-            document.getElementById('mute-btn').style.display = 'block';
+
+            micMuted = false;
+            isDeafened = false;
+            micMutedBeforeDeafen = false;
+            if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
+            updateVoiceButtonsUI();
+            showVoiceControls(true);
+
             if (localUserIdentity) updatePlayerStatus(localUserIdentity, "Connected", "status-connected");
 
             await ensurePlaybackUnlocked();
             await room.localParticipant.setMicrophoneEnabled(true);
 
-            try {
-                const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
-                if (audioPublications.length > 0 && audioPublications[0].track) {
-                    const {
-                        KrispNoiseFilter,
-                        isKrispNoiseFilterSupported
-                    } = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
-                    if (isKrispNoiseFilterSupported()) {
-                        const krispProcessor = KrispNoiseFilter();
-                        await audioPublications[0].track.setProcessor(krispProcessor);
-                        console.log('[Krisp] Noise cancellation active.');
-                    } else {
-                        console.warn('[Krisp] Not supported in this browser — noise cancellation disabled.');
-                    }
-                } else {
-                    console.warn('[Krisp] No local audio track found — noise cancellation not applied.');
-                }
-            } catch (e) {
-                console.error('[Krisp] Failed to apply noise filter:', e);
-            }
+            await applyKrispState();
             return true;
 
         } catch (error) {
             document.getElementById('lk-status').className = 'status error';
-            document.getElementById('lk-status').innerText = 'LiveKit Connection Failed!';
+            document.getElementById('lk-status').innerText = 'Audio Server: Connection failed!';
 
-            document.getElementById('start-btn').style.display = 'block';
-            document.getElementById('start-btn').style.backgroundColor = '#007bff';
-            document.getElementById('start-btn').innerText = 'Connect to Audio';
-            document.getElementById('mute-btn').style.display = 'none';
+            const sb = document.getElementById('start-btn');
+            sb.style.display = 'block';
+            sb.classList.remove('is-waiting');
+            sb.innerText = 'Connect to Audio';
+            showVoiceControls(false);
 
             isWaitingForMatch = false;
             connected = false;
