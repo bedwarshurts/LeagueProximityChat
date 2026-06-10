@@ -46,7 +46,6 @@ public class DiscordRPCManager {
 
             @Override
             public void onPacketSent(IPCClient client, Packet packet) {
-
             }
 
             @Override

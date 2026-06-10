@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
 import me.bedwarshurts.leagueproximitychat.livekit.LiveKitUser;
+import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -70,14 +71,18 @@ public class CoordinateServer extends WebSocketServer {
                 if (LeagueProximityChat.getActiveRoom() != null) {
 
                     LiveKitUser targetUser = new LiveKitUser(identity, name);
-                    LiveKitUser localModerator = new LiveKitUser(LeagueProximityChat.getRoomLeaderRiotId(), "");
+
+                    String localIdentity = RitoApiUtils.getLocalSummonerName();
+                    LiveKitUser localModerator = (localIdentity != null && !localIdentity.isEmpty())
+                            ? new LiveKitUser(localIdentity, "") : null;
 
                     if ("PLAYER_JOINED".equals(type) && !identity.isEmpty()) {
                         if (LeagueProximityChat.getActiveRoom().isBanned(targetUser)) {
                             System.out.println("Banned user " + identity + " tried to rejoin. Auto-kicking...");
-                            LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator);
-
-                            sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
+                            if (localModerator != null
+                                    && LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator)) {
+                                sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
+                            }
                         } else {
                             LeagueProximityChat.getActiveRoom().addParticipant(targetUser);
                         }
@@ -86,12 +91,16 @@ public class CoordinateServer extends WebSocketServer {
                         LeagueProximityChat.getActiveRoom().removeParticipant(targetUser);
                     }
                     else if ("KICK_USER".equals(type) && !identity.isEmpty()) {
-                        LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator);
-                        sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
+                        if (localModerator != null
+                                && LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator)) {
+                            sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
+                        }
                     }
                     else if ("REVOKE_BAN".equals(type) && !identity.isEmpty()) {
-                        LeagueProximityChat.getActiveRoom().revokeBan(targetUser, localModerator);
-                        sendToActive("{\"type\":\"PLAYER_UNBANNED\", \"identity\":\"" + identity + "\"}");
+                        if (localModerator != null
+                                && LeagueProximityChat.getActiveRoom().revokeBan(targetUser, localModerator)) {
+                            sendToActive("{\"type\":\"PLAYER_UNBANNED\", \"identity\":\"" + identity + "\"}");
+                        }
                     }
                 }
             } catch (Exception ignored) {}

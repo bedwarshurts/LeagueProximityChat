@@ -58,34 +58,35 @@ public class LivekitRoom {
         System.out.println("[Room " + roomID + "] " + user.identity() + " left. Total: " + participants.size());
     }
 
-    public void kickUser(LiveKitUser user, LiveKitUser moderator) {
-        try {
-            if (!moderator.equals(roomLeader)) {
-                System.err.println("Only the active room leader can kick users.");
-                return;
-            }
+    public boolean kickUser(LiveKitUser user, LiveKitUser moderator) {
+        if (!moderator.equals(roomLeader)) {
+            System.err.println("Only the active room leader can kick users.");
+            return false;
+        }
 
+        try {
             var response = client.removeParticipant(roomID, user.identity()).execute();
 
             if (response.isSuccessful()) {
                 banned.add(user);
                 System.out.println("[LiveKit Server] Forcefully kicked user: " + user.identity());
-            } else {
-                System.err.println("Failed to kick user. Code: " + response.code());
+                return true;
             }
-
+            System.err.println("Failed to kick user. Code: " + response.code());
         } catch (Exception e) {
             System.err.println("Error kicking user " + user.identity() + ": " + e.getMessage());
         }
+        return false;
     }
 
-    public void revokeBan(LiveKitUser user, LiveKitUser moderator) {
+    public boolean revokeBan(LiveKitUser user, LiveKitUser moderator) {
         if (!moderator.equals(roomLeader)) {
             System.err.println("Only the active room leader can revoke bans.");
-            return;
+            return false;
         }
         banned.remove(user);
         System.out.println("[Room " + roomID + "] Ban revoked for: " + user.identity());
+        return true;
     }
 
     public boolean isBanned(LiveKitUser user) {
