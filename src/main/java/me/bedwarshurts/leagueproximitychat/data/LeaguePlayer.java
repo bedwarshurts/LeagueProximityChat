@@ -4,6 +4,8 @@ import lombok.Getter;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Getter
 public class LeaguePlayer {
@@ -59,6 +61,23 @@ public class LeaguePlayer {
         } else {
             this.championName = RitoApiUtils.sanitizeChampionName(rawChampionName);
         }
+    }
+
+    public int getEffectiveSkinId() {
+        if (skinID > 0) {
+            return skinID;
+        }
+        String source = (rawSkinName != null && !rawSkinName.isEmpty()) ? rawSkinName : skinName;
+        if (source != null) {
+            Matcher m = Pattern.compile("(\\d+)$").matcher(source.trim());
+            if (m.find()) {
+                try {
+                    return Integer.parseInt(m.group(1));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return 0;
     }
 
     public record Item(boolean canUse, boolean consumable, int count, String displayName, int itemID, int price,

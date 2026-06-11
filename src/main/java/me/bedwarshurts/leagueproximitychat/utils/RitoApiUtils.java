@@ -7,23 +7,29 @@ import org.json.JSONObject;
 
 import javax.net.ssl.*;
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 public class RitoApiUtils {
 
     private static boolean sslBypassed = false;
     private static String cachedSummonerName = null;
+    private static final Map<String, Integer> profileIconCache = new HashMap<>();
     private static final Path LOCKFILE_PATH = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
 
     public static void disableSSLChecks() {
@@ -107,6 +113,114 @@ public class RitoApiUtils {
 
     public static void clearCache() {
         cachedSummonerName = null;
+        profileIconCache.clear();
+    }
+
+    public static int getLocalProfileIconId() {
+        int iconId = -1;
+        try {
+            String response = fetchClientAPI("/lol-summoner/v1/current-summoner");
+            if (response != null && !response.isEmpty()) {
+                iconId = new JSONObject(response).optInt("profileIconId", -1);
+            }
+        } catch (Exception ignored) {
+        }
+        if (iconId <= 0) {
+            System.err.println("[ProfileIcon] current-summoner lookup failed (is the League client running?)");
+        }
+        return iconId;
+    }
+
+    public static byte[] getProfileIconImage(int iconId) {
+        try {
+            if (!Files.exists(LOCKFILE_PATH)) {
+                return null;
+            }
+            String[] lockfileParts = Files.readString(LOCKFILE_PATH).split(":");
+            String port = lockfileParts[2];
+            String password = lockfileParts[3];
+            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
+
+            disableSSLChecks();
+            URL url = new URI("https://127.0.0.1:" + port + "/lol-game-data/assets/v1/profile-icons/" + iconId + ".jpg").toURL();
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(3000);
+            conn.setRequestProperty("Authorization", "Basic " + base64Auth);
+
+            if (conn.getResponseCode() != 200) {
+                conn.disconnect();
+                return null;
+            }
+            try (InputStream in = conn.getInputStream()) {
+                return in.readAllBytes();
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static String getProfileIconDataUri(int iconId) {
+        byte[] bytes = getProfileIconImage(iconId);
+        if (bytes == null || bytes.length == 0) {
+            return "";
+        }
+        String mime = (bytes[0] & 0xFF) == 0x89 ? "image/png" : "image/jpeg";
+        return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
+    }
+
+    public static int getProfileIconId(String gameName, String tagLine, String riotIdFallback) {
+        if ((gameName == null || gameName.isEmpty()) && riotIdFallback != null && riotIdFallback.contains("#")) {
+            String[] parts = riotIdFallback.split("#", 2);
+            gameName = parts[0];
+            tagLine = parts[1];
+        }
+        if (gameName == null || gameName.isEmpty()) {
+            return -1;
+        }
+
+        String cacheKey = (gameName + "#" + tagLine).toLowerCase();
+        Integer cached = profileIconCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        int iconId = -1;
+        try {
+            String encodedName = URLEncoder.encode(gameName, StandardCharsets.UTF_8).replace("+", "%20");
+            String encodedTag = URLEncoder.encode(tagLine == null ? "" : tagLine, StandardCharsets.UTF_8).replace("+", "%20");
+            String query = "?gameName=" + encodedName + "&tagLine=" + encodedTag;
+            String response = fetchClientAPI("/lol-summoner/v1/alias/lookup" + query);
+            if (response != null && !response.isEmpty()) {
+                String trimmed = response.trim();
+                JSONObject summoner = trimmed.startsWith("[")
+                        ? new JSONArray(trimmed).optJSONObject(0)
+                        : new JSONObject(trimmed);
+                if (summoner != null) {
+                    iconId = summoner.optInt("profileIconId", -1);
+                    if (iconId <= 0) {
+                        String puuid = summoner.optString("puuid", "");
+                        if (!puuid.isEmpty()) {
+                            String byPuuid = fetchClientAPI("/lol-summoner/v2/summoners/puuid/" + puuid);
+                            if (byPuuid != null) {
+                                iconId = new JSONObject(byPuuid).optInt("profileIconId", -1);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (iconId > 0) {
+            profileIconCache.put(cacheKey, iconId);
+        } else {
+            System.err.println("[ProfileIcon] Could not resolve summoner icon for " + gameName + "#" + tagLine);
+        }
+        return iconId;
     }
 
     public static String getLocalSummonerName() {

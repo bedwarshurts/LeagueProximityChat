@@ -191,17 +191,51 @@
         #roster-container::-webkit-scrollbar-thumb { background: rgba(200, 170, 110, 0.22); border-radius: 4px; }
 
         .player-item {
+            position: relative;
+            z-index: 0;
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 10px;
-            padding: 10px 8px;
+            padding: 27px 14px;
             border-bottom: 1px solid var(--hairline-soft);
             font-size: 14px;
             transition: background 0.12s;
         }
         .player-item:hover { background: rgba(200, 170, 110, 0.045); }
         .player-item:last-child { border-bottom: none; }
+
+        .player-splash {
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            background-repeat: no-repeat;
+            background-size: 750px auto;
+            background-position: left 25%;
+            opacity: 0;
+            filter: brightness(0.85) contrast(1.05);
+            transition: opacity 0.4s ease, filter 0.2s ease;
+        }
+        .player-item.has-splash .player-splash { opacity: 1; }
+
+        .player-item.has-splash:hover .player-splash,
+        .player-item.speaking .player-splash {
+            filter: brightness(1.22) contrast(1.10);
+        }
+
+        .player-splash::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+
+            background: linear-gradient(90deg,
+            rgba(4, 10, 18, 0.0) 0%,
+            rgba(4, 10, 18, 0.15) 30%,
+            rgba(4, 10, 18, 0.50) 55%,
+            rgba(4, 10, 18, 0.90) 80%,
+            rgba(4, 10, 18, 1.0) 95%);
+        }
         .empty-row { color: var(--ink-3); font-style: italic; font-size: 13px; padding: 36px 0; justify-content: center; }
         .empty-row:hover { background: transparent; }
 
@@ -209,14 +243,14 @@
         .avatar {
             position: relative;
             z-index: 0;
-            width: 36px;
-            height: 41px;
+            width: 46px;
+            height: 53px;
             flex-shrink: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: var(--display);
-            font-size: 15px;
+            font-size: 18px;
             font-weight: 700;
             color: var(--gold-soft);
             clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
@@ -230,18 +264,92 @@
             background: linear-gradient(180deg, #16242f, #0a1018);
             clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
         }
-        .player-name { font-weight: 600; font-size: 13.5px; color: var(--ink-1); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .avatar-img {
+            position: absolute;
+            top: 1.5px;
+            left: 1.5px;
+            width: calc(100% - 3px);
+            height: calc(100% - 3px);
+            z-index: 1;
+            object-fit: cover;
+            clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+        }
+        .player-name {
+            font-weight: 600;
+            font-size: 13.5px;
+            color: var(--ink-1);
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow:
+                    -1px -1px 0 #000,
+                    1px -1px 0 #000,
+                    -1px  1px 0 #000,
+                    1px  1px 0 #000,
+                    0    3px 6px rgba(0, 0, 0, 0.95);
+        }
+        .player-center-content {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .voice-wave {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            height: 52px;
+            opacity: 0.15;
+            transition: opacity 0.3s ease, filter 0.3s ease;
+        }
+
+        .player-item.speaking .voice-wave {
+            opacity: 1.0;
+            filter: drop-shadow(0 0 12px rgba(10, 200, 185, 0.75));
+        }
+
+        .wave-bar {
+            width: 7px;
+            height: 100%;
+            background-color: var(--teal);
+            border-radius: 3px;
+            transform: scaleY(0.12);
+            transition: transform 0.2s ease;
+        }
+
+        .player-item.speaking .wave-bar:nth-child(1) { animation: wavePulse 0.5s ease-in-out infinite alternate 0.0s; }
+        .player-item.speaking .wave-bar:nth-child(2) { animation: wavePulse 0.4s ease-in-out infinite alternate 0.1s; }
+        .player-item.speaking .wave-bar:nth-child(3) { animation: wavePulse 0.6s ease-in-out infinite alternate 0.2s; }
+        .player-item.speaking .wave-bar:nth-child(4) { animation: wavePulse 0.4s ease-in-out infinite alternate 0.05s; }
+        .player-item.speaking .wave-bar:nth-child(5) { animation: wavePulse 0.7s ease-in-out infinite alternate 0.15s; }
+        .player-item.speaking .wave-bar:nth-child(6) { animation: wavePulse 0.5s ease-in-out infinite alternate 0.25s; }
+        .player-item.speaking .wave-bar:nth-child(7) { animation: wavePulse 0.4s ease-in-out infinite alternate 0.1s; }
+        .player-item.speaking .wave-bar:nth-child(8) { animation: wavePulse 0.6s ease-in-out infinite alternate 0.2s; }
+        .player-item.speaking .wave-bar:nth-child(9) { animation: wavePulse 0.5s ease-in-out infinite alternate 0.05s; }
+
+        @keyframes wavePulse {
+            0% { transform: scaleY(0.15); }
+            100% { transform: scaleY(1.0); }
+        }
+
         .you-tag {
             flex-shrink: 0;
             font-family: var(--mono);
-            font-size: 9.5px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            color: var(--teal);
-            background: rgba(10, 200, 185, 0.07);
-            border: 1px solid rgba(10, 200, 185, 0.40);
-            padding: 1px 6px;
-            border-radius: 2px;
+            font-size: 10.5px;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            color: #ffffff;
+            background: rgba(10, 200, 185, 0.25);
+            border: 1px solid var(--teal);
+            box-shadow: 0 0 10px rgba(10, 200, 185, 0.35);
+            padding: 2px 8px;
+            border-radius: 3px;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
         }
 
         .player-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
@@ -280,7 +388,6 @@
             border: 1px solid var(--hairline);
         }
 
-        /* ===== bottom control dock ===== */
         .dock {
             display: flex;
             align-items: center;
@@ -435,7 +542,7 @@
             </div>
             <div>
                 <h1>League Proximity Chat</h1>
-                <p>Spatial voice for allies &amp; enemies on the Rift</p>
+                <p>https://github.com/bedwarshurts/LeagueProximityChat</p>
             </div>
         </div>
         <div class="hud-status">
@@ -488,6 +595,58 @@
 <script>
     const LIVEKIT_URL = 'https://league-proximity-chat-3q7it5ix.livekit.cloud';
 
+    const PROFILE_ICON_URL = (id) => `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/${id}.jpg`;
+    const SPLASH_URL = (champ, skin) => `https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${champ}_${skin}.jpg`;
+    const CHAMP_NAME_FIXES = { FiddleSticks: 'Fiddlesticks' };
+
+    const ddragonVersionPromise = fetch('https://ddragon.leagueoflegends.com/api/versions.json')
+        .then(r => r.json())
+        .then(v => v[0])
+        .catch(() => null);
+
+    let champSummaryPromise = null;
+    function getChampionIdByAlias(alias) {
+        if (!champSummaryPromise) {
+            champSummaryPromise = fetch('https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-summary.json')
+                .then(r => r.json())
+                .catch(() => null);
+        }
+        return champSummaryPromise.then(list => {
+            if (!list) return null;
+            const hit = list.find(c => c.alias && c.alias.toLowerCase() === alias.toLowerCase());
+            return hit ? hit.id : null;
+        });
+    }
+
+    const champSkinDataCache = {};
+    async function resolveSkinNum(champ, skinId) {
+        if (!skinId) return 0;
+        try {
+            const champId = await getChampionIdByAlias(champ);
+            if (!champId) return skinId;
+            if (!champSkinDataCache[champ]) {
+                champSkinDataCache[champ] = fetch(`https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champions/${champId}.json`)
+                    .then(r => r.json())
+                    .then(d => {
+                        const skinNums = [];
+                        const chromaToParent = {};
+                        (d.skins || []).forEach(s => {
+                            const num = s.id - champId * 1000;
+                            skinNums.push(num);
+                            (s.chromas || []).forEach(c => { chromaToParent[c.id - champId * 1000] = num; });
+                        });
+                        return { skinNums, chromaToParent };
+                    });
+            }
+            const { skinNums, chromaToParent } = await champSkinDataCache[champ];
+            if (chromaToParent[skinId] !== undefined) return chromaToParent[skinId];
+            if (skinNums.includes(skinId)) return skinId;
+            return skinId;
+        } catch (e) {
+            return skinId;
+        }
+    }
+
     let room = null;
     let audioCtx;
     let masterLimiter = null;
@@ -535,6 +694,8 @@
     }
 
     function resetToIdleState() {
+        if (window.voiceInterval) { clearInterval(window.voiceInterval); window.voiceInterval = null; }
+
         try { if (room) room.disconnect(); } catch (e) {}
 
         Object.keys(remoteAudioNodes).forEach(cleanupRemoteAudio);
@@ -590,6 +751,25 @@
             div.className = 'player-item';
             div.id = `roster-${player.identity}`;
 
+            if (player.champion && player.champion !== 'Unknown') {
+                const champ = CHAMP_NAME_FIXES[player.champion] || player.champion;
+                const splash = document.createElement('div');
+                splash.className = 'player-splash';
+                div.appendChild(splash);
+
+                const trySplash = (skin) => {
+                    const url = SPLASH_URL(champ, skin);
+                    const probe = new Image();
+                    probe.onload = () => {
+                        splash.style.backgroundImage = `url("${url}")`;
+                        div.classList.add('has-splash');
+                    };
+                    probe.onerror = () => { if (skin !== 0) trySplash(0); };
+                    probe.src = url;
+                };
+                resolveSkinNum(champ, Number(player.skinId) || 0).then(trySplash);
+            }
+
             const meta = document.createElement('div');
             meta.className = 'player-meta';
 
@@ -597,6 +777,40 @@
             avatar.className = 'avatar';
             const initialMatch = (player.name || player.identity || '?').match(/[A-Za-z0-9]/);
             avatar.innerText = initialMatch ? initialMatch[0].toUpperCase() : '?';
+            const hasIconData = typeof player.profileIconData === 'string' && player.profileIconData.startsWith('data:');
+
+            if (hasIconData || player.profileIconId > 0) {
+                const icon = document.createElement('img');
+                icon.className = 'avatar-img';
+                icon.alt = '';
+                const sources = [];
+                if (hasIconData) sources.push(player.profileIconData);
+                if (player.profileIconId > 0) {
+                    sources.push(`/profile-icon/${player.profileIconId}`, PROFILE_ICON_URL(player.profileIconId));
+                }
+                let attempt = 0;
+                let ddragonAdded = false;
+                icon.onerror = async () => {
+                    if (!ddragonAdded && player.profileIconId > 0) {
+                        const ver = await ddragonVersionPromise;
+                        if (ver) {
+                            ddragonAdded = true;
+                            sources.push(`https://ddragon.leagueoflegends.com/cdn/${ver}/img/profileicon/${player.profileIconId}.png`);
+                        }
+                    }
+                    attempt++;
+                    if (attempt < sources.length) {
+                        icon.src = sources[attempt];
+                    } else {
+                        console.warn(`[Icon] Could not load profile icon ${player.profileIconId} for ${player.identity} from any source`);
+                        icon.remove();
+                    }
+                };
+                icon.src = sources[0];
+                avatar.appendChild(icon);
+            } else {
+                console.warn(`[Icon] No profile icon id received for ${player.identity} (got ${player.profileIconId})`);
+            }
             meta.appendChild(avatar);
 
             const nameSpan = document.createElement('span');
@@ -615,6 +829,22 @@
                 youTag.innerText = 'YOU';
                 meta.appendChild(youTag);
             }
+
+            const centerDiv = document.createElement('div');
+            centerDiv.className = 'player-center-content';
+            centerDiv.innerHTML = `
+                <div class="voice-wave">
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                    <div class="wave-bar"></div>
+                </div>
+            `;
 
             const controlsContainer = document.createElement('div');
             controlsContainer.style.display = 'flex';
@@ -658,7 +888,9 @@
             }
 
             div.appendChild(meta);
+            div.appendChild(centerDiv);
             div.appendChild(controlsContainer);
+
             container.appendChild(div);
         });
 
@@ -1103,6 +1335,8 @@
         });
 
         room.on(LivekitClient.RoomEvent.Disconnected, () => {
+            if (window.voiceInterval) { clearInterval(window.voiceInterval); window.voiceInterval = null; }
+
             document.getElementById('lk-status').className = 'status error';
             document.getElementById('lk-status').innerText = 'Audio Server: Disconnected — ready to retry.';
 
@@ -1180,6 +1414,75 @@
                 updateRemoteAudio(participant.identity);
             } catch (e) {}
         });
+
+        if (window.voiceInterval) clearInterval(window.voiceInterval);
+
+        let localAnalyser = null;
+        let localDataArray = null;
+
+        window.voiceInterval = setInterval(() => {
+            if (!room || !connected) return;
+
+            if (room.localParticipant) {
+                let isTalkingLocally = room.localParticipant.isSpeaking;
+
+                if (!isTalkingLocally && audioCtx && !micMuted) {
+                    const pubs = Array.from(room.localParticipant.audioTrackPublications.values());
+                    if (pubs.length > 0 && pubs[0].track && pubs[0].track.mediaStreamTrack) {
+                        try {
+                            if (!localAnalyser) {
+                                const stream = new MediaStream([pubs[0].track.mediaStreamTrack]);
+                                const source = audioCtx.createMediaStreamSource(stream);
+                                localAnalyser = audioCtx.createAnalyser();
+                                localAnalyser.fftSize = 256;
+                                source.connect(localAnalyser);
+                                localDataArray = new Uint8Array(localAnalyser.frequencyBinCount);
+                            }
+                            localAnalyser.getByteFrequencyData(localDataArray);
+
+                            let sum = 0;
+                            for (let i = 0; i < localDataArray.length; i++) sum += localDataArray[i];
+                            let avgVolume = sum / localDataArray.length;
+
+                            if (avgVolume > 8) isTalkingLocally = true;
+                        } catch (e) {}
+                    }
+                }
+
+                if (micMuted || isDeafened) isTalkingLocally = false;
+
+                const localRow = document.getElementById(`roster-${room.localParticipant.identity}`);
+                if (localRow) {
+                    if (isTalkingLocally) localRow.classList.add('speaking');
+                    else localRow.classList.remove('speaking');
+                }
+            }
+
+            room.remoteParticipants.forEach((participant) => {
+                const playerRow = document.getElementById(`roster-${participant.identity}`);
+                if (playerRow) {
+                    let isAudible = false;
+
+                    if (participant.isSpeaking && !locallyMuted.has(participant.identity) && !isDeafened) {
+
+                        const remotePos = remotePositions[participant.identity];
+                        if (remotePos) {
+                            const distance = Math.hypot(remotePos.x - localPosition.x, remotePos.y - localPosition.y);
+
+                            if (distance < 12.2 && !remotePos.isDead && !localPosition.isDead) {
+                                isAudible = true;
+                            }
+                        }
+                    }
+
+                    if (isAudible) {
+                        playerRow.classList.add('speaking');
+                    } else {
+                        playerRow.classList.remove('speaking');
+                    }
+                }
+            });
+        }, 80);
     }
 
     async function connectToLiveKit(token) {

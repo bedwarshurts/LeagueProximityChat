@@ -164,12 +164,30 @@ public class LeagueProximityChat {
 
             if (localPlayer != null) {
                 StringBuilder rosterArray = new StringBuilder("[");
+                int iconLookupFailStreak = 0;
                 for (int i = 0; i < gameData.players().size(); i++) {
                     LeaguePlayer p = gameData.players().get(i);
                     String pId = p.getRiotId();
                     String pName = p.getRiotId() + " (" + p.getChampionName() + ")";
 
-                    rosterArray.append(String.format("{\"identity\":\"%s\", \"name\":\"%s\"}", pId, pName));
+                    int profileIconId = (p == localPlayer) ? RitoApiUtils.getLocalProfileIconId() : -1;
+
+                    if (profileIconId <= 0 && !p.isBot() && pId != null && !pId.isEmpty() && iconLookupFailStreak < 2) {
+                        profileIconId = RitoApiUtils.getProfileIconId(p.getRiotIdGameName(), p.getRiotIdTagLine(), pId);
+                        iconLookupFailStreak = (profileIconId <= 0) ? iconLookupFailStreak + 1 : 0;
+                    }
+
+                    int skinId = p.getEffectiveSkinId();
+
+                    String iconData = (profileIconId > 0) ? RitoApiUtils.getProfileIconDataUri(profileIconId) : "";
+
+                    System.out.println("[Roster] " + pId + " champion=" + p.getChampionName()
+                            + " skinId=" + skinId + " (api=" + p.getSkinID() + ", raw=" + p.getRawSkinName() + ")"
+                            + " profileIcon=" + profileIconId + " iconBytes=" + iconData.length());
+
+                    rosterArray.append(String.format(
+                            "{\"identity\":\"%s\", \"name\":\"%s\", \"champion\":\"%s\", \"skinId\":%d, \"profileIconId\":%d, \"profileIconData\":\"%s\"}",
+                            pId, pName, p.getChampionName(), skinId, profileIconId, iconData));
                     if (i < gameData.players().size() - 1) rosterArray.append(",");
                 }
                 rosterArray.append("]");
@@ -281,6 +299,30 @@ public class LeagueProximityChat {
             }
         });
 
+        server.createContext("/profile-icon/", exchange -> {
+            byte[] image = null;
+            try {
+                String idPart = exchange.getRequestURI().getPath()
+                        .substring("/profile-icon/".length()).replaceAll("[^0-9]", "");
+                if (!idPart.isEmpty()) {
+                    image = RitoApiUtils.getProfileIconImage(Integer.parseInt(idPart));
+                }
+            } catch (Exception ignored) {
+            }
+
+            if (image == null || image.length == 0) {
+                exchange.sendResponseHeaders(404, -1);
+                return;
+            }
+
+            exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
+            exchange.getResponseHeaders().set("Cache-Control", "max-age=86400");
+            exchange.sendResponseHeaders(200, image.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(image);
+            }
+        });
+
         server.start();
         System.out.println("Local Web Server running on port 8000!");
 
@@ -328,7 +370,7 @@ public class LeagueProximityChat {
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
             Thread.sleep(1000);
-            System.exit(0);
+            //System.exit(0);
         }
 
         DiscordRPCManager.start();
