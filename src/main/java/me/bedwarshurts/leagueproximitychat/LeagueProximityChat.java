@@ -9,6 +9,7 @@ import me.bedwarshurts.leagueproximitychat.discord.DiscordRPCManager;
 import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
+import me.bedwarshurts.leagueproximitychat.utils.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
@@ -327,10 +328,12 @@ public class LeagueProximityChat {
         System.out.println("Local Web Server running on port 8000!");
 
         try {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(new URI("http://localhost:8000"));
-            } else {
-                System.out.println("Please manually go to: http://localhost:8000");
+            if (!OverlayManager.launch()) {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    Desktop.getDesktop().browse(new URI("http://localhost:8000"));
+                } else {
+                    System.out.println("Please manually go to: http://localhost:8000");
+                }
             }
         } catch (Exception e) {
             System.err.println("Failed to open browser: " + e.getMessage());
@@ -370,7 +373,7 @@ public class LeagueProximityChat {
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
             Thread.sleep(1000);
-            //System.exit(0);
+            System.exit(0);
         }
 
         DiscordRPCManager.start();
