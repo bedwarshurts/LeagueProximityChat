@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>League of Legends Proximity Chat</title>
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <script src="livekit-client.umd.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -358,6 +358,21 @@
         .status-connected { color: var(--teal); }
         .banned-name { text-decoration: line-through; color: var(--ink-3); }
 
+        /* avatar lights up while the player is talking */
+        .avatar { transition: filter 0.15s; }
+        .player-item.speaking .avatar {
+            background: linear-gradient(180deg, #3be8d8, #0a8c82);
+            filter: drop-shadow(0 0 7px rgba(10, 200, 185, 0.85));
+        }
+
+        .volume-slider {
+            width: 78px;
+            height: 4px;
+            flex-shrink: 0;
+            cursor: pointer;
+            accent-color: var(--gold);
+        }
+
         button {
             cursor: pointer;
             border: none;
@@ -661,6 +676,9 @@
     let krispProcessor = null;
     let krispEnabled = localStorage.getItem('krispEnabled') !== 'false';
     const locallyMuted = new Set();
+    const playerVolumes = (() => {
+        try { return JSON.parse(localStorage.getItem('playerVolumes')) || {}; } catch (e) { return {}; }
+    })();
     let connected = false;
     let isWaitingForMatch = false;
     let trackerSocket = null;
@@ -867,6 +885,24 @@
             controlsContainer.appendChild(statusSpan);
 
             if (player.identity !== localUserIdentity) {
+                const volSlider = document.createElement('input');
+                volSlider.type = 'range';
+                volSlider.className = 'volume-slider';
+                volSlider.min = '0';
+                volSlider.max = '2';
+                volSlider.step = '0.05';
+                volSlider.value = playerVolumes[player.identity] ?? 1;
+                volSlider.title = `Volume: ${Math.round(volSlider.value * 100)}%`;
+                volSlider.oninput = () => {
+                    playerVolumes[player.identity] = Number(volSlider.value);
+                    localStorage.setItem('playerVolumes', JSON.stringify(playerVolumes));
+                    volSlider.title = `Volume: ${Math.round(volSlider.value * 100)}%`;
+                    updateRemoteAudio(player.identity);
+                };
+                controlsContainer.appendChild(volSlider);
+            }
+
+            if (player.identity !== localUserIdentity) {
                 const localMuteBtn = document.createElement('button');
                 const muted = locallyMuted.has(player.identity);
                 localMuteBtn.className = 'action-btn local-mute-btn' + (muted ? ' muted' : '');
@@ -977,6 +1013,7 @@
             const t = (distance - fullDist) / (maxDist - fullDist);
             volume = maxVolume * Math.pow(1 - t, falloffExp);
         }
+        volume *= playerVolumes[identity] ?? 1;
         if (remotePos.isDead) volume = 0;
         if (locallyMuted.has(identity)) volume = 0;
 
@@ -1220,6 +1257,16 @@
                     return;
                 }
 
+                if (data.type === "TOGGLE_MUTE") {
+                    document.getElementById('mute-btn').click();
+                    return;
+                }
+
+                if (data.type === "TOGGLE_DEAFEN") {
+                    document.getElementById('deafen-btn').click();
+                    return;
+                }
+
                 if (data.type === "MATCH_ROSTER") {
                     buildRosterUI(data.players, data.localIdentity, data.roomLeader);
                     return;
@@ -1334,8 +1381,17 @@
             await ensurePlaybackUnlocked();
         });
 
+        room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+            const speaking = new Set(speakers.map(p => p.identity));
+            document.querySelectorAll('.player-item[id^="roster-"]').forEach(row => {
+                row.classList.toggle('speaking', speaking.has(row.id.slice('roster-'.length)));
+            });
+        });
+
         room.on(LivekitClient.RoomEvent.Disconnected, () => {
             if (window.voiceInterval) { clearInterval(window.voiceInterval); window.voiceInterval = null; }
+
+            document.querySelectorAll('.player-item.speaking').forEach(row => row.classList.remove('speaking'));
 
             document.getElementById('lk-status').className = 'status error';
             document.getElementById('lk-status').innerText = 'Audio Server: Disconnected — ready to retry.';
