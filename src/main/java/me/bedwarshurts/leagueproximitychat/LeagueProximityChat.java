@@ -9,11 +9,14 @@ import me.bedwarshurts.leagueproximitychat.discord.DiscordRPCManager;
 import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
-import me.bedwarshurts.leagueproximitychat.utils.OverlayManager;
+import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
+import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
 import nu.pattern.OpenCV;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.opencv.core.Mat;
 
 import java.awt.*;
@@ -25,6 +28,11 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class LeagueProximityChat {
 
@@ -34,7 +42,10 @@ public class LeagueProximityChat {
     private static boolean isTrackerReady = false;
 
     @Getter @Setter private static LivekitRoom activeRoom = null;
-    private static boolean hasSentRoster = false;
+    private static volatile boolean hasSentRoster = false;
+    private static final AtomicBoolean rosterBuildInFlight = new AtomicBoolean(false);
+    private static final AtomicInteger rosterGeneration = new AtomicInteger(0);
+    private static final AtomicBoolean gameOverFlag = new AtomicBoolean(false);
 
     @Getter private static String roomLeaderRiotId = null;
 
@@ -42,8 +53,8 @@ public class LeagueProximityChat {
 
     private static ScreenPositionTracker tracker = null;
     private static CoordinateServer server = null;
+    private static OverlayManager overlay = null;
 
-    private static long gameEndCheckLastMs = 0;
     private static int gameEndFailureStreak = 0;
     private static final long GAME_END_CHECK_INTERVAL_MS = 2000;
     private static final int GAME_END_FAILURE_THRESHOLD = 3;
@@ -59,12 +70,12 @@ public class LeagueProximityChat {
         return null;
     }
 
-    private static boolean isGameOver() {
-        long now = System.currentTimeMillis();
-        if (now - gameEndCheckLastMs < GAME_END_CHECK_INTERVAL_MS) {
-            return false;
+    private static void pollGameEnd() {
+        if (!hasSentRoster) {
+            gameEndFailureStreak = 0;
+            gameOverFlag.set(false);
+            return;
         }
-        gameEndCheckLastMs = now;
 
         String phase = RitoApiUtils.getGameflowPhase();
         if (phase != null) {
@@ -72,23 +83,65 @@ public class LeagueProximityChat {
                     || phase.equalsIgnoreCase("Reconnect")
                     || phase.equalsIgnoreCase("GameStart")) {
                 gameEndFailureStreak = 0;
-                return false;
+                return;
             }
-            return true;
+            gameOverFlag.set(true);
+            return;
         }
 
-        String playerList = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
+        String playerList = RitoApiUtils.fetchPlayerListRaw();
         if (playerList != null && !playerList.isEmpty()) {
             gameEndFailureStreak = 0;
-            return false;
+            return;
         }
 
         gameEndFailureStreak++;
-        return gameEndFailureStreak >= GAME_END_FAILURE_THRESHOLD;
+        if (gameEndFailureStreak >= GAME_END_FAILURE_THRESHOLD) {
+            gameOverFlag.set(true);
+        }
     }
 
     private static boolean hasGameStarted() {
         return RitoApiUtils.getGameTime() > GAME_START_MIN_TIME;
+    }
+
+    private static String buildRosterPayload(LeagueGame gameData, LeaguePlayer localPlayer, String roomLeader) {
+        JSONArray players = new JSONArray();
+        int iconLookupFailStreak = 0;
+        for (LeaguePlayer p : gameData.players()) {
+            String pId = p.getRiotId();
+            String pName = p.getRiotId() + " (" + p.getChampionName() + ")";
+
+            int profileIconId = (p == localPlayer) ? RitoApiUtils.getLocalProfileIconId() : -1;
+
+            if (profileIconId <= 0 && !p.isBot() && pId != null && !pId.isEmpty() && iconLookupFailStreak < 2) {
+                profileIconId = RitoApiUtils.getProfileIconId(p.getRiotIdGameName(), p.getRiotIdTagLine(), pId);
+                iconLookupFailStreak = (profileIconId <= 0) ? iconLookupFailStreak + 1 : 0;
+            }
+
+            int skinId = p.getEffectiveSkinId();
+
+            String iconData = (profileIconId > 0) ? RitoApiUtils.getProfileIconDataUri(profileIconId) : "";
+
+            System.out.println("[Roster] " + pId + " champion=" + p.getChampionName()
+                    + " skinId=" + skinId + " (api=" + p.getSkinID() + ", raw=" + p.getRawSkinName() + ")"
+                    + " profileIcon=" + profileIconId + " iconBytes=" + iconData.length());
+
+            players.put(new JSONObject()
+                    .put("identity", pId == null ? "" : pId)
+                    .put("name", pName)
+                    .put("champion", p.getChampionName())
+                    .put("skinId", skinId)
+                    .put("profileIconId", profileIconId)
+                    .put("profileIconData", iconData));
+        }
+
+        return new JSONObject()
+                .put("type", "MATCH_ROSTER")
+                .put("players", players)
+                .put("localIdentity", localPlayer.getRiotId())
+                .put("roomLeader", roomLeader == null ? JSONObject.NULL : roomLeader)
+                .toString();
     }
 
     private static void resetForNextGame() {
@@ -112,8 +165,8 @@ public class LeagueProximityChat {
 
         RitoApiUtils.clearCache();
 
-        gameEndCheckLastMs = 0;
-        gameEndFailureStreak = 0;
+        gameOverFlag.set(false);
+        rosterGeneration.incrementAndGet();
     }
 
     public static void trackingLoop() throws InterruptedException, NoSuchAlgorithmException {
@@ -124,6 +177,7 @@ public class LeagueProximityChat {
 
                 hasConnectedToLiveKit = false;
                 hasSentRoster = false;
+                rosterGeneration.incrementAndGet();
                 isTrackerReady = false;
                 server.setUserRequestedConnection(false);
                 activeRoom = null;
@@ -137,7 +191,7 @@ public class LeagueProximityChat {
             isAwaitingBrowser = false;
         }
 
-        if (hasSentRoster && isGameOver()) {
+        if (hasSentRoster && gameOverFlag.get()) {
             System.out.println("Game ended. Resetting to wait for the next match.");
             resetForNextGame();
             Thread.sleep(1000);
@@ -163,41 +217,23 @@ public class LeagueProximityChat {
         if (isInGame && !hasSentRoster) {
             LeaguePlayer localPlayer = findLocalPlayer(gameData, localSummonerName);
 
-            if (localPlayer != null) {
-                StringBuilder rosterArray = new StringBuilder("[");
-                int iconLookupFailStreak = 0;
-                for (int i = 0; i < gameData.players().size(); i++) {
-                    LeaguePlayer p = gameData.players().get(i);
-                    String pId = p.getRiotId();
-                    String pName = p.getRiotId() + " (" + p.getChampionName() + ")";
+            if (localPlayer != null && rosterBuildInFlight.compareAndSet(false, true)) {
+                LeagueGame rosterGame = gameData;
+                String leader = roomLeaderRiotId;
+                int generation = rosterGeneration.get();
 
-                    int profileIconId = (p == localPlayer) ? RitoApiUtils.getLocalProfileIconId() : -1;
-
-                    if (profileIconId <= 0 && !p.isBot() && pId != null && !pId.isEmpty() && iconLookupFailStreak < 2) {
-                        profileIconId = RitoApiUtils.getProfileIconId(p.getRiotIdGameName(), p.getRiotIdTagLine(), pId);
-                        iconLookupFailStreak = (profileIconId <= 0) ? iconLookupFailStreak + 1 : 0;
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        String payload = buildRosterPayload(rosterGame, localPlayer, leader);
+                        if (rosterGeneration.get() == generation && server.hasActiveConnection()) {
+                            server.sendToActive(payload);
+                            hasSentRoster = true;
+                            System.out.println("Match detected!");
+                        }
+                    } finally {
+                        rosterBuildInFlight.set(false);
                     }
-
-                    int skinId = p.getEffectiveSkinId();
-
-                    String iconData = (profileIconId > 0) ? RitoApiUtils.getProfileIconDataUri(profileIconId) : "";
-
-                    System.out.println("[Roster] " + pId + " champion=" + p.getChampionName()
-                            + " skinId=" + skinId + " (api=" + p.getSkinID() + ", raw=" + p.getRawSkinName() + ")"
-                            + " profileIcon=" + profileIconId + " iconBytes=" + iconData.length());
-
-                    rosterArray.append(String.format(
-                            "{\"identity\":\"%s\", \"name\":\"%s\", \"champion\":\"%s\", \"skinId\":%d, \"profileIconId\":%d, \"profileIconData\":\"%s\"}",
-                            pId, pName, p.getChampionName(), skinId, profileIconId, iconData));
-                    if (i < gameData.players().size() - 1) rosterArray.append(",");
-                }
-                rosterArray.append("]");
-
-                String rosterPayload = String.format("{\"type\":\"MATCH_ROSTER\", \"players\":%s, \"localIdentity\":\"%s\", \"roomLeader\":\"%s\"}",
-                        rosterArray, localPlayer.getRiotId(), roomLeaderRiotId);
-                server.sendToActive(rosterPayload);
-                hasSentRoster = true;
-                System.out.println("Match detected!");
+                });
             }
         }
 
@@ -224,7 +260,10 @@ public class LeagueProximityChat {
                 activeRoom = new LivekitRoom(roomName, roomLeaderRiotId);
 
                 String token = activeRoom.generateRoomToken(name, identity);
-                String payload = String.format("{\"type\":\"CONNECT_LIVEKIT\", \"token\":\"%s\"}", token);
+                String payload = new JSONObject()
+                        .put("type", "CONNECT_LIVEKIT")
+                        .put("token", token)
+                        .toString();
                 server.sendToActive(payload);
 
                 hasConnectedToLiveKit = true;
@@ -300,6 +339,26 @@ public class LeagueProximityChat {
             }
         });
 
+        server.createContext("/livekit-client.umd.min.js", exchange -> {
+            try (InputStream is = LeagueProximityChat.class.getResourceAsStream("/livekit-client.umd.min.js")) {
+                if (is == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+
+                byte[] bytes = is.readAllBytes();
+                exchange.getResponseHeaders().set("Content-Type", "application/javascript; charset=utf-8");
+                exchange.getResponseHeaders().set("Cache-Control", "max-age=86400");
+                exchange.sendResponseHeaders(200, bytes.length);
+
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(bytes);
+                }
+            } catch (Exception e) {
+                exchange.sendResponseHeaders(404, -1);
+            }
+        });
+
         server.createContext("/profile-icon/", exchange -> {
             byte[] image = null;
             try {
@@ -324,11 +383,29 @@ public class LeagueProximityChat {
             }
         });
 
+        server.setExecutor(Executors.newFixedThreadPool(4, r -> {
+            Thread t = new Thread(r, "http-server");
+            t.setDaemon(true);
+            return t;
+        }));
+
         server.start();
         System.out.println("Local Web Server running on port 8000!");
 
         try {
-            if (!OverlayManager.launch()) {
+            overlay = new OverlayManager(
+                    () -> {
+                        if (LeagueProximityChat.server != null) {
+                            LeagueProximityChat.server.sendToActive("{\"type\":\"TOGGLE_MUTE\"}");
+                        }
+                    },
+                    () -> {
+                        if (LeagueProximityChat.server != null) {
+                            LeagueProximityChat.server.sendToActive("{\"type\":\"TOGGLE_DEAFEN\"}");
+                        }
+                    });
+
+            if (!overlay.launch()) {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                     Desktop.getDesktop().browse(new URI("http://localhost:8000"));
                 } else {
@@ -345,6 +422,10 @@ public class LeagueProximityChat {
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
 
+        if (DebugManager.isENABLED()) {
+            System.out.println("[Debug] LPC_DEBUG is set — debug images and verbose tracking logs enabled.");
+        }
+
         try {
             startHttpServer();
         } catch (BindException e) {
@@ -356,6 +437,14 @@ public class LeagueProximityChat {
 
         server = new CoordinateServer(new InetSocketAddress("127.0.0.1", 8887));
         server.start();
+
+        ScheduledExecutorService gameEndPoller = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "game-end-poller");
+            t.setDaemon(true);
+            return t;
+        });
+        gameEndPoller.scheduleWithFixedDelay(LeagueProximityChat::pollGameEnd,
+                GAME_END_CHECK_INTERVAL_MS, GAME_END_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
