@@ -30,7 +30,12 @@ public class RitoApiUtils {
     private static boolean sslBypassed = false;
     private static String cachedSummonerName = null;
     private static final Map<String, Integer> profileIconCache = new HashMap<>();
-    private static final Path LOCKFILE_PATH = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
+    private static final Path DEFAULT_LOCKFILE_PATH = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
+    private static volatile Path resolvedLockfilePath = null;
+
+    private static volatile String cachedPlayerListJson = null;
+    private static volatile long cachedPlayerListAtMs = 0;
+    private static final long PLAYER_LIST_CACHE_MS = 300;
 
     public static void disableSSLChecks() {
         if (sslBypassed) return;
@@ -96,12 +101,52 @@ public class RitoApiUtils {
         }
     }
 
+    private static Path getLockfilePath() {
+        if (resolvedLockfilePath != null && Files.exists(resolvedLockfilePath)) {
+            return resolvedLockfilePath;
+        }
+
+        if (Files.exists(DEFAULT_LOCKFILE_PATH)) {
+            resolvedLockfilePath = DEFAULT_LOCKFILE_PATH;
+            return DEFAULT_LOCKFILE_PATH;
+        }
+
+        try {
+            String programData = System.getenv("ProgramData");
+            if (programData == null) return null;
+
+            Path installs = Paths.get(programData, "Riot Games", "RiotClientInstalls.json");
+            if (!Files.exists(installs)) return null;
+
+            JSONObject json = new JSONObject(Files.readString(installs));
+            JSONObject associated = json.optJSONObject("associated_client");
+            if (associated == null) return null;
+
+            for (String installDir : associated.keySet()) {
+                if (!installDir.toLowerCase().contains("league of legends")) {
+                    continue;
+                }
+
+                Path candidate = Paths.get(installDir, "lockfile");
+                if (Files.exists(candidate)) {
+                    System.out.println("[LCU] Found lockfile at non-default location: " + candidate);
+                    resolvedLockfilePath = candidate;
+                    return candidate;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return null;
+    }
+
     private static String fetchClientAPI(String path) {
         try {
-            if (!Files.exists(LOCKFILE_PATH)) {
+            Path lockfile = getLockfilePath();
+            if (lockfile == null) {
                 return null;
             }
-            String[] lockfileParts = Files.readString(LOCKFILE_PATH).split(":");
+            String[] lockfileParts = Files.readString(lockfile).split(":");
             String port = lockfileParts[2];
             String password = lockfileParts[3];
             String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
@@ -133,10 +178,11 @@ public class RitoApiUtils {
 
     public static byte[] getProfileIconImage(int iconId) {
         try {
-            if (!Files.exists(LOCKFILE_PATH)) {
+            Path lockfile = getLockfilePath();
+            if (lockfile == null) {
                 return null;
             }
-            String[] lockfileParts = Files.readString(LOCKFILE_PATH).split(":");
+            String[] lockfileParts = Files.readString(lockfile).split(":");
             String port = lockfileParts[2];
             String password = lockfileParts[3];
             String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
@@ -315,8 +361,25 @@ public class RitoApiUtils {
         }
     }
 
+    public static String fetchPlayerListRaw() {
+        long now = System.currentTimeMillis();
+        String cached = cachedPlayerListJson;
+        if (cached != null && (now - cachedPlayerListAtMs) < PLAYER_LIST_CACHE_MS) {
+            return cached;
+        }
+
+        String raw = fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
+        if (raw != null && !raw.isEmpty()) {
+            cachedPlayerListJson = raw;
+            cachedPlayerListAtMs = now;
+        } else {
+            cachedPlayerListJson = null;
+        }
+        return raw;
+    }
+
     public static LeagueGame getLivePlayerList() {
-        String rawJson = fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
+        String rawJson = fetchPlayerListRaw();
 
         if (rawJson == null || rawJson.isEmpty()) {
             return null;
@@ -458,6 +521,8 @@ public class RitoApiUtils {
         URL url = new URI("https://ddragon.leagueoflegends.com/api/versions.json").toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
+        conn.setConnectTimeout(3000);
+        conn.setReadTimeout(3000);
 
         Scanner scanner = new Scanner(new InputStreamReader(conn.getInputStream()));
         String response = scanner.useDelimiter("\\A").next();
