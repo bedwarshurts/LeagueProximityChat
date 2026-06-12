@@ -55,7 +55,7 @@ public class ScreenPositionTracker {
 
     private final Deque<float[]> offsetWindow = new ArrayDeque<>();
 
-    private static final float DRIFT_CONFIRM_THRESHOLD = 1.5f;
+    private static final float DRIFT_CONFIRM_THRESHOLD = 2f;
     private static final int DRIFT_SAMPLE_WINDOW = 10;
     private int driftConfirmStreak = 0;
     private static final int DRIFT_CONFIRM_REQUIRED = 2;
@@ -87,7 +87,7 @@ public class ScreenPositionTracker {
 
     private int lastStrongMatchCount = 0;
     private int wrongLockStreak = 0;
-    private static final int MAX_WRONG_LOCK_STREAK = 30;
+    private static final int MAX_WRONG_LOCK_STREAK = 60;
 
     private static final double BLIP_RADIUS_PER_MINIMAP_PX = 16.0 / 280.0;
 
