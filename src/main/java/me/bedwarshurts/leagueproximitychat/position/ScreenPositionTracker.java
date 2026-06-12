@@ -1,5 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.position;
 
+import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.utils.ImageUtils;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.MathUtils;
@@ -200,7 +201,7 @@ public class ScreenPositionTracker {
         );
         Mat minimapMat = new Mat(fullScreenMat, minimapRoi).clone();
 
-        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+        if (DebugManager.isENABLED()) {
             Imgcodecs.imwrite("debug/debug_screen.png", fullScreenMat);
             Imgcodecs.imwrite("debug/debug_minimap.png", minimapMat);
             debugEnemyIndicators(minimapMat);
@@ -290,9 +291,9 @@ public class ScreenPositionTracker {
             this.lastKnownX = rawHpX + this.healthBarCalibrateX;
             this.lastKnownY = rawHpY + this.healthBarCalibrateY;
 
-            System.out.printf("[trackPlayerPosition] HEALTHBAR -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] HEALTHBAR -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
 
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            if (DebugManager.isENABLED()) {
                 Mat debugHealthLoc = minimapMat.clone();
 
                 double mapPixelX = (this.lastKnownX / 100.0) * perfectMapSize;
@@ -328,11 +329,11 @@ public class ScreenPositionTracker {
             this.lastKnownX = ((float) champMapCenter.x / perfectMapSize) * 100f;
             this.lastKnownY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
-            System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
             result = new TrackResult(lastKnownX, lastKnownY, false);
 
         } else {
-            System.out.printf("[trackPlayerPosition] No detection — returning last known -> X: %.2f%% | Y: %.2f%%%n",
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] No detection — returning last known -> X: %.2f%% | Y: %.2f%%%n",
                     lastKnownX, lastKnownY);
             result = new TrackResult(lastKnownX, lastKnownY, false);
         }
@@ -641,7 +642,7 @@ public class ScreenPositionTracker {
     }
 
     private void saveTemplateDebug(String path, Mat core, double score) {
-        if (core == null || core.empty()) return;
+        if (!DebugManager.isENABLED() || core == null || core.empty()) return;
         Mat big = new Mat();
         try {
             Imgproc.resize(core, big, new Size(220, 220), 0, 0, Imgproc.INTER_NEAREST);
@@ -654,6 +655,7 @@ public class ScreenPositionTracker {
     }
 
     private void saveLockContext(Mat minimap, AllyCircle pick, double score) {
+        if (!DebugManager.isENABLED()) return;
         Mat ctx = minimap.clone();
         try {
             Imgproc.circle(ctx, pick.center(), pick.radius(), new Scalar(0, 255, 0), 1);
@@ -704,7 +706,7 @@ public class ScreenPositionTracker {
         double totalCheckedPixels = Math.max(1.0, (w * (double) h) - (Math.PI * ignoreRadius * (double) ignoreRadius));
         double redRatio = redPixelCount / totalCheckedPixels;
 
-        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+        if (DebugManager.isENABLED()) {
             Imgcodecs.imwrite("debug/debug_enemy_red_mask.png", redMask);
         }
 
@@ -814,7 +816,7 @@ public class ScreenPositionTracker {
         String localSummonerName = RitoApiUtils.getLocalSummonerName();
         if (localSummonerName == null) return false;
 
-        String playerListJson = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/playerlist");
+        String playerListJson = RitoApiUtils.fetchPlayerListRaw();
         if (playerListJson == null) return false;
 
         int nameIdx = playerListJson.indexOf("\"" + localSummonerName + "\"");
@@ -894,7 +896,7 @@ public class ScreenPositionTracker {
                 resultPoint = new Point(bestBar.x + (bestBar.width / 2.0), bestBar.y + (bestBar.height / 2.0));
             }
 
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            if (DebugManager.isENABLED()) {
                 Mat debugHealthMap = new Mat();
                 Imgproc.cvtColor(mask, debugHealthMap, Imgproc.COLOR_GRAY2BGR);
                 if (bestBar != null) {
@@ -986,7 +988,7 @@ public class ScreenPositionTracker {
                 center.x = trueCenterX;
                 center.y = trueCenterY;
 
-                if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                if (DebugManager.isENABLED()) {
                     Mat debugMask = Mat.zeros(thresholded.size(), CvType.CV_8UC1);
                     Imgproc.drawContours(debugMask, List.of(cameraContour), -1, new Scalar(255), 1);
                     Imgcodecs.imwrite("debug/debug_camera_mask.png", debugMask);
@@ -1008,7 +1010,7 @@ public class ScreenPositionTracker {
 
                 return new CameraBox(center, Math.max(0, maxSeenCamW), Math.max(0, maxSeenCamH));
             } else {
-                if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+                if (DebugManager.isENABLED()) {
                     Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
                 }
             }
@@ -1167,7 +1169,7 @@ public class ScreenPositionTracker {
         lastStrongMatchCount = 0;
 
         if (allyCircles.isEmpty()) {
-            System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
+            if (DebugManager.isENABLED()) System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
             return null;
         }
 
@@ -1218,7 +1220,7 @@ public class ScreenPositionTracker {
 
             lastStrongMatchCount = strongMatches;
 
-            if (strongMatches >= 2) {
+            if (DebugManager.isENABLED() && strongMatches >= 2) {
                 System.out.printf("[locateChampionViaTemplate] %d strong icon matches — clone likely present; anchoring to (%.1f, %.1f).%n",
                         strongMatches, anchorX, anchorY);
             }
@@ -1229,7 +1231,7 @@ public class ScreenPositionTracker {
 
                 drawDebugBox(minimap, bestCenter.x, bestCenter.y,
                         lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 255, 0));
-                System.out.printf("[locateChampionViaTemplate] Locked Scale Match -> Raw: %.2f%% | Boosted: %.2f%%%n",
+                if (DebugManager.isENABLED()) System.out.printf("[locateChampionViaTemplate] Locked Scale Match -> Raw: %.2f%% | Boosted: %.2f%%%n",
                         rawScoreLog * 100, bestScore * 100);
                 return new TemplateMatch(bestCenter, bestScore);
             }
@@ -1270,7 +1272,7 @@ public class ScreenPositionTracker {
                     ? ImageUtils.applyEnhancement(coreTemplate)
                     : null;
 
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) crops.add(coreTemplate.clone());
+            if (DebugManager.isENABLED()) crops.add(coreTemplate.clone());
 
             for (AllyCircle ally : allyCircles) {
                 EvalResult eval = evaluateTemplateAtAlly(minimap, ally.center(), coreTemplate, enhancedCore, 4);
@@ -1318,7 +1320,7 @@ public class ScreenPositionTracker {
                 this.lockedCoreTemplateEnhanced = null;
             }
 
-            Imgcodecs.imwrite("debug/debug_locked_template.png", lockedCoreTemplate);
+            if (DebugManager.isENABLED()) Imgcodecs.imwrite("debug/debug_locked_template.png", lockedCoreTemplate);
             this.lockedBlipRadius = Math.max(1, globalBestSize / 2);
             this.isScaleLocked = true;
             this.lockedMatchFailures = 0;
@@ -1328,7 +1330,7 @@ public class ScreenPositionTracker {
             return new TemplateMatch(globalBestCenter, globalBestScore);
         }
 
-        System.out.printf("[locateChampionViaTemplate] FAILED: Best match was only %.2f%%%n", globalBestScore * 100);
+        if (DebugManager.isENABLED()) System.out.printf("[locateChampionViaTemplate] FAILED: Best match was only %.2f%%%n", globalBestScore * 100);
         if (globalBestTemplate != null) globalBestTemplate.release();
         return null;
     }
@@ -1342,13 +1344,13 @@ public class ScreenPositionTracker {
             Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
             Core.inRange(hsv, new Scalar(80, 140, 200), new Scalar(115, 255, 255), mask);
 
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            if (DebugManager.isENABLED()) {
                 Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
             }
 
             centers = circlesFromRingMask(minimap, mask, "debug/debug_ransac_raw.png");
 
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            if (DebugManager.isENABLED()) {
                 Mat debugDrawMap = minimap.clone();
                 for (AllyCircle c : centers) {
                     Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(0, 255, 0), 2);
@@ -1374,7 +1376,7 @@ public class ScreenPositionTracker {
             enemyRedMask(minimap, mask);
             centers = circlesFromRingMask(minimap, mask, null);
 
-            if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            if (DebugManager.isENABLED()) {
                 Mat debugDrawMap = minimap.clone();
                 for (AllyCircle c : centers) {
                     Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(0, 0, 255), 2);
@@ -1416,7 +1418,7 @@ public class ScreenPositionTracker {
                 rawFits.addAll(MathUtils.extractCircles(c.toArray(), minR, maxR, inlierTol));
             }
 
-            if (rawFitsDebugPath != null && WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+            if (rawFitsDebugPath != null && DebugManager.isENABLED()) {
                 Mat raw = minimap.clone();
                 for (MathUtils.CircleFit f : rawFits) {
                     Imgproc.circle(raw, new Point(f.cx(), f.cy()), (int) Math.round(f.radius()),
@@ -1469,7 +1471,7 @@ public class ScreenPositionTracker {
     private void drawCroppedTemplates(List<Mat> crops) {
         if (crops.isEmpty()) return;
 
-        if (WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+        if (DebugManager.isENABLED()) {
             int totalWidth = 0;
             int maxHeight = 0;
             for (Mat crop : crops) {
@@ -1496,7 +1498,7 @@ public class ScreenPositionTracker {
     }
 
     private void drawTop10Debug(Mat minimap, List<CandidateMatch> candidates) {
-        if (!WindowUtils.isWindowFocused("League of Legends (TM) Client") || candidates.isEmpty()) return;
+        if (!DebugManager.isENABLED() || candidates.isEmpty()) return;
 
         Mat top10Map = minimap.clone();
         candidates.sort((c1, c2) -> Double.compare(c2.score(), c1.score()));
@@ -1524,7 +1526,7 @@ public class ScreenPositionTracker {
     }
 
     private void drawDebugBox(Mat minimap, double centerX, double centerY, int width, int height, Scalar color) {
-        if (!WindowUtils.isWindowFocused("League of Legends (TM) Client")) return;
+        if (!DebugManager.isENABLED()) return;
 
         Mat debugMap = minimap.clone();
         Point topLeft = new Point(centerX - (width / 2.0), centerY - (height / 2.0));
