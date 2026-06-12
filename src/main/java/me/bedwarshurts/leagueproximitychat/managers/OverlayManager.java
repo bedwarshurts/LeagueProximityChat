@@ -1,10 +1,11 @@
-package me.bedwarshurts.leagueproximitychat.utils;
+package me.bedwarshurts.leagueproximitychat.managers;
 
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinUser;
+import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 
 import java.awt.Dimension;
 import java.awt.Rectangle;
@@ -20,21 +21,30 @@ public class OverlayManager {
     private static final String GAME_WINDOW_TITLE = "League of Legends (TM) Client";
     private static final String APP_URL = "http://localhost:8000";
 
-    private static final int HOTKEY_MODIFIERS = 0x0004; // MOD_SHIFT
-    private static final int HOTKEY_VK = 0x77;          // VK_F8
+    private static final int MOD_SHIFT = 0x0004;
+    private static final int VK_F8 = 0x77;
+    private static final int VK_F9 = 0x78;
+    private static final int VK_F10 = 0x79;
 
-    private static final int HOTKEY_ID = 0xBEE5;
+    private static final int HOTKEY_ID_OVERLAY = 0xBEE5; // Shift+F8
+    private static final int HOTKEY_ID_MUTE = 0xBEE6;    // Shift+F9
+    private static final int HOTKEY_ID_DEAFEN = 0xBEE7;  // Shift+F10
+
     private static final int WM_HOTKEY = 0x0312;
     private static final int SWP_NOACTIVATE = 0x0010;
     private static final int SWP_SHOWWINDOW = 0x0040;
     private static final HWND HWND_TOPMOST = new HWND(Pointer.createConstant(-1L));
 
-    private static Path browserPath = null;
+    private final Runnable onMuteHotkey;
+    private final Runnable onDeafenHotkey;
+    private Path browserPath = null;
 
-    private OverlayManager() {
+    public OverlayManager(Runnable onMuteHotkey, Runnable onDeafenHotkey) {
+        this.onMuteHotkey = onMuteHotkey;
+        this.onDeafenHotkey = onDeafenHotkey;
     }
 
-    public static boolean launch() {
+    public boolean launch() {
         browserPath = findBrowserExecutable();
         if (browserPath == null) {
             System.err.println("[Overlay] Chrome/Edge not found - falling back to a normal browser tab.");
@@ -46,7 +56,7 @@ public class OverlayManager {
         }
 
         startHotkeyListener();
-        System.out.println("[Overlay] UI launched as an app window. Press Shift+F8 in-game to toggle the overlay.");
+        System.out.println("[Overlay] UI launched as an app window. Shift+F8 toggles the overlay, Shift+F9 mute, Shift+F10 deafen.");
         return true;
     }
 
@@ -74,7 +84,7 @@ public class OverlayManager {
         return null;
     }
 
-    private static boolean spawnAppWindow() {
+    private boolean spawnAppWindow() {
         try {
             new ProcessBuilder(browserPath.toString(),
                     "--app=" + APP_URL,
@@ -87,21 +97,35 @@ public class OverlayManager {
         }
     }
 
-    private static void startHotkeyListener() {
+    private void startHotkeyListener() {
         Thread listener = new Thread(() -> {
-            if (!User32.INSTANCE.RegisterHotKey(null, HOTKEY_ID, HOTKEY_MODIFIERS, HOTKEY_VK)) {
-                System.err.println("[Overlay] Could not register the Shift+F8 hotkey (already in use?).");
-                return;
+            if (!User32.INSTANCE.RegisterHotKey(null, HOTKEY_ID_OVERLAY, MOD_SHIFT, VK_F8)) {
+                System.err.println("[Overlay] Could not register the Shift+F8 overlay hotkey (already in use?).");
+            }
+            if (!User32.INSTANCE.RegisterHotKey(null, HOTKEY_ID_MUTE, MOD_SHIFT, VK_F9)) {
+                System.err.println("[Overlay] Could not register the Shift+F9 mute hotkey (already in use?).");
+            }
+            if (!User32.INSTANCE.RegisterHotKey(null, HOTKEY_ID_DEAFEN, MOD_SHIFT, VK_F10)) {
+                System.err.println("[Overlay] Could not register the Shift+F10 deafen hotkey (already in use?).");
             }
 
             WinUser.MSG msg = new WinUser.MSG();
             while (User32.INSTANCE.GetMessage(msg, null, 0, 0) > 0) {
-                if (msg.message == WM_HOTKEY && msg.wParam.intValue() == HOTKEY_ID) {
-                    try {
-                        toggleOverlay();
-                    } catch (Exception e) {
-                        System.err.println("[Overlay] Toggle failed: " + e.getMessage());
+                if (msg.message != WM_HOTKEY) continue;
+                try {
+                    switch (msg.wParam.intValue()) {
+                        case HOTKEY_ID_OVERLAY -> toggleOverlay();
+                        case HOTKEY_ID_MUTE -> {
+                            if (onMuteHotkey != null) onMuteHotkey.run();
+                        }
+                        case HOTKEY_ID_DEAFEN -> {
+                            if (onDeafenHotkey != null) onDeafenHotkey.run();
+                        }
+                        default -> {
+                        }
                     }
+                } catch (Exception e) {
+                    System.err.println("[Overlay] Hotkey action failed: " + e.getMessage());
                 }
             }
         }, "overlay-hotkey");
@@ -109,7 +133,7 @@ public class OverlayManager {
         listener.start();
     }
 
-    private static void toggleOverlay() {
+    private void toggleOverlay() {
         HWND overlay = findOverlayWindow();
 
         if (overlay == null) {
@@ -126,8 +150,6 @@ public class OverlayManager {
             return;
         }
 
-        // size the overlay to roughly two thirds of the game window and center it on top;
-        // SWP_NOACTIVATE keeps the game holding keyboard input until the user clicks the overlay
         Rectangle bounds = WindowUtils.getGameWindowBounds(GAME_WINDOW_TITLE);
         int w, h, x, y;
         if (bounds != null && bounds.width > 0) {
@@ -146,7 +168,7 @@ public class OverlayManager {
         User32.INSTANCE.SetWindowPos(overlay, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE);
     }
 
-    private static HWND findOverlayWindow() {
+    private HWND findOverlayWindow() {
         HWND[] found = new HWND[1];
         User32.INSTANCE.EnumWindows((hwnd, data) -> {
             char[] buffer = new char[256];
