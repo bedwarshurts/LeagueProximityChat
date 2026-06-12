@@ -6,6 +6,7 @@ import java.awt.image.DataBufferByte;
 import java.net.URI;
 
 import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
+import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
@@ -31,14 +32,8 @@ public class TemplateLoader {
                 return null;
             }
 
-            String championCodename = null;
-            for (LeaguePlayer player : gameData.players()) {
-                if (mySummonerName.equals(player.getSummonerName())) {
-
-                    championCodename = player.getChampionName();
-                    break;
-                }
-            }
+            LeaguePlayer localPlayer = LeagueProximityChat.findLocalPlayer(gameData, mySummonerName);
+            String championCodename = (localPlayer != null) ? localPlayer.getChampionName() : null;
             if (championCodename == null || championCodename.isEmpty()) {
                 System.err.println("Could not find " + mySummonerName + " in the parsed player list.");
                 return null;
@@ -57,7 +52,7 @@ public class TemplateLoader {
             fullMat.put(0, 0, pixels);
 
             System.out.println("Successfully generated Raw 120x120 OpenCV template for " + championCodename);
-            Imgcodecs.imwrite("debug/debug_template.png", fullMat);
+            if (DebugManager.isENABLED()) Imgcodecs.imwrite("debug/debug_template.png", fullMat);
             return fullMat;
         } catch (Exception e) {
             System.err.println("Failed to automate template loading. Ensure the game is actively running in a match.");
