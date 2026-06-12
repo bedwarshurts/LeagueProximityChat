@@ -461,7 +461,7 @@ public class LeagueProximityChat {
         roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
-            Thread.sleep(1000);
+            Thread.sleep(10000);
             System.exit(0);
         }
 
