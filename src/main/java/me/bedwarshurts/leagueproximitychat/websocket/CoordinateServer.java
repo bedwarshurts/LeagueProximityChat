@@ -15,7 +15,7 @@ import java.util.Locale;
 
 public class CoordinateServer extends WebSocketServer {
 
-    private WebSocket activeConnection = null;
+    private volatile WebSocket activeConnection = null;
     @Getter @Setter private volatile boolean userRequestedConnection = false;
 
     public CoordinateServer(InetSocketAddress address) {
@@ -81,7 +81,7 @@ public class CoordinateServer extends WebSocketServer {
                             System.out.println("Banned user " + identity + " tried to rejoin. Auto-kicking...");
                             if (localModerator != null
                                     && LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator)) {
-                                sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
+                                sendToActive(new JSONObject().put("type", "PLAYER_BANNED").put("identity", identity).toString());
                             }
                         } else {
                             LeagueProximityChat.getActiveRoom().addParticipant(targetUser);
@@ -93,13 +93,13 @@ public class CoordinateServer extends WebSocketServer {
                     else if ("KICK_USER".equals(type) && !identity.isEmpty()) {
                         if (localModerator != null
                                 && LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator)) {
-                            sendToActive("{\"type\":\"PLAYER_BANNED\", \"identity\":\"" + identity + "\"}");
+                            sendToActive(new JSONObject().put("type", "PLAYER_BANNED").put("identity", identity).toString());
                         }
                     }
                     else if ("REVOKE_BAN".equals(type) && !identity.isEmpty()) {
                         if (localModerator != null
                                 && LeagueProximityChat.getActiveRoom().revokeBan(targetUser, localModerator)) {
-                            sendToActive("{\"type\":\"PLAYER_UNBANNED\", \"identity\":\"" + identity + "\"}");
+                            sendToActive(new JSONObject().put("type", "PLAYER_UNBANNED").put("identity", identity).toString());
                         }
                     }
                 }
