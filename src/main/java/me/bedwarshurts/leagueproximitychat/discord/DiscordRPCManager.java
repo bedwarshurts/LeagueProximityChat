@@ -5,11 +5,14 @@ import com.jagrosh.discordipc.IPCListener;
 import com.jagrosh.discordipc.entities.Packet;
 import com.jagrosh.discordipc.entities.RichPresence;
 import com.jagrosh.discordipc.entities.User;
+import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker.TrackResult;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import com.google.gson.JsonObject;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DiscordRPCManager {
 
@@ -19,6 +22,11 @@ public class DiscordRPCManager {
     private static boolean isRunning = false;
     private static String latestDDragonVersion = "16.11.1";
     private static long startTime;
+
+    private static final long PRESENCE_REFRESH_MS = 15000;
+    private static volatile long lastUpdateMs = 0;
+    private static volatile boolean lastWasActive = false;
+    private static final AtomicBoolean activeUpdateInFlight = new AtomicBoolean(false);
 
     public static void start() {
         if (isRunning) return;
@@ -79,27 +87,44 @@ public class DiscordRPCManager {
     public static void updatePresenceActive(TrackResult result, String championName) {
         if (!isRunning || client == null) return;
 
-        String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestDDragonVersion + "/img/champion/" + championName + ".png";
-        LeagueGame gameData = RitoApiUtils.getLivePlayerList();
-        if (gameData == null) return;
-        LeaguePlayer player = gameData.players().stream().filter(p -> p.getSummonerName().equals(RitoApiUtils.getLocalSummonerName())).findFirst().orElse(null);
-        if (player == null) return;
+        long now = System.currentTimeMillis();
+        if (lastWasActive && now - lastUpdateMs < PRESENCE_REFRESH_MS) return;
+        if (!activeUpdateInFlight.compareAndSet(false, true)) return;
 
-        String state = result.isDead() ? "Respawning in " + Math.round(player.getRespawnTimer()) + "s" : "In Live Match";
+        try {
+            String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestDDragonVersion + "/img/champion/" + championName + ".png";
+            LeagueGame gameData = RitoApiUtils.getLivePlayerList();
+            if (gameData == null) return;
+            LeaguePlayer player = LeagueProximityChat.findLocalPlayer(gameData, RitoApiUtils.getLocalSummonerName());
+            if (player == null) return;
 
-        RichPresence.Builder builder = new RichPresence.Builder()
-                .setState(state)
-                .setDetails(String.format(" Level %d, %d/%d/%d, %d CS", player.getLevel(),
-                        player.getScore().kills(), player.getScore().deaths(), player.getScore().assists(), player.getScore().creepScore()))
-                .setStartTimestamp(startTime)
-                .setLargeImageWithTooltip(ddragonUrl, championName)
-                .setSmallImageWithTooltip("app_logo", "League Proximity Chat");
+            if (!lastWasActive) startTime = now / 1000L;
 
-        client.sendRichPresence(builder.build());
+            String state = result.isDead() ? "Respawning in " + Math.round(player.getRespawnTimer()) + "s" : "In Live Match";
+
+            RichPresence.Builder builder = new RichPresence.Builder()
+                    .setState(state)
+                    .setDetails(String.format(" Level %d, %d/%d/%d, %d CS", player.getLevel(),
+                            player.getScore().kills(), player.getScore().deaths(), player.getScore().assists(), player.getScore().creepScore()))
+                    .setStartTimestamp(startTime)
+                    .setLargeImageWithTooltip(ddragonUrl, championName)
+                    .setSmallImageWithTooltip("app_logo", "League Proximity Chat");
+
+            client.sendRichPresence(builder.build());
+            lastWasActive = true;
+            lastUpdateMs = now;
+        } finally {
+            activeUpdateInFlight.set(false);
+        }
     }
 
     public static void updatePresenceIdle() {
         if (!isRunning || client == null) return;
+
+        long now = System.currentTimeMillis();
+        if (!lastWasActive && now - lastUpdateMs < PRESENCE_REFRESH_MS) return;
+
+        if (lastWasActive) startTime = now / 1000L;
 
         RichPresence.Builder builder = new RichPresence.Builder()
                 .setState("Waiting for the game to start")
@@ -108,6 +133,8 @@ public class DiscordRPCManager {
                 .setLargeImageWithTooltip("app_logo", "League Proximity Chat");
 
         client.sendRichPresence(builder.build());
+        lastWasActive = false;
+        lastUpdateMs = now;
     }
 
     public static void stop() {
