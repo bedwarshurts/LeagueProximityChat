@@ -123,7 +123,7 @@ public class LeagueProximityChat {
 
             String iconData = (profileIconId > 0) ? RitoApiUtils.getProfileIconDataUri(profileIconId) : "";
 
-            System.out.println("[Roster] " + pId + " champion=" + p.getChampionName()
+            if (DebugManager.isENABLED()) System.out.println("[Roster] " + pId + " champion=" + p.getChampionName()
                     + " skinId=" + skinId + " (api=" + p.getSkinID() + ", raw=" + p.getRawSkinName() + ")"
                     + " profileIcon=" + profileIconId + " iconBytes=" + iconData.length());
 
@@ -461,8 +461,8 @@ public class LeagueProximityChat {
         roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
-            Thread.sleep(10000);
-            System.exit(0);
+            //Thread.sleep(10000);
+            //System.exit(0);
         }
 
         DiscordRPCManager.start();

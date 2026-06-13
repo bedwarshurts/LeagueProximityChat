@@ -130,7 +130,7 @@ public class ScreenPositionTracker {
             this.userMinimapScale = settings.getMinimapScale();
             this.isColorblind = settings.isColorblind();
             this.championTemplate = championTemplate;
-            System.out.println("[constructor] Tracker initialized. Target Health Bar Color: "
+            if (DebugManager.isENABLED()) System.out.println("[constructor] Tracker initialized. Target Health Bar Color: "
                     + (this.isColorblind ? "YELLOW" : "GREEN"));
         } catch (AWTException e) {
             System.err.println("[constructor] Failed to initialize Java Robot API");
@@ -247,7 +247,7 @@ public class ScreenPositionTracker {
                 if (!(distanceMoved < 1.5)) {
                     lockedMatchFailures++;
                     if (lockedMatchFailures >= MAX_LOCKED_MATCH_FAILURES) {
-                        System.out.println("[bootstrap] Locked template failing repeatedly while moving — resetting to re-learn.");
+                        if (DebugManager.isENABLED()) System.out.println("[bootstrap] Locked template failing repeatedly while moving — resetting to re-learn.");
                         resetScaleLock();
                     }
                 }
@@ -260,10 +260,10 @@ public class ScreenPositionTracker {
 
                 if (matchToHpDist > MAX_HEALTHBAR_MATCH_DIST && lastStrongMatchCount < 2) {
                     wrongLockStreak++;
-                    System.out.printf("[bootstrap] Locked match %.1f%% from health bar with only %d strong match(es) — possible wrong lock (%d/%d).%n",
+                    if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Locked match %.1f%% from health bar with only %d strong match(es) — possible wrong lock (%d/%d).%n",
                             matchToHpDist, lastStrongMatchCount, wrongLockStreak, MAX_WRONG_LOCK_STREAK);
                     if (wrongLockStreak >= MAX_WRONG_LOCK_STREAK) {
-                        System.out.println("[bootstrap] Wrong lock confirmed (lone far match, not a clone) — resetting to re-learn.");
+                        if (DebugManager.isENABLED()) System.out.println("[bootstrap] Wrong lock confirmed (lone far match, not a clone) — resetting to re-learn.");
                         resetScaleLock();
                     }
                 } else {
@@ -527,7 +527,7 @@ public class ScreenPositionTracker {
             saveTemplateDebug("debug/debug_extracted_icon_template_last.png", patch, score);
             patch.release();
 
-            System.out.printf("[bootstrap] candidate @(%.0f,%.0f) championMatch=%.2f%n",
+            if (DebugManager.isENABLED()) System.out.printf("[bootstrap] candidate @(%.0f,%.0f) championMatch=%.2f%n",
                     a.center().x, a.center().y, score);
 
             if (score > bestScore) {

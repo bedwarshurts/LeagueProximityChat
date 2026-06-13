@@ -56,7 +56,7 @@ public class OverlayManager {
         }
 
         startHotkeyListener();
-        System.out.println("[Overlay] UI launched as an app window. Shift+F8 toggles the overlay, Shift+F9 mute, Shift+F10 deafen.");
+        if (DebugManager.isENABLED()) System.out.println("[Overlay] UI launched as an app window. Shift+F8 toggles the overlay, Shift+F9 mute, Shift+F10 deafen.");
         return true;
     }
 
