@@ -85,6 +85,10 @@ public class ScreenPositionTracker {
     private static final double CLONE_DETECT_THRESHOLD = 0.78;
     private static final double MAX_HEALTHBAR_MATCH_DIST = 15.0;
 
+    private static final double MINIMAP_OVERRIDE_SCORE = 0.80;
+    private static final double MINIMAP_OVERRIDE_DIST = 15.0;
+    private boolean minimapFailsafeActive = false;
+
     private int lastStrongMatchCount = 0;
     private int wrongLockStreak = 0;
     private static final int MAX_WRONG_LOCK_STREAK = 60;
@@ -108,7 +112,7 @@ public class ScreenPositionTracker {
     public record TrackResult(float x, float y, boolean isDead) {
     }
 
-    public record TemplateMatch(Point center, double score) {
+    public record TemplateMatch(Point center, double score, double rawScore) {
     }
 
     public record CameraBox(Point center, int width, int height) {
@@ -234,6 +238,7 @@ public class ScreenPositionTracker {
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
+        double champRawScore = (champMatch != null) ? champMatch.rawScore() : 0.0;
 
         if ((isScaleLocked || isBootstrapped) && healthBarCenter != null && cameraBox != null) {
             float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
@@ -247,7 +252,7 @@ public class ScreenPositionTracker {
                 if (!(distanceMoved < 1.5)) {
                     lockedMatchFailures++;
                     if (lockedMatchFailures >= MAX_LOCKED_MATCH_FAILURES) {
-                        if (DebugManager.isENABLED()) System.out.println("[bootstrap] Locked template failing repeatedly while moving — resetting to re-learn.");
+                        if (DebugManager.isENABLED()) System.out.println("[bootstrap] Locked template failing repeatedly while moving - resetting to re-learn.");
                         resetScaleLock();
                     }
                 }
@@ -260,10 +265,10 @@ public class ScreenPositionTracker {
 
                 if (matchToHpDist > MAX_HEALTHBAR_MATCH_DIST && lastStrongMatchCount < 2) {
                     wrongLockStreak++;
-                    if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Locked match %.1f%% from health bar with only %d strong match(es) — possible wrong lock (%d/%d).%n",
+                    if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Locked match %.1f%% from health bar with only %d strong match(es) - possible wrong lock (%d/%d).%n",
                             matchToHpDist, lastStrongMatchCount, wrongLockStreak, MAX_WRONG_LOCK_STREAK);
                     if (wrongLockStreak >= MAX_WRONG_LOCK_STREAK) {
-                        if (DebugManager.isENABLED()) System.out.println("[bootstrap] Wrong lock confirmed (lone far match, not a clone) — resetting to re-learn.");
+                        if (DebugManager.isENABLED()) System.out.println("[bootstrap] Wrong lock confirmed (lone far match, not a clone) - resetting to re-learn.");
                         resetScaleLock();
                     }
                 } else {
@@ -287,11 +292,36 @@ public class ScreenPositionTracker {
         if (healthBarCenter != null && cameraBox != null) {
             float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
             float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
+            float hpX = rawHpX + this.healthBarCalibrateX;
+            float hpY = rawHpY + this.healthBarCalibrateY;
 
-            this.lastKnownX = rawHpX + this.healthBarCalibrateX;
-            this.lastKnownY = rawHpY + this.healthBarCalibrateY;
+            boolean minimapOverride = false;
+            if (champMapCenter != null && champRawScore > MINIMAP_OVERRIDE_SCORE) {
+                float matchX = ((float) champMapCenter.x / perfectMapSize) * 100f;
+                float matchY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
+                double disagreement = Math.hypot(hpX - matchX, hpY - matchY);
+                if (disagreement > MINIMAP_OVERRIDE_DIST) {
+                    this.lastKnownX = matchX;
+                    this.lastKnownY = matchY;
+                    minimapOverride = true;
+                    if (!minimapFailsafeActive) {
+                        minimapFailsafeActive = true;
+                        if (DebugManager.isENABLED())
+                            System.out.printf("[trackPlayerPosition] Health-bar projection (%.1f, %.1f) is %.1f%% away from a confident minimap match (%.1f, %.1f, raw=%.2f) - overriding with the minimap icon %n",
+                                hpX, hpY, disagreement, matchX, matchY, champRawScore);
+                    }
+                }
+            }
 
-            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] HEALTHBAR -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+            if (!minimapOverride) {
+                this.lastKnownX = hpX;
+                this.lastKnownY = hpY;
+                if (minimapFailsafeActive) {
+                    minimapFailsafeActive = false;
+                    if (DebugManager.isENABLED()) System.out.println("[trackPlayerPosition] Health bar re-agrees with the minimap - resuming normal health-bar tracking.");
+                }
+                if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] HEALTHBAR -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+            }
 
             if (DebugManager.isENABLED()) {
                 Mat debugHealthLoc = minimapMat.clone();
@@ -326,6 +356,7 @@ public class ScreenPositionTracker {
             result = new TrackResult(lastKnownX, lastKnownY, false);
 
         } else if (champMapCenter != null) {
+            minimapFailsafeActive = false;
             this.lastKnownX = ((float) champMapCenter.x / perfectMapSize) * 100f;
             this.lastKnownY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
@@ -333,7 +364,8 @@ public class ScreenPositionTracker {
             result = new TrackResult(lastKnownX, lastKnownY, false);
 
         } else {
-            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] No detection — returning last known -> X: %.2f%% | Y: %.2f%%%n",
+            minimapFailsafeActive = false;
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] No detection - returning last known -> X: %.2f%% | Y: %.2f%%%n",
                     lastKnownX, lastKnownY);
             result = new TrackResult(lastKnownX, lastKnownY, false);
         }
@@ -346,7 +378,7 @@ public class ScreenPositionTracker {
     private void runCalibrationUpdate(Point healthBarCenter, Point champMapCenter, CameraBox cameraBox,
                                       float champScore, int perfectMapSize, int screenWidth, int screenHeight) {
         if (champScore <= 0.65f) {
-            System.out.printf("[calibration] Paused — low template confidence (%.2f)%n", champScore);
+            System.out.printf("[calibration] Paused - low template confidence (%.2f)%n", champScore);
             return;
         }
 
@@ -362,10 +394,10 @@ public class ScreenPositionTracker {
         float rawMatchDist = (float) Math.hypot(targetOffsetX, targetOffsetY);
         if (rawMatchDist > MAX_HEALTHBAR_MATCH_DIST) {
             if (lastStrongMatchCount >= 2) {
-                System.out.printf("[calibration] Match %.1f%% from health-bar projection with %d strong matches — likely a clone, skipping frame.%n",
+                System.out.printf("[calibration] Match %.1f%% from health-bar projection with %d strong matches - likely a clone, skipping frame.%n",
                         rawMatchDist, lastStrongMatchCount);
             } else {
-                System.out.printf("[calibration] Match %.1f%% from health-bar projection with only %d strong match — wrong lock suspected, skipping frame.%n",
+                System.out.printf("[calibration] Match %.1f%% from health-bar projection with only %d strong match - wrong lock suspected, skipping frame.%n",
                         rawMatchDist, lastStrongMatchCount);
             }
             return;
@@ -390,7 +422,7 @@ public class ScreenPositionTracker {
                     calibrationFrames, healthBarCalibrateX, healthBarCalibrateY);
         } else if (calibrationFrames >= MAX_CALIBRATION_FRAMES) {
             this.calibrationConverged = true;
-            System.out.printf("[calibration] Max frames reached — force-locking. Final Offsets -> X: %.3f, Y: %.3f%n",
+            System.out.printf("[calibration] Max frames reached - force-locking. Final Offsets -> X: %.3f, Y: %.3f%n",
                     healthBarCalibrateX, healthBarCalibrateY);
         }
     }
@@ -492,7 +524,7 @@ public class ScreenPositionTracker {
                 driftConfirmStreak++;
 
                 if (driftConfirmStreak >= DRIFT_CONFIRM_REQUIRED) {
-                    System.out.printf("[drift] Systematic drift detected — Variance: %.2f%%. Re-entering calibration.%n", avgDrift);
+                    System.out.printf("[drift] Systematic drift detected - Variance: %.2f%%. Re-entering calibration.%n", avgDrift);
                     this.calibrationConverged = false;
                     this.calibrationFrames = 0;
                     this.offsetWindow.clear();
@@ -545,7 +577,7 @@ public class ScreenPositionTracker {
             return;
         }
         if (secondScore >= 0 && (bestScore - secondScore) < BOOTSTRAP_MATCH_MARGIN) {
-            System.out.printf("[bootstrap] Ambiguous appearance match (%.2f vs %.2f) — waiting for separation.%n",
+            System.out.printf("[bootstrap] Ambiguous appearance match (%.2f vs %.2f) - waiting for separation.%n",
                     bestScore, secondScore);
             bootstrapConfidence = 0;
             bootstrapLastPick = null;
@@ -560,7 +592,7 @@ public class ScreenPositionTracker {
         }
 
         if (!isAllyCircleIsolated(nearest, allies)) {
-            System.out.println("[bootstrap] Target overlapped by another ally icon — waiting for a clean frame.");
+            System.out.println("[bootstrap] Target overlapped by another ally icon - waiting for a clean frame.");
             bootstrapConfidence = 0;
             bootstrapLastPick = null;
             return;
@@ -597,7 +629,7 @@ public class ScreenPositionTracker {
                 ? ImageUtils.applyEnhancement(lockedCoreTemplate)
                 : null;
 
-        System.out.printf("[bootstrap] Self-learned template from live minimap (σ=%.1f)%s — scale lock acquired.%n",
+        System.out.printf("[bootstrap] Self-learned template from live minimap (σ=%.1f)%s - scale lock acquired.%n",
                 sigma, lockedCoreTemplateEnhanced != null ? " [CLAHE]" : "");
     }
 
@@ -1221,7 +1253,7 @@ public class ScreenPositionTracker {
             lastStrongMatchCount = strongMatches;
 
             if (DebugManager.isENABLED() && strongMatches >= 2) {
-                System.out.printf("[locateChampionViaTemplate] %d strong icon matches — clone likely present; anchoring to (%.1f, %.1f).%n",
+                System.out.printf("[locateChampionViaTemplate] %d strong icon matches - clone likely present; anchoring to (%.1f, %.1f).%n",
                         strongMatches, anchorX, anchorY);
             }
 
@@ -1233,7 +1265,7 @@ public class ScreenPositionTracker {
                         lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 255, 0));
                 if (DebugManager.isENABLED()) System.out.printf("[locateChampionViaTemplate] Locked Scale Match -> Raw: %.2f%% | Boosted: %.2f%%%n",
                         rawScoreLog * 100, bestScore * 100);
-                return new TemplateMatch(bestCenter, bestScore);
+                return new TemplateMatch(bestCenter, bestScore, rawScoreLog);
             }
 
             return null;
@@ -1315,7 +1347,7 @@ public class ScreenPositionTracker {
             double sigma = ImageUtils.getStdDev(this.lockedCoreTemplate);
             if (sigma < LOW_CONTRAST_STDDEV_THRESHOLD) {
                 this.lockedCoreTemplateEnhanced = ImageUtils.applyEnhancement(this.lockedCoreTemplate);
-                System.out.printf("[locateChampionViaTemplate] Low-contrast template detected (σ=%.1f) — CLAHE enabled.%n", sigma);
+                System.out.printf("[locateChampionViaTemplate] Low-contrast template detected (σ=%.1f) - CLAHE enabled.%n", sigma);
             } else {
                 this.lockedCoreTemplateEnhanced = null;
             }
@@ -1327,7 +1359,7 @@ public class ScreenPositionTracker {
 
             drawDebugBox(minimap, globalBestCenter.x, globalBestCenter.y,
                     lockedCoreTemplate.width(), lockedCoreTemplate.height(), new Scalar(0, 165, 255));
-            return new TemplateMatch(globalBestCenter, globalBestScore);
+            return new TemplateMatch(globalBestCenter, globalBestScore, globalBestScore);
         }
 
         if (DebugManager.isENABLED()) System.out.printf("[locateChampionViaTemplate] FAILED: Best match was only %.2f%%%n", globalBestScore * 100);

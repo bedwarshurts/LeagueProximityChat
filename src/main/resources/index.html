@@ -569,7 +569,7 @@
     <main class="panel squad-panel">
         <div class="roster-head">
             <span class="section-label">Match Roster</span>
-            <span class="roster-count" id="roster-count">—</span>
+            <span class="roster-count" id="roster-count">-</span>
         </div>
         <div id="roster-container">
             <div class="player-item empty-row">Waiting for match to begin…</div>
@@ -696,9 +696,9 @@
                 <div style="background:linear-gradient(180deg,#0c1626,#060d17); border:1px solid rgba(200,170,110,0.35); border-radius:3px; box-shadow:0 18px 50px -12px rgba(0,0,0,0.7); padding:38px; max-width:420px; width:100%; text-align:center;">
                     <div style="width:54px; height:54px; margin:0 auto 18px; display:flex; align-items:center; justify-content:center; font-size:24px; border-radius:3px; color:#f0e6d2; background:linear-gradient(135deg,#e8455a,#8e1f2c); box-shadow:0 8px 22px -6px rgba(232,69,90,0.45);">⏻</div>
                     <h2 style="margin:0 0 8px; font-family:Cinzel,serif; letter-spacing:0.08em; font-size:18px; color:#f0e6d2;">Application Closed</h2>
-                    <p style="margin:0 0 22px; color:#a8a290; font-size:14px; line-height:1.5;">The backend has shut down and your microphone is disconnected.</p>
+                    <p style="margin:0 0 22px; color:#a8a290; font-size:14px; line-height:1.5;">LeagueProximityChat has shut down and your microphone is disconnected.</p>
                     <p style="margin:0; font-size:12.5px; color:#6b7585; line-height:1.55;">
-                        Your browser won't let this tab close itself —<br>
+                        Your browser won't let this tab close itself -<br>
                         <strong style="color:#a8a290;">you can safely close this window.</strong>
                     </p>
                 </div>
@@ -746,7 +746,7 @@
         matchLeaderIdentity = null;
         document.getElementById('roster-container').innerHTML =
             '<div class="player-item empty-row">Waiting for match to begin…</div>';
-        document.getElementById('roster-count').innerText = '—';
+        document.getElementById('roster-count').innerText = '-';
 
         const coordEl = document.getElementById('local-coords');
         if (coordEl) {
@@ -1167,7 +1167,7 @@
             const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
             const track = (audioPublications.length > 0) ? audioPublications[0].track : null;
             if (!track) {
-                console.warn('[Krisp] No local audio track found — noise cancellation not applied.');
+                console.warn('[Krisp] No local audio track found - noise cancellation not applied.');
                 setKrispStatus('(no mic track)');
                 return;
             }
@@ -1181,7 +1181,7 @@
                         isKrispNoiseFilterSupported
                     } = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
                     if (!isKrispNoiseFilterSupported()) {
-                        console.warn('[Krisp] Not supported in this browser — noise cancellation disabled.');
+                        console.warn('[Krisp] Not supported in this browser - noise cancellation disabled.');
                         setKrispStatus('(unsupported)');
                         return;
                     }
@@ -1394,7 +1394,7 @@
             document.querySelectorAll('.player-item.speaking').forEach(row => row.classList.remove('speaking'));
 
             document.getElementById('lk-status').className = 'status error';
-            document.getElementById('lk-status').innerText = 'Audio Server: Disconnected — ready to retry.';
+            document.getElementById('lk-status').innerText = 'Audio Server: Disconnected - ready to retry.';
 
             const sb = document.getElementById('start-btn');
             sb.style.display = 'block';

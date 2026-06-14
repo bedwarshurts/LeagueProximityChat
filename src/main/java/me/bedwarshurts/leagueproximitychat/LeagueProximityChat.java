@@ -423,7 +423,7 @@ public class LeagueProximityChat {
         System.out.println("OpenCV loaded successfully.");
 
         if (DebugManager.isENABLED()) {
-            System.out.println("[Debug] LPC_DEBUG is set — debug images and verbose tracking logs enabled.");
+            System.out.println("[Debug] LPC_DEBUG is set - debug images and verbose tracking logs enabled.");
         }
 
         try {

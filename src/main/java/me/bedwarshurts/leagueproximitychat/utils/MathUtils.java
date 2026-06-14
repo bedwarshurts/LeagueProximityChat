@@ -53,7 +53,7 @@ public final class MathUtils {
                     if (Math.abs(Math.hypot(p.x - cc[0], p.y - cc[1]) - cc[2]) < inlierTol) inliers.add(p);
                 }
                 if (inliers.size() < RANSAC_MIN_INLIERS) continue;
-                // Reject circles whose inliers don't form a wide contiguous arc — the signature of a
+                // Reject circles whose inliers don't form a wide contiguous arc - the signature of a
                 // spurious fit through unrelated parts of a messy multi-ring contour.
                 double arcDeg = arcCoverageDeg(inliers, cc[0], cc[1]);
                 if (arcDeg < RANSAC_MIN_ARC_DEG) continue;
