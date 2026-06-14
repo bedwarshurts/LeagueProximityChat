@@ -33,8 +33,8 @@ public class ScreenPositionTracker {
     private int maxSeenCamH = 0;
     private int lastMinimapWidth = 0;
 
-    private float lastKnownX = 50f;
-    private float lastKnownY = 50f;
+    private float lastKnownX = 0f;
+    private float lastKnownY = 0f;
 
     private float healthBarCalibrateX = 0.0f;
     private float healthBarCalibrateY = 0.0f;
@@ -85,7 +85,7 @@ public class ScreenPositionTracker {
     private static final double CLONE_DETECT_THRESHOLD = 0.78;
     private static final double MAX_HEALTHBAR_MATCH_DIST = 15.0;
 
-    private static final double MINIMAP_OVERRIDE_SCORE = 0.75;
+    private static final double MINIMAP_OVERRIDE_SCORE = 0.70;
     private static final double MINIMAP_OVERRIDE_DIST = 15.0;
     private boolean minimapFailsafeActive = false;
 
