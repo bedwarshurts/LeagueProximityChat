@@ -358,7 +358,6 @@
         .status-connected { color: var(--teal); }
         .banned-name { text-decoration: line-through; color: var(--ink-3); }
 
-        /* avatar lights up while the player is talking */
         .avatar { transition: filter 0.15s; }
         .player-item.speaking .avatar {
             background: linear-gradient(180deg, #3be8d8, #0a8c82);
@@ -669,6 +668,9 @@
     const remotePositions = {};
     const localPosition = {x: 0, y: 0, isDead: false};
 
+    let hasReceivedPosition = false;
+    let positionGateActive = false;
+
     let micMuted = false;
     let isDeafened = false;
     let micMutedBeforeDeafen = false;
@@ -726,6 +728,8 @@
         micMuted = false;
         isDeafened = false;
         micMutedBeforeDeafen = false;
+        hasReceivedPosition = false;
+        positionGateActive = false;
         krispProcessor = null;
         locallyMuted.clear();
         if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
@@ -1112,6 +1116,7 @@
 
     document.getElementById('mute-btn').addEventListener('click', async () => {
         if (!connected || !room) return;
+        positionGateActive = false;
         if (isDeafened) {
             micMutedBeforeDeafen = false;
             await setDeafened(false);
@@ -1122,6 +1127,7 @@
 
     document.getElementById('deafen-btn').addEventListener('click', async () => {
         if (!connected || !room) return;
+        positionGateActive = false;
         await setDeafened(!isDeafened);
     });
 
@@ -1328,6 +1334,17 @@
                     }
 
                     updateListenerPosition();
+
+                    if (!hasReceivedPosition) {
+                        hasReceivedPosition = true;
+                        if (positionGateActive) {
+                            positionGateActive = false;
+                            setDeafened(false);
+                            const lk = document.getElementById('lk-status');
+                            lk.className = 'status success';
+                            lk.innerText = 'Audio Server: Connected';
+                        }
+                    }
 
                     if (room && room.state === LivekitClient.ConnectionState.Connected) {
                         const payload = new TextEncoder().encode(JSON.stringify({
@@ -1547,6 +1564,9 @@
             statusEl.className = 'status loading';
             statusEl.innerText = 'Audio Server: Connecting…';
 
+            hasReceivedPosition = false;
+            positionGateActive = false;
+
             initializeFreshRoom();
 
             await room.connect(LIVEKIT_URL, token);
@@ -1576,6 +1596,14 @@
             await room.localParticipant.setMicrophoneEnabled(true);
 
             await applyKrispState();
+
+            if (!hasReceivedPosition) {
+                positionGateActive = true;
+                micMutedBeforeDeafen = false;
+                await setDeafened(true);
+                statusEl.className = 'status loading';
+                statusEl.innerText = 'Audio Server: Connected — muted until your position is detected';
+            }
             return true;
 
         } catch (error) {
