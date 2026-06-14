@@ -85,7 +85,7 @@ public class ScreenPositionTracker {
     private static final double CLONE_DETECT_THRESHOLD = 0.78;
     private static final double MAX_HEALTHBAR_MATCH_DIST = 15.0;
 
-    private static final double MINIMAP_OVERRIDE_SCORE = 0.80;
+    private static final double MINIMAP_OVERRIDE_SCORE = 0.75;
     private static final double MINIMAP_OVERRIDE_DIST = 15.0;
     private boolean minimapFailsafeActive = false;
 
