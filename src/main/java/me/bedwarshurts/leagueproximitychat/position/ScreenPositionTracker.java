@@ -16,6 +16,8 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.*;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ScreenPositionTracker {
 
@@ -109,6 +111,21 @@ public class ScreenPositionTracker {
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
 
+    private MinimapLocator minimapLocator = null;
+
+    private static final double FOUNTAIN_ORDER_X = 3.83, FOUNTAIN_ORDER_Y = 4.22;
+    private static final double FOUNTAIN_CHAOS_X = 96.04, FOUNTAIN_CHAOS_Y = 96.09;
+    private static final int FOUNTAIN_SAMPLE_WINDOW_FRAMES = 15;
+    private static final double FOUNTAIN_MAX_CORRECTION = 4.0;
+    private static final float FOUNTAIN_BLEND_ALPHA = 0.5f;
+    private static final double FOUNTAIN_MIN_MATCH_SCORE = 0.75;
+    private String localTeam = null;
+    private boolean wasDeadLastFrame = false;
+    private int fountainSampleFramesLeft = 0;
+    private boolean fountainAnchored = false;
+    private float anchorOffsetX = 0f;
+    private float anchorOffsetY = 0f;
+
     public record TrackResult(float x, float y, boolean isDead) {
     }
 
@@ -134,6 +151,7 @@ public class ScreenPositionTracker {
             this.userMinimapScale = settings.getMinimapScale();
             this.isColorblind = settings.isColorblind();
             this.championTemplate = championTemplate;
+            this.minimapLocator = MinimapLocator.create();
             if (DebugManager.isENABLED()) System.out.println("[constructor] Tracker initialized. Target Health Bar Color: "
                     + (this.isColorblind ? "YELLOW" : "GREEN"));
         } catch (AWTException e) {
@@ -145,14 +163,19 @@ public class ScreenPositionTracker {
     public TrackResult trackPlayerPosition() {
         boolean isDead = checkDeathState();
 
+        if (wasDeadLastFrame && !isDead) {
+            fountainSampleFramesLeft = FOUNTAIN_SAMPLE_WINDOW_FRAMES;
+        }
+        wasDeadLastFrame = isDead;
+
         if (isDead) {
-            return new TrackResult(lastKnownX, lastKnownY, true);
+            return anchored(lastKnownX, lastKnownY, true);
         }
 
         Rectangle gameBounds = WindowUtils.getGameWindowBounds("League of Legends (TM) Client");
 
         if (gameBounds == null) {
-            return new TrackResult(lastKnownX, lastKnownY, false);
+            return anchored(lastKnownX, lastKnownY, false);
         }
 
         Mat fullScreenMat = captureScreen(gameBounds);
@@ -195,14 +218,28 @@ public class ScreenPositionTracker {
 
         double clampedScale = Math.clamp(normalizedScale, 0.0, 3.0);
         double currentMapPercent = 0.205 + ((0.268 - 0.205) * clampedScale);
-        int perfectMapSize = (int) (fullScreenMat.height() * currentMapPercent);
+        int estimatedMapSize = (int) (fullScreenMat.height() * currentMapPercent);
 
-        Rect minimapRoi = new Rect(
-                fullScreenMat.width() - perfectMapSize,
-                fullScreenMat.height() - perfectMapSize,
-                perfectMapSize,
-                perfectMapSize
-        );
+        MinimapLocator.MinimapRect mapBounds =
+                (minimapLocator != null) ? minimapLocator.update(fullScreenMat, estimatedMapSize) : null;
+
+        int perfectMapSize;
+        Rect minimapRoi;
+        if (mapBounds != null
+                && mapBounds.x() >= 0 && mapBounds.y() >= 0
+                && mapBounds.x() + mapBounds.size() <= fullScreenMat.width()
+                && mapBounds.y() + mapBounds.size() <= fullScreenMat.height()) {
+            perfectMapSize = mapBounds.size();
+            minimapRoi = new Rect(mapBounds.x(), mapBounds.y(), mapBounds.size(), mapBounds.size());
+        } else {
+            perfectMapSize = estimatedMapSize;
+            minimapRoi = new Rect(
+                    fullScreenMat.width() - perfectMapSize,
+                    fullScreenMat.height() - perfectMapSize,
+                    perfectMapSize,
+                    perfectMapSize
+            );
+        }
         Mat minimapMat = new Mat(fullScreenMat, minimapRoi).clone();
 
         if (DebugManager.isENABLED()) {
@@ -240,6 +277,33 @@ public class ScreenPositionTracker {
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
         double champRawScore = (champMatch != null) ? champMatch.rawScore() : 0.0;
 
+        if (fountainSampleFramesLeft > 0) {
+            fountainSampleFramesLeft--;
+            if (champMapCenter != null && champRawScore > FOUNTAIN_MIN_MATCH_SCORE && localTeam != null) {
+                float measuredX = ((float) champMapCenter.x / perfectMapSize) * 100f;
+                float measuredY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
+                boolean chaos = "CHAOS".equalsIgnoreCase(localTeam);
+                double canonX = chaos ? FOUNTAIN_CHAOS_X : FOUNTAIN_ORDER_X;
+                double canonY = chaos ? FOUNTAIN_CHAOS_Y : FOUNTAIN_ORDER_Y;
+                double dx = canonX - measuredX;
+                double dy = canonY - measuredY;
+
+                if (Math.abs(dx) <= FOUNTAIN_MAX_CORRECTION && Math.abs(dy) <= FOUNTAIN_MAX_CORRECTION) {
+                    if (!fountainAnchored) {
+                        anchorOffsetX = (float) dx;
+                        anchorOffsetY = (float) dy;
+                        fountainAnchored = true;
+                    } else {
+                        anchorOffsetX += (float) (dx - anchorOffsetX) * FOUNTAIN_BLEND_ALPHA;
+                        anchorOffsetY += (float) (dy - anchorOffsetY) * FOUNTAIN_BLEND_ALPHA;
+                    }
+                    fountainSampleFramesLeft = 0;
+                    System.out.printf("[fountain] Respawn anchor: measured (%.1f, %.1f) vs canonical (%.1f, %.1f) -> frame offset now (%.2f, %.2f).%n",
+                            measuredX, measuredY, canonX, canonY, anchorOffsetX, anchorOffsetY);
+                }
+            }
+        }
+
         if ((isScaleLocked || isBootstrapped) && healthBarCenter != null && cameraBox != null) {
             float rawHpX = calculateProjectedX(healthBarCenter.x, cameraBox, perfectMapSize, fullScreenMat.width());
             float rawHpY = calculateProjectedY(healthBarCenter.y, cameraBox, perfectMapSize, fullScreenMat.height());
@@ -259,6 +323,7 @@ public class ScreenPositionTracker {
             } else {
                 lockedMatchFailures = 0;
 
+                assert champMapCenter != null;
                 float matchX = (float) (champMapCenter.x / (double) perfectMapSize) * 100f;
                 float matchY = 100f - (float) ((champMapCenter.y / (double) perfectMapSize) * 100f);
                 double matchToHpDist = Math.hypot(matchX - currentHpMapX, matchY - currentHpMapY);
@@ -353,7 +418,7 @@ public class ScreenPositionTracker {
                 debugHealthLoc.release();
             }
 
-            result = new TrackResult(lastKnownX, lastKnownY, false);
+            result = anchored(lastKnownX, lastKnownY, false);
 
         } else if (champMapCenter != null) {
             minimapFailsafeActive = false;
@@ -361,18 +426,22 @@ public class ScreenPositionTracker {
             this.lastKnownY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
             if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
-            result = new TrackResult(lastKnownX, lastKnownY, false);
+            result = anchored(lastKnownX, lastKnownY, false);
 
         } else {
             minimapFailsafeActive = false;
             if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] No detection - returning last known -> X: %.2f%% | Y: %.2f%%%n",
                     lastKnownX, lastKnownY);
-            result = new TrackResult(lastKnownX, lastKnownY, false);
+            result = anchored(lastKnownX, lastKnownY, false);
         }
 
         fullScreenMat.release();
         minimapMat.release();
         return result;
+    }
+
+    private TrackResult anchored(float x, float y, boolean isDead) {
+        return new TrackResult(x + anchorOffsetX, y + anchorOffsetY, isDead);
     }
 
     private void runCalibrationUpdate(Point healthBarCenter, Point champMapCenter, CameraBox cameraBox,
@@ -861,6 +930,14 @@ public class ScreenPositionTracker {
         if (blockEnd == -1) blockEnd = playerListJson.length();
 
         String playerBlock = playerListJson.substring(blockStart, blockEnd).replaceAll("\\s+", "");
+
+        if (localTeam == null) {
+            Matcher teamMatcher = Pattern.compile("\"team\":\"(ORDER|CHAOS)\"").matcher(playerBlock);
+            if (teamMatcher.find()) {
+                localTeam = teamMatcher.group(1);
+            }
+        }
+
         return playerBlock.contains("\"isDead\":true");
     }
 
@@ -1105,8 +1182,25 @@ public class ScreenPositionTracker {
             Imgproc.matchTemplate(matchRoi, matchTemplate, result, Imgproc.TM_CCOEFF_NORMED);
             Core.MinMaxLocResult mmr = Core.minMaxLoc(result);
 
-            double matchCenterX = startX + mmr.maxLoc.x + (cw / 2.0);
-            double matchCenterY = startY + mmr.maxLoc.y + (ch / 2.0);
+            double subX = 0.0;
+            double subY = 0.0;
+            int px = (int) mmr.maxLoc.x;
+            int py = (int) mmr.maxLoc.y;
+            if (px > 0 && px < result.cols() - 1) {
+                double l = result.get(py, px - 1)[0];
+                double r = result.get(py, px + 1)[0];
+                double d = l - 2 * mmr.maxVal + r;
+                if (d < -1e-9) subX = Math.clamp((l - r) / (2 * d), -0.5, 0.5);
+            }
+            if (py > 0 && py < result.rows() - 1) {
+                double t = result.get(py - 1, px)[0];
+                double b = result.get(py + 1, px)[0];
+                double d = t - 2 * mmr.maxVal + b;
+                if (d < -1e-9) subY = Math.clamp((t - b) / (2 * d), -0.5, 0.5);
+            }
+
+            double matchCenterX = startX + mmr.maxLoc.x + subX + (cw / 2.0);
+            double matchCenterY = startY + mmr.maxLoc.y + subY + (ch / 2.0);
 
             return new EvalResult(new Point(matchCenterX, matchCenterY), mmr.maxVal);
         } finally {

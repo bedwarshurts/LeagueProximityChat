@@ -418,7 +418,7 @@ public class LeagueProximityChat {
         }
     }
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) {
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
 
