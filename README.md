@@ -1,6 +1,6 @@
 # League of Legends, Proximity Chat
 
-![version](https://img.shields.io/badge/version-1.0.0-blue)
+![version](https://img.shields.io/badge/version-2.9.0-blue)
 
 Hear in game allies, and enemies with volume scaling on how closer they are to you with Spatial Audio Support.
 
