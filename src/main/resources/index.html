@@ -598,7 +598,7 @@
                 </svg>
             </div>
             <div>
-                <h1>League Proximity Chat</h1>
+                <h1>Yowaimo's LeagueProximityChat</h1>
                 <p>https://github.com/bedwarshurts/LeagueProximityChat</p>
             </div>
         </div>
@@ -653,7 +653,7 @@
     <div class="panel setup-card">
         <span class="section-label">Voice Server Setup</span>
         <p class="setup-text">
-            This app needs a LiveKit server to carry voice between players. Create a free project at
+            Yowaimo's LeagueProximityChat needs a LiveKit server to carry voice between players. Create a free project at
             <a href="https://cloud.livekit.io" target="_blank" rel="noreferrer">cloud.livekit.io</a>,
             open <em>Settings &rarr; Keys</em>, and paste the project URL, API key and API secret below.
             These values are saved locally on this computer only.
@@ -673,7 +673,6 @@
         <div id="setup-error" class="setup-error"></div>
         <div class="setup-actions">
             <button id="setup-save" class="btn-primary">Save &amp; Continue</button>
-            <button id="setup-cancel" class="btn-control" style="display: none;">Cancel</button>
         </div>
     </div>
 </div>
@@ -694,7 +693,6 @@
 <div id="hidden-audio-container" style="display: none;"></div>
 
 <script>
-    // loaded from the backend's /settings endpoint (user-provided, stored per machine)
     let LIVEKIT_URL = '';
     let livekitConfigured = false;
 
@@ -789,9 +787,8 @@
         document.getElementById('setup-secret').value = s.apiSecret || '';
     }
 
-    function showSetupScreen(allowCancel) {
+    function showSetupScreen() {
         document.getElementById('setup-error').style.display = 'none';
-        document.getElementById('setup-cancel').style.display = allowCancel ? '' : 'none';
         document.getElementById('main-ui').style.display = 'none';
         document.getElementById('setup-screen').style.display = 'flex';
     }
@@ -807,12 +804,10 @@
         } catch (e) {
             livekitConfigured = false;
         }
-        // first run on this computer: force the setup screen until credentials are saved
-        if (!livekitConfigured) showSetupScreen(false);
+        if (!livekitConfigured) showSetupScreen();
     }
 
-    document.getElementById('settings-btn').addEventListener('click', () => showSetupScreen(true));
-    document.getElementById('setup-cancel').addEventListener('click', hideSetupScreen);
+    document.getElementById('settings-btn').addEventListener('click', () => showSetupScreen());
 
     document.getElementById('setup-save').addEventListener('click', async () => {
         const url = document.getElementById('setup-url').value.trim();
@@ -837,14 +832,14 @@
             await fetchLivekitSettings();
             hideSetupScreen();
         } catch (e) {
-            errorEl.innerText = 'Could not save the settings — is the app still running?';
+            errorEl.innerText = 'Could not save the settings is the app still running?';
+            console.log(e);
             errorEl.style.display = 'block';
         }
     });
 
     initLivekitSettings();
 
-    // ===== admin debug log viewer =====
     let logRefreshTimer = null;
 
     async function refreshLogs() {
@@ -1254,7 +1249,7 @@
 
     document.getElementById('start-btn').addEventListener('click', async () => {
         if (!livekitConfigured) {
-            showSetupScreen(false);
+            showSetupScreen();
             return;
         }
         if (connected || !trackerSocket || trackerSocket.readyState !== WebSocket.OPEN) return;

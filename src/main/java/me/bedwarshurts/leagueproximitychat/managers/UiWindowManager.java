@@ -7,11 +7,15 @@ import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
 
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.WindowConstants;
 import java.awt.Dimension;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.nio.file.Paths;
 
@@ -41,12 +45,23 @@ public class UiWindowManager {
             browser = client.createBrowser(APP_URL, false, false);
 
             SwingUtilities.invokeAndWait(() -> {
+                try {
+                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                } catch (Exception ignored) {
+                }
+
                 frame = new JFrame(WINDOW_TITLE);
                 frame.add(browser.getUIComponent());
                 frame.setSize(1180, 760);
                 frame.setLocationRelativeTo(null);
 
-                frame.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
+                frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+                frame.addWindowListener(new WindowAdapter() {
+                    @Override
+                    public void windowClosing(WindowEvent e) {
+                        handleCloseRequest();
+                    }
+                });
                 frame.setVisible(true);
             });
 
@@ -65,6 +80,31 @@ public class UiWindowManager {
             return Paths.get(appData, "LeagueProximityChat", "jcef-bundle").toFile();
         }
         return Paths.get(System.getProperty("user.home"), ".leagueproximitychat", "jcef-bundle").toFile();
+    }
+
+    private void handleCloseRequest() {
+        String[] options = {"Keep in Background", "Close Completely"};
+        int choice = JOptionPane.showOptionDialog(
+                frame,
+                """
+                        Keep League Proximity Chat running in the background?
+                        You can bring this window back at any time with Shift+F8.
+                        
+                        """,
+                WINDOW_TITLE,
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                options,
+                options[0]);
+
+        if (choice == 1) {
+            System.out.println("[UiWindow] Closing the app.");
+            frame.setVisible(false);
+            new Thread(() -> System.exit(0), "app-close").start();
+        } else if (choice == 0) {
+            frame.setVisible(false);
+        }
     }
 
     public void toggleOverlay() {
