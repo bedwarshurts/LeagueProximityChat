@@ -1,5 +1,7 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -56,7 +58,7 @@ public final class LogManager {
         }
 
         @Override
-        public synchronized void write(byte[] b, int off, int len) throws IOException {
+        public synchronized void write(@NotNull byte[] b, int off, int len) throws IOException {
             original.write(b, off, len);
             for (int i = off; i < off + len; i++) {
                 int c = b[i] & 0xFF;

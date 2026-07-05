@@ -156,10 +156,7 @@ public class OverlayManager {
 
         if (User32.INSTANCE.IsWindowVisible(overlay)) {
             User32.INSTANCE.ShowWindow(overlay, WinUser.SW_HIDE);
-            HWND game = User32.INSTANCE.FindWindow(null, GAME_WINDOW_TITLE);
-            if (game != null) {
-                User32.INSTANCE.SetForegroundWindow(game);
-            }
+            WindowUtils.focusWindow(GAME_WINDOW_TITLE);
             return;
         }
 
