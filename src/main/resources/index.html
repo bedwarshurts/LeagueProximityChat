@@ -113,7 +113,50 @@
         }
         .brand p { margin: 3px 0 0; font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.02em; }
 
-        .hud-status { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+        .hud-status { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+
+        .settings-btn {
+            padding: 7px 11px;
+            font-size: 14px;
+            line-height: 1;
+            background: rgba(3, 9, 16, 0.55);
+            border: 1px solid var(--hairline);
+            border-radius: 2px;
+            color: var(--ink-2);
+        }
+        .settings-btn:hover { border-color: rgba(200, 170, 110, 0.5); color: var(--ink-1); }
+
+        #setup-screen { display: none; height: 100vh; align-items: center; justify-content: center; padding: 24px; }
+        .setup-card { width: min(560px, 94vw); padding: 26px 28px; display: flex; flex-direction: column; gap: 14px; }
+        .setup-text { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+        .setup-text a { color: var(--teal); }
+        .setup-warning { color: var(--gold-soft); border: 1px solid var(--hairline); background: rgba(200, 170, 110, 0.06); padding: 10px 12px; border-radius: 2px; }
+        .setup-label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--ink-1); }
+        .setup-input { padding: 10px 12px; font-family: var(--mono); font-size: 13px; color: var(--ink-1); background: rgba(3, 9, 16, 0.6); border: 1px solid var(--hairline); border-radius: 2px; outline: none; }
+        .setup-input:focus { border-color: rgba(200, 170, 110, 0.55); }
+        .setup-error { display: none; font-size: 12.5px; color: var(--danger); }
+        .setup-actions { display: flex; gap: 10px; margin-top: 4px; }
+        .setup-actions .btn-primary { flex: 1; }
+        .setup-actions .btn-control { flex: 0 0 auto; padding: 0 26px; }
+
+        #log-viewer { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(2, 6, 12, 0.72); align-items: center; justify-content: center; padding: 30px; }
+        .log-card { width: min(920px, 94vw); height: min(70vh, 640px); display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; }
+        .log-head { display: flex; align-items: center; justify-content: space-between; }
+        .log-actions { display: flex; gap: 8px; }
+        .log-content {
+            flex: 1;
+            margin: 0;
+            overflow: auto;
+            font-family: var(--mono);
+            font-size: 11px;
+            line-height: 1.55;
+            color: var(--ink-2);
+            background: rgba(2, 6, 12, 0.8);
+            border: 1px solid var(--hairline);
+            border-radius: 2px;
+            padding: 10px 12px;
+            white-space: pre-wrap;
+        }
 
         .status {
             display: inline-flex;
@@ -562,6 +605,8 @@
         <div class="hud-status">
             <div id="ws-status" class="status error">Position Tracker: Disconnected</div>
             <div id="lk-status" class="status error">Audio Server: Waiting for token...</div>
+            <button id="debug-btn" class="settings-btn" title="Debug logs" style="display: none;">🐞</button>
+            <button id="settings-btn" class="settings-btn" title="Voice server settings">⚙</button>
         </div>
     </header>
 
@@ -604,10 +649,54 @@
     </footer>
 </div>
 
+<div id="setup-screen">
+    <div class="panel setup-card">
+        <span class="section-label">Voice Server Setup</span>
+        <p class="setup-text">
+            This app needs a LiveKit server to carry voice between players. Create a free project at
+            <a href="https://cloud.livekit.io" target="_blank" rel="noreferrer">cloud.livekit.io</a>,
+            open <em>Settings &rarr; Keys</em>, and paste the project URL, API key and API secret below.
+            These values are saved locally on this computer only.
+        </p>
+        <p class="setup-text setup-warning">
+            Everyone who wants to play together must use the exact same three values
+        </p>
+        <label class="setup-label">Server URL
+            <input id="setup-url" class="setup-input" type="text" placeholder="https://your-project.livekit.cloud" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="setup-label">API Key
+            <input id="setup-key" class="setup-input" type="text" placeholder="APIxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="setup-label">API Secret
+            <input id="setup-secret" class="setup-input" type="password" placeholder="••••••••••••••••" autocomplete="off">
+        </label>
+        <div id="setup-error" class="setup-error"></div>
+        <div class="setup-actions">
+            <button id="setup-save" class="btn-primary">Save &amp; Continue</button>
+            <button id="setup-cancel" class="btn-control" style="display: none;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="log-viewer">
+    <div class="panel log-card">
+        <div class="log-head">
+            <span class="section-label">Debug Logs</span>
+            <div class="log-actions">
+                <button id="log-refresh" class="settings-btn" title="Refresh">⟳</button>
+                <button id="log-close" class="settings-btn" title="Close">✕</button>
+            </div>
+        </div>
+        <pre id="log-content" class="log-content">Loading…</pre>
+    </div>
+</div>
+
 <div id="hidden-audio-container" style="display: none;"></div>
 
 <script>
-    const LIVEKIT_URL = 'https://league-proximity-chat-3q7it5ix.livekit.cloud';
+    // loaded from the backend's /settings endpoint (user-provided, stored per machine)
+    let LIVEKIT_URL = '';
+    let livekitConfigured = false;
 
     const PROFILE_ICON_URL = (id) => `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/${id}.jpg`;
     const SPLASH_URL = (champ, skin) => `https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${champ}_${skin}.jpg`;
@@ -690,6 +779,105 @@
 
     connectToLocalJavaTracker();
 
+    async function fetchLivekitSettings() {
+        const resp = await fetch('/settings', {cache: 'no-store'});
+        const s = await resp.json();
+        livekitConfigured = Boolean(s.configured);
+        LIVEKIT_URL = s.url || '';
+        document.getElementById('setup-url').value = s.url || '';
+        document.getElementById('setup-key').value = s.apiKey || '';
+        document.getElementById('setup-secret').value = s.apiSecret || '';
+    }
+
+    function showSetupScreen(allowCancel) {
+        document.getElementById('setup-error').style.display = 'none';
+        document.getElementById('setup-cancel').style.display = allowCancel ? '' : 'none';
+        document.getElementById('main-ui').style.display = 'none';
+        document.getElementById('setup-screen').style.display = 'flex';
+    }
+
+    function hideSetupScreen() {
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('main-ui').style.display = 'grid';
+    }
+
+    async function initLivekitSettings() {
+        try {
+            await fetchLivekitSettings();
+        } catch (e) {
+            livekitConfigured = false;
+        }
+        // first run on this computer: force the setup screen until credentials are saved
+        if (!livekitConfigured) showSetupScreen(false);
+    }
+
+    document.getElementById('settings-btn').addEventListener('click', () => showSetupScreen(true));
+    document.getElementById('setup-cancel').addEventListener('click', hideSetupScreen);
+
+    document.getElementById('setup-save').addEventListener('click', async () => {
+        const url = document.getElementById('setup-url').value.trim();
+        const apiKey = document.getElementById('setup-key').value.trim();
+        const apiSecret = document.getElementById('setup-secret').value.trim();
+        const errorEl = document.getElementById('setup-error');
+
+        if (!url || !apiKey || !apiSecret) {
+            errorEl.innerText = 'All three fields are required.';
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        try {
+            const resp = await fetch('/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url, apiKey, apiSecret})
+            });
+            const out = await resp.json();
+            if (!out.ok) throw new Error('rejected');
+            await fetchLivekitSettings();
+            hideSetupScreen();
+        } catch (e) {
+            errorEl.innerText = 'Could not save the settings — is the app still running?';
+            errorEl.style.display = 'block';
+        }
+    });
+
+    initLivekitSettings();
+
+    // ===== admin debug log viewer =====
+    let logRefreshTimer = null;
+
+    async function refreshLogs() {
+        const el = document.getElementById('log-content');
+        try {
+            const resp = await fetch('/logs', {cache: 'no-store'});
+            const text = await resp.text();
+            const stickToBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+            el.textContent = text || '(no log output yet)';
+            if (stickToBottom) el.scrollTop = el.scrollHeight;
+        } catch (e) {
+            el.textContent = 'Could not fetch the logs — is the app still running?';
+        }
+    }
+
+    document.getElementById('debug-btn').addEventListener('click', async () => {
+        document.getElementById('log-viewer').style.display = 'flex';
+        await refreshLogs();
+        const el = document.getElementById('log-content');
+        el.scrollTop = el.scrollHeight;
+        if (!logRefreshTimer) logRefreshTimer = setInterval(refreshLogs, 2000);
+    });
+
+    document.getElementById('log-refresh').addEventListener('click', refreshLogs);
+
+    document.getElementById('log-close').addEventListener('click', () => {
+        document.getElementById('log-viewer').style.display = 'none';
+        if (logRefreshTimer) {
+            clearInterval(logRefreshTimer);
+            logRefreshTimer = null;
+        }
+    });
+
     function closeApplicationTab() {
         try { if (room) room.disconnect(); } catch (e) {}
 
@@ -748,6 +936,7 @@
 
         localUserIdentity = null;
         matchLeaderIdentity = null;
+        document.getElementById('debug-btn').style.display = 'none';
         document.getElementById('roster-container').innerHTML =
             '<div class="player-item empty-row">Waiting for match to begin…</div>';
         document.getElementById('roster-count').innerText = '-';
@@ -767,6 +956,8 @@
 
         const isAdmin = localUserIdentity &&
             ["only forward#star", "stab enchanters#star"].includes(localUserIdentity.toLowerCase());
+
+        document.getElementById('debug-btn').style.display = isAdmin ? '' : 'none';
 
         players.forEach(player => {
             const div = document.createElement('div');
@@ -1062,6 +1253,10 @@
     }
 
     document.getElementById('start-btn').addEventListener('click', async () => {
+        if (!livekitConfigured) {
+            showSetupScreen(false);
+            return;
+        }
         if (connected || !trackerSocket || trackerSocket.readyState !== WebSocket.OPEN) return;
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         try { await audioCtx.resume(); } catch (e) {}

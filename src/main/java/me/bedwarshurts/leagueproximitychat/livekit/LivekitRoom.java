@@ -7,6 +7,7 @@ import io.livekit.server.RoomJoin;
 import io.livekit.server.RoomName;
 import io.livekit.server.RoomServiceClient;
 import lombok.Getter;
+import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 
 import java.util.Collections;
 import java.util.Set;
@@ -24,18 +25,14 @@ public class LivekitRoom {
 
     private final RoomServiceClient client;
 
-    private static final String LIVEKIT_API_KEY = "APIWxmRMBodAYeD";
-    private static final String LIVEKIT_API_SECRET = "PHmgO1ZLYZfPdSklpEoTByWE3ZOUD1jKa5TeYX6z5WH";
-    private static final String LIVEKIT_HOST = "https://league-proximity-chat-3q7it5ix.livekit.cloud";
-
     public LivekitRoom(String roomID, String roomLeaderRiotId) {
         this.roomID = roomID;
         this.roomLeaderRiotId = roomLeaderRiotId;
 
         this.client = RoomServiceClient.createClient(
-                LIVEKIT_HOST,
-                LIVEKIT_API_KEY,
-                LIVEKIT_API_SECRET
+                ConfigManager.getLivekitUrl(),
+                ConfigManager.getApiKey(),
+                ConfigManager.getApiSecret()
         );
     }
 
@@ -98,7 +95,7 @@ public class LivekitRoom {
     }
 
     public String generateRoomToken(String name, String identity) {
-        AccessToken token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+        AccessToken token = new AccessToken(ConfigManager.getApiKey(), ConfigManager.getApiSecret());
 
         token.setName(name);
         token.setIdentity(identity);

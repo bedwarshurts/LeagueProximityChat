@@ -38,10 +38,18 @@ public class OverlayManager {
     private final Runnable onMuteHotkey;
     private final Runnable onDeafenHotkey;
     private Path browserPath = null;
+    private UiWindowManager nativeWindow = null;
 
     public OverlayManager(Runnable onMuteHotkey, Runnable onDeafenHotkey) {
         this.onMuteHotkey = onMuteHotkey;
         this.onDeafenHotkey = onDeafenHotkey;
+    }
+
+    /** Standalone-window mode: hotkeys drive the JCEF window directly, no browser involved. */
+    public void launchWithNativeWindow(UiWindowManager window) {
+        this.nativeWindow = window;
+        startHotkeyListener();
+        System.out.println("[Overlay] Hotkeys armed. Shift+F8 toggles the overlay, Shift+F9 mute, Shift+F10 deafen.");
     }
 
     public boolean launch() {
@@ -134,6 +142,11 @@ public class OverlayManager {
     }
 
     private void toggleOverlay() {
+        if (nativeWindow != null) {
+            nativeWindow.toggleOverlay();
+            return;
+        }
+
         HWND overlay = findOverlayWindow();
 
         if (overlay == null) {

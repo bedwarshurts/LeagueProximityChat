@@ -9,8 +9,11 @@ import me.bedwarshurts.leagueproximitychat.discord.DiscordRPCManager;
 import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
+import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
+import me.bedwarshurts.leagueproximitychat.managers.LogManager;
 import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
+import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
@@ -26,6 +29,7 @@ import java.io.OutputStream;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -54,6 +58,7 @@ public class LeagueProximityChat {
     private static ScreenPositionTracker tracker = null;
     private static CoordinateServer server = null;
     private static OverlayManager overlay = null;
+    private static UiWindowManager uiWindow = null;
 
     private static int gameEndFailureStreak = 0;
     private static final long GAME_END_CHECK_INTERVAL_MS = 2000;
@@ -250,6 +255,11 @@ public class LeagueProximityChat {
         }
 
         if (isInGame && !hasConnectedToLiveKit) {
+            if (!ConfigManager.isConfigured()) {
+                Thread.sleep(1000);
+                return;
+            }
+
             LeaguePlayer localPlayer = findLocalPlayer(gameData, localSummonerName);
 
             if (localPlayer != null) {
@@ -339,6 +349,67 @@ public class LeagueProximityChat {
             }
         });
 
+        server.createContext("/settings", exchange -> {
+            try {
+                if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    byte[] body = new JSONObject()
+                            .put("configured", ConfigManager.isConfigured())
+                            .put("url", ConfigManager.getLivekitUrl())
+                            .put("apiKey", ConfigManager.getApiKey())
+                            .put("apiSecret", ConfigManager.getApiSecret())
+                            .toString().getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                    exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                    exchange.sendResponseHeaders(200, body.length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(body);
+                    }
+                    return;
+                }
+
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    String raw;
+                    try (InputStream is = exchange.getRequestBody()) {
+                        raw = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    }
+                    JSONObject json = new JSONObject(raw);
+                    boolean ok = ConfigManager.save(
+                            json.optString("url", ""),
+                            json.optString("apiKey", ""),
+                            json.optString("apiSecret", ""));
+
+                    byte[] body = new JSONObject().put("ok", ok).toString().getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                    exchange.sendResponseHeaders(ok ? 200 : 400, body.length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(body);
+                    }
+                    return;
+                }
+
+                exchange.sendResponseHeaders(405, -1);
+            } catch (Exception e) {
+                try {
+                    exchange.sendResponseHeaders(500, -1);
+                } catch (IOException ignored) {
+                }
+            }
+        });
+
+        server.createContext("/logs", exchange -> {
+            byte[] body = LogManager.snapshot().getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+            exchange.getResponseHeaders().set("Cache-Control", "no-store");
+            if (body.length == 0) {
+                exchange.sendResponseHeaders(200, -1);
+                return;
+            }
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(body);
+            }
+        });
+
         server.createContext("/livekit-client.umd.min.js", exchange -> {
             try (InputStream is = LeagueProximityChat.class.getResourceAsStream("/livekit-client.umd.min.js")) {
                 if (is == null) {
@@ -405,11 +476,17 @@ public class LeagueProximityChat {
                         }
                     });
 
-            if (!overlay.launch()) {
-                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                    Desktop.getDesktop().browse(new URI("http://localhost:8000"));
-                } else {
-                    System.out.println("Please manually go to: http://localhost:8000");
+            uiWindow = new UiWindowManager();
+            if (uiWindow.launch()) {
+                overlay.launchWithNativeWindow(uiWindow);
+            } else {
+                uiWindow = null;
+                if (!overlay.launch()) {
+                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                        Desktop.getDesktop().browse(new URI("http://localhost:8000"));
+                    } else {
+                        System.out.println("Please manually go to: http://localhost:8000");
+                    }
                 }
             }
         } catch (Exception e) {
@@ -419,6 +496,8 @@ public class LeagueProximityChat {
     }
 
     public static void main(String[] args) {
+        LogManager.install();
+
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
 
@@ -456,6 +535,9 @@ public class LeagueProximityChat {
                 }
             }
             DiscordRPCManager.stop();
+            if (uiWindow != null) {
+                uiWindow.shutdown();
+            }
         }));
 
         roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
