@@ -230,6 +230,34 @@
             padding: 2px 9px;
         }
         #roster-container { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 0 2px; scrollbar-width: thin; scrollbar-color: rgba(200, 170, 110, 0.3) transparent; }
+
+        .team-head {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 10px 8px 7px;
+            cursor: pointer;
+            user-select: none;
+            font-family: var(--display);
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--hairline-soft);
+        }
+        .team-head.allies { color: var(--teal); }
+        .team-head.enemies { color: #ff8f98; }
+        .team-head:hover { filter: brightness(1.25); }
+        .team-chevron { font-size: 8px; transition: transform 0.15s; }
+        .team-section.collapsed .team-chevron { transform: rotate(-90deg); }
+        .team-section.collapsed .team-body { display: none; }
+        .team-count {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0;
+            color: var(--ink-3);
+        }
         #roster-container::-webkit-scrollbar { width: 8px; }
         #roster-container::-webkit-scrollbar-thumb { background: rgba(200, 170, 110, 0.22); border-radius: 4px; }
 
@@ -768,6 +796,8 @@
     const playerVolumes = (() => {
         try { return JSON.parse(localStorage.getItem('playerVolumes')) || {}; } catch (e) { return {}; }
     })();
+
+    const rosterCollapsed = { allies: false, enemies: false };
     let connected = false;
     let isWaitingForMatch = false;
     let trackerSocket = null;
@@ -954,7 +984,49 @@
 
         document.getElementById('debug-btn').style.display = isAdmin ? '' : 'none';
 
-        players.forEach(player => {
+        const localPlayer = players.find(p => p.identity === localId);
+        const localTeam = localPlayer ? localPlayer.team : undefined;
+
+        let groups;
+        if (localTeam) {
+            const allies = [
+                ...players.filter(p => p.identity === localId),
+                ...players.filter(p => p.team === localTeam && p.identity !== localId)
+            ];
+            const enemies = players.filter(p => p.team !== localTeam);
+            groups = [
+                {key: 'allies', label: 'Allies', players: allies},
+                {key: 'enemies', label: 'Enemies', players: enemies}
+            ].filter(g => g.players.length > 0);
+        } else {
+            groups = [{
+                key: 'allies',
+                label: 'Players',
+                players: [
+                    ...players.filter(p => p.identity === localId),
+                    ...players.filter(p => p.identity !== localId)
+                ]
+            }];
+        }
+
+        groups.forEach(group => {
+            const section = document.createElement('div');
+            section.className = 'team-section' + (rosterCollapsed[group.key] ? ' collapsed' : '');
+
+            const head = document.createElement('div');
+            head.className = `team-head ${group.key}`;
+            head.innerHTML = `<span class="team-chevron">▼</span><span>${group.label}</span><span class="team-count">${group.players.length}</span>`;
+            head.onclick = () => {
+                rosterCollapsed[group.key] = !rosterCollapsed[group.key];
+                section.classList.toggle('collapsed', rosterCollapsed[group.key]);
+            };
+            section.appendChild(head);
+
+            const body = document.createElement('div');
+            body.className = 'team-body';
+            section.appendChild(body);
+
+            group.players.forEach(player => {
             const div = document.createElement('div');
             div.className = 'player-item';
             div.id = `roster-${player.identity}`;
@@ -1117,7 +1189,10 @@
             div.appendChild(centerDiv);
             div.appendChild(controlsContainer);
 
-            container.appendChild(div);
+                body.appendChild(div);
+            });
+
+            container.appendChild(section);
         });
 
         document.getElementById('roster-count').innerText = players.length;
@@ -1166,7 +1241,7 @@
             masterLimiter.attack.value = 0.003;
             masterLimiter.release.value = 0.25;
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = isDeafened ? 0 : 1;
+            masterGain.gain.value = (isDeafened || positionGateActive) ? 0 : 1;
             masterLimiter.connect(masterGain);
             masterGain.connect(audioCtx.destination);
         }
@@ -1284,17 +1359,27 @@
         deafenBtn.classList.toggle('active', isDeafened);
     }
 
+    async function applyMicState() {
+        const enabled = !micMuted && !positionGateActive;
+        try { if (room) await room.localParticipant.setMicrophoneEnabled(enabled); } catch (e) {}
+    }
+
+    function applyOutputState() {
+        if (masterGain && audioCtx) {
+            const silenced = isDeafened || positionGateActive;
+            masterGain.gain.setTargetAtTime(silenced ? 0 : 1, audioCtx.currentTime, 0.05);
+        }
+    }
+
     async function setMicMuted(muted) {
         micMuted = muted;
-        try { if (room) await room.localParticipant.setMicrophoneEnabled(!muted); } catch (e) {}
+        await applyMicState();
         updateVoiceButtonsUI();
     }
 
     async function setDeafened(deafened) {
         isDeafened = deafened;
-        if (masterGain && audioCtx) {
-            masterGain.gain.setTargetAtTime(deafened ? 0 : 1, audioCtx.currentTime, 0.05);
-        }
+        applyOutputState();
 
         if (deafened) {
             micMutedBeforeDeafen = micMuted;
@@ -1304,9 +1389,16 @@
         }
     }
 
+    function clearPositionGateStatus() {
+        const lk = document.getElementById('lk-status');
+        if (connected && lk.innerText.includes('Muted until')) {
+            lk.className = 'status success';
+            lk.innerText = 'Audio Server: Connected';
+        }
+    }
+
     document.getElementById('mute-btn').addEventListener('click', async () => {
         if (!connected || !room) return;
-        positionGateActive = false;
         if (isDeafened) {
             micMutedBeforeDeafen = false;
             await setDeafened(false);
@@ -1317,7 +1409,6 @@
 
     document.getElementById('deafen-btn').addEventListener('click', async () => {
         if (!connected || !room) return;
-        positionGateActive = false;
         await setDeafened(!isDeafened);
     });
 
@@ -1529,10 +1620,10 @@
                         hasReceivedPosition = true;
                         if (positionGateActive) {
                             positionGateActive = false;
-                            setDeafened(false);
-                            const lk = document.getElementById('lk-status');
-                            lk.className = 'status success';
-                            lk.innerText = 'Audio Server: Connected';
+
+                            applyMicState();
+                            applyOutputState();
+                            clearPositionGateStatus();
                         }
                     }
 
@@ -1789,10 +1880,10 @@
 
             if (!hasReceivedPosition) {
                 positionGateActive = true;
-                micMutedBeforeDeafen = false;
-                await setDeafened(true);
+                await applyMicState();
+                applyOutputState();
                 statusEl.className = 'status loading';
-                statusEl.innerText = 'Audio Server: Connected — muted until your position is detected';
+                statusEl.innerText = 'Audio Server: Connected - Muted until your position is detected';
             }
             return true;
 
