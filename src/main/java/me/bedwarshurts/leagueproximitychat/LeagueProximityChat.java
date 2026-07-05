@@ -136,6 +136,7 @@ public class LeagueProximityChat {
                     .put("identity", pId == null ? "" : pId)
                     .put("name", pName)
                     .put("champion", p.getChampionName())
+                    .put("team", p.getTeam() == null ? "" : p.getTeam())
                     .put("skinId", skinId)
                     .put("profileIconId", profileIconId)
                     .put("profileIconData", iconData));
