@@ -7,6 +7,7 @@ import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.MathUtils;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
+import org.jetbrains.annotations.Nullable;
 import org.opencv.core.*;
 import org.opencv.core.Point;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -1286,6 +1287,7 @@ public class ScreenPositionTracker {
         return new EvalResult(bestCenter, bestScore);
     }
 
+    @Nullable
     private TemplateMatch locateChampionViaTemplate(Mat minimap, List<AllyCircle> allyCircles,
                                                     List<AllyCircle> enemyCircles,
                                                     double anchorX, double anchorY) {

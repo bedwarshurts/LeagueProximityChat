@@ -37,6 +37,8 @@ public class RitoApiUtils {
     private static volatile long cachedPlayerListAtMs = 0;
     private static final long PLAYER_LIST_CACHE_MS = 300;
 
+    private record LockfileAuth(String port, String password, String base64Auth) {}
+
     public static void disableSSLChecks() {
         if (sslBypassed) return;
         try {
@@ -142,15 +144,10 @@ public class RitoApiUtils {
 
     private static String fetchClientAPI(String path) {
         try {
-            Path lockfile = getLockfilePath();
-            if (lockfile == null) {
-                return null;
-            }
-            String[] lockfileParts = Files.readString(lockfile).split(":");
-            String port = lockfileParts[2];
-            String password = lockfileParts[3];
-            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
-            return executeGetRequest("https://127.0.0.1:" + port + path, base64Auth);
+            LockfileAuth auth = getLockfileAuth();
+            if (auth == null) return null;
+
+            return executeGetRequest("https://127.0.0.1:" + auth.port() + path, auth.base64Auth());
         } catch (Exception ignored) {
             return null;
         }
@@ -176,24 +173,30 @@ public class RitoApiUtils {
         return iconId;
     }
 
+    private static LockfileAuth getLockfileAuth() {
+        Path lockfile = getLockfilePath();
+        if (lockfile == null) return null;
+
+        String[] lockfileParts = lockfile.toString().split(":");
+        String port = lockfileParts[2];
+        String password = lockfileParts[3];
+        String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
+
+        return new LockfileAuth(port, password, base64Auth);
+    }
+
     public static byte[] getProfileIconImage(int iconId) {
         try {
-            Path lockfile = getLockfilePath();
-            if (lockfile == null) {
-                return null;
-            }
-            String[] lockfileParts = Files.readString(lockfile).split(":");
-            String port = lockfileParts[2];
-            String password = lockfileParts[3];
-            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
+            LockfileAuth auth = getLockfileAuth();
+            if (auth == null) return null;
 
             disableSSLChecks();
-            URL url = new URI("https://127.0.0.1:" + port + "/lol-game-data/assets/v1/profile-icons/" + iconId + ".jpg").toURL();
+            URL url = new URI("https://127.0.0.1:" + auth.port() + "/lol-game-data/assets/v1/profile-icons/" + iconId + ".jpg").toURL();
             HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(3000);
-            conn.setRequestProperty("Authorization", "Basic " + base64Auth);
+            conn.setRequestProperty("Authorization", "Basic " + auth.base64Auth());
 
             if (conn.getResponseCode() != 200) {
                 conn.disconnect();
