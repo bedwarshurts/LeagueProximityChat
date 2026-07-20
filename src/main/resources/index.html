@@ -158,6 +158,255 @@
             white-space: pre-wrap;
         }
 
+        /* overlay transitions */
+        #potg-viewer, #endgame-screen, #potg-intro { opacity: 0; transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        #potg-viewer { transform: scale(0.985); }
+        #endgame-screen { transform: translateY(18px); }
+        #potg-intro { transform: scale(1.02); }
+        #potg-viewer.anim-in, #endgame-screen.anim-in, #potg-intro.anim-in { opacity: 1; transform: none; }
+        #potg-viewer.anim-out { opacity: 0; transform: scale(0.985); }
+        #endgame-screen.anim-out { opacity: 0; transform: translateY(18px); }
+        #potg-intro.anim-out { opacity: 0; transform: scale(1.02); }
+
+        /* post-game greeting */
+        #potg-intro { display: none; position: fixed; inset: 0; z-index: 62;
+            background: radial-gradient(120% 90% at 50% 30%, #0c1a2e 0%, #060d17 60%, #03070d 100%);
+            align-items: center; justify-content: center; padding: 32px; }
+        .intro-inner { max-width: 760px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 26px; }
+        .intro-flourish {
+            font-size: 26px; color: #c8aa6e; opacity: 0.85;
+            animation: introFlourish 3.5s ease-in-out infinite;
+        }
+        @keyframes introFlourish { 0%, 100% { opacity: 0.35; transform: rotate(0deg); } 50% { opacity: 0.95; transform: rotate(180deg); } }
+        .intro-text {
+            font-family: var(--display);
+            font-size: 27px;
+            line-height: 1.6;
+            letter-spacing: 0.04em;
+            min-height: 2.6em;
+            background: linear-gradient(180deg, #f4ecd8 20%, #c8aa6e 90%);
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+        .intro-caret {
+            display: inline-block; width: 2px; height: 1.05em; margin-left: 2px;
+            background: #c8aa6e; vertical-align: text-bottom;
+            animation: introCaret 0.9s step-end infinite;
+        }
+        @keyframes introCaret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        #potg-intro-btn {
+            opacity: 0; transform: translateY(10px); pointer-events: none;
+            transition: opacity 0.6s ease, transform 0.6s ease, box-shadow 0.18s, background 0.18s;
+        }
+        #potg-intro-btn.shown { opacity: 1; transform: none; pointer-events: auto; }
+
+        @keyframes egBannerIn {
+            from { opacity: 0; transform: translateY(-20px) scale(0.94); letter-spacing: 0.5em; }
+            to   { opacity: 1; transform: none; letter-spacing: 0.22em; }
+        }
+        @keyframes egRise {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: none; }
+        }
+        @keyframes potgPop {
+            from { opacity: 0; transform: translateY(8px) scale(0.96); }
+            to   { opacity: 1; transform: none; }
+        }
+
+        /* potg viewer*/
+        #potg-viewer { display: none; position: fixed; inset: 0; z-index: 60; background: #000; }
+        .potg-media { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+        .potg-canvas { width: 100%; height: 100%; object-fit: contain; background: transparent; border: none; border-radius: 0; }
+
+        /* video overlay */
+        .potg-chrome { position: absolute; inset: 0; pointer-events: none; opacity: 1; transition: opacity 0.35s ease; }
+        #potg-viewer.controls-hidden .potg-chrome { opacity: 0; }
+        #potg-viewer.controls-hidden { cursor: none; }
+        .potg-top { position: absolute; top: 0; left: 0; right: 0; padding: 24px 28px 46px; background: linear-gradient(180deg, rgba(2, 6, 12, 0.85), rgba(2, 6, 12, 0)); }
+        .potg-bottom { position: absolute; bottom: 0; left: 0; right: 0; padding: 46px 28px 26px; display: flex; flex-direction: column; gap: 12px; background: linear-gradient(0deg, rgba(2, 6, 12, 0.9), rgba(2, 6, 12, 0)); pointer-events: auto; }
+        #potg-viewer.controls-hidden .potg-bottom { pointer-events: none; }
+        .potg-headline {
+            font-family: var(--display);
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            text-align: center;
+            background: linear-gradient(180deg, #f0e6d2 15%, #c8aa6e 80%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        #potg-save-status { text-align: center; font-size: 12.5px; color: #d8d0c0; min-height: 16px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
+        .potg-highlights { display: none; flex-wrap: wrap; gap: 8px; justify-content: center; }
+        .potg-hl { background: rgba(10, 20, 40, 0.7); border: 1px solid var(--hairline); border-radius: 2px; padding: 8px 14px; cursor: pointer; text-align: center; transition: border-color 0.15s, background 0.15s; }
+        .potg-hl:hover { background: rgba(200, 170, 110, 0.16); }
+        .potg-hl.active { border-color: #c8aa6e; background: rgba(200, 170, 110, 0.18); }
+        .potg-hl .hl-title { font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 0.1em; color: #f0e6d2; }
+        .potg-hl .hl-meta { font-size: 11.5px; color: #a8a290; margin-top: 2px; }
+
+        .potg-actions { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; }
+        .potg-actions-left { display: flex; align-items: center; gap: 12px; justify-self: start; }
+        .potg-actions-center { display: flex; align-items: center; gap: 10px; justify-self: center; flex-wrap: wrap; justify-content: center; }
+        .potg-actions-right { justify-self: end; }
+        .potg-icon-btn {
+            width: 42px; height: 42px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 21px; line-height: 1; color: #c8aa6e;
+            background: linear-gradient(180deg, rgba(22, 38, 62, 0.82), rgba(9, 18, 38, 0.9));
+            border: 1px solid rgba(200, 170, 110, 0.5); border-radius: 2px;
+            cursor: pointer; transition: color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+        }
+        .potg-icon-btn:hover { color: #f0e6d2; border-color: #f0e6d2; box-shadow: 0 0 14px -4px rgba(200, 170, 110, 0.6); transform: translateY(-1px); }
+        .potg-icon-btn:active { transform: translateY(0); }
+        .potg-volume { display: flex; align-items: center; gap: 9px; }
+        .potg-vol-icon { font-size: 15px; filter: saturate(0.6) brightness(1.1); opacity: 0.85; user-select: none; }
+        .potg-slider {
+            -webkit-appearance: none; appearance: none;
+            width: 130px; height: 4px; border-radius: 2px; cursor: pointer;
+            background: linear-gradient(90deg, #c8aa6e var(--vol, 100%), rgba(200, 170, 110, 0.18) var(--vol, 100%));
+            outline: none;
+        }
+        .potg-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: linear-gradient(180deg, #f4ecd8, #c8aa6e);
+            border: 1px solid #f0e6d2; box-shadow: 0 0 8px -2px rgba(200, 170, 110, 0.8);
+            transition: transform 0.12s;
+        }
+        .potg-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+        .potg-btn {
+            position: relative;
+            overflow: hidden;
+            font-family: var(--display);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: #c8aa6e;
+            background: linear-gradient(180deg, rgba(22, 38, 62, 0.82), rgba(9, 18, 38, 0.9));
+            border: 1px solid rgba(200, 170, 110, 0.5);
+            border-radius: 2px;
+            padding: 12px 26px;
+            cursor: pointer;
+            transition: color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s, background 0.18s;
+        }
+
+        .potg-btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -130%;
+            width: 55%; height: 100%;
+            background: linear-gradient(100deg, transparent, rgba(240, 230, 210, 0.28), transparent);
+            transform: skewX(-18deg);
+            transition: left 0.55s ease;
+            pointer-events: none;
+        }
+        .potg-btn:hover:not(:disabled) {
+            color: #f0e6d2;
+            border-color: #f0e6d2;
+            background: linear-gradient(180deg, rgba(42, 60, 88, 0.9), rgba(16, 30, 54, 0.95));
+            box-shadow: 0 0 18px -5px rgba(200, 170, 110, 0.6), inset 0 0 14px -9px rgba(240, 230, 210, 0.6);
+            transform: translateY(-1px);
+        }
+        .potg-btn:hover:not(:disabled)::before { left: 135%; }
+        .potg-btn:active:not(:disabled) { transform: translateY(0); box-shadow: 0 0 10px -6px rgba(200, 170, 110, 0.6); }
+        .potg-btn:disabled { opacity: 0.4; cursor: default; }
+        .potg-btn-primary {
+            color: #0a1428;
+            background: linear-gradient(180deg, #f4ecd8, #c8aa6e);
+            border-color: #f0e6d2;
+            box-shadow: 0 2px 12px -5px rgba(200, 170, 110, 0.55);
+        }
+        .potg-btn-primary:hover:not(:disabled) {
+            color: #0a1428;
+            background: linear-gradient(180deg, #fbf5e6, #d8b878);
+            box-shadow: 0 0 22px -4px rgba(220, 190, 120, 0.8);
+            transform: translateY(-1px);
+        }
+
+        /* end game stats */
+        #endgame-screen { display: none; position: fixed; inset: 0; z-index: 61; background: linear-gradient(180deg, #060d17 0%, #0c1626 55%, #060d17 100%); padding: 26px 20px; overflow-y: auto; }
+        .eg-wrap { max-width: 1060px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+        .eg-result {
+            font-family: var(--display);
+            font-size: 44px;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            text-align: center;
+            background: linear-gradient(180deg, #f0e6d2 15%, #c8aa6e 80%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .eg-result.defeat { background: linear-gradient(180deg, #f0b8be 10%, #e8455a 85%); -webkit-background-clip: text; background-clip: text; }
+        .eg-result { animation: egBannerIn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+        .eg-sub { text-align: center; color: #a8a290; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; margin-top: -8px; animation: egRise 0.5s ease 0.1s both; }
+        .eg-dot { color: #6b7585; font-size: 0.6em; margin: 0 9px; position: relative; top: -1px; }
+        .eg-team-label { display: flex; align-items: baseline; margin-bottom: 8px; font-family: var(--display); font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; }
+        .eg-team-label .team-name { font-weight: 700; }
+        .eg-team-label .team-name.allies { color: #4a9fe0; }
+        .eg-team-label .team-name.enemies { color: #e8455a; }
+        .eg-team-label .team-stat { color: #c8aa6e; font-weight: 600; }
+        .eg-rows { display: flex; flex-direction: column; gap: 6px; }
+        .eg-row {
+            position: relative;
+            z-index: 0;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 48px minmax(150px, 1.2fr) 110px 54px 54px minmax(120px, 1fr) minmax(150px, 0.95fr);
+            gap: 12px;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(200, 170, 110, 0.05);
+            border: 1px solid var(--hairline);
+            border-radius: 2px;
+            animation: egRise 0.5s ease both;
+        }
+        .eg-row.eg-local { border-color: rgba(200, 170, 110, 0.65); background: rgba(200, 170, 110, 0.12); }
+
+        .eg-splash {
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            background-repeat: no-repeat;
+            background-size: 620px auto;
+            background-position: left 22%;
+            opacity: 0;
+            filter: brightness(0.8) contrast(1.05);
+            transition: opacity 0.5s ease;
+        }
+        .eg-row.has-splash .eg-splash { opacity: 1; }
+        .eg-row.eg-local.has-splash .eg-splash { filter: brightness(0.95) contrast(1.08); }
+        .eg-splash::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg,
+            rgba(4, 10, 18, 0.30) 0%,
+            rgba(4, 10, 18, 0.55) 32%,
+            rgba(4, 10, 18, 0.80) 62%,
+            rgba(4, 10, 18, 0.92) 100%);
+        }
+        .eg-champ { position: relative; width: 44px; height: 44px; }
+        .eg-champ img { width: 44px; height: 44px; border-radius: 2px; border: 1px solid var(--hairline); object-fit: cover; background: #000; }
+        .eg-level { position: absolute; right: -5px; bottom: -5px; background: #0a1428; border: 1px solid rgba(200, 170, 110, 0.5); border-radius: 2px; font-size: 10px; padding: 0 4px; color: #f0e6d2; }
+        .eg-name { color: #f0e6d2; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .eg-champname { color: #a8a290; font-size: 11.5px; }
+        .eg-kda { color: #f0e6d2; font-size: 14px; white-space: nowrap; }
+        .eg-kda span { color: #a8a290; font-size: 11px; display: block; }
+        .eg-stat { color: #c8aa6e; font-size: 13px; text-align: center; }
+        .eg-stat span { display: block; color: #6b7585; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+        .eg-items { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+        .eg-items img { width: 26px; height: 26px; border-radius: 2px; border: 1px solid var(--hairline); background: #0a1428; }
+        .eg-dmg { display: flex; flex-direction: column; gap: 3px; }
+        .eg-dmg-num { color: #f0e6d2; font-size: 12px; text-align: center; line-height: 1; }
+        .eg-dmg-num span { color: #6b7585; font-size: 9.5px; letter-spacing: 0.06em; }
+        .eg-dmg-bar { height: 6px; background: rgba(200, 170, 110, 0.10); border: 1px solid var(--hairline); border-radius: 2px; overflow: hidden; }
+        .eg-dmg-fill { height: 100%; background: linear-gradient(90deg, #7a5a24, #c8aa6e); border-radius: 1px; transition: width 0.6s ease; }
+        .eg-dmg-none { color: #6b7585; font-size: 12px; text-align: center; }
+        .eg-footer { display: flex; justify-content: center; padding: 6px 0 14px; }
+
         .status {
             display: inline-flex;
             align-items: center;
@@ -718,6 +967,50 @@
     </div>
 </div>
 
+<div id="potg-intro">
+    <div class="intro-inner">
+        <div class="intro-flourish">✦</div>
+        <div class="intro-text" id="potg-intro-text"></div>
+        <button id="potg-intro-btn" class="potg-btn potg-btn-primary">Take me there</button>
+    </div>
+</div>
+
+<div id="potg-viewer">
+    <div class="potg-media">
+        <canvas id="potg-canvas" class="potg-canvas"></canvas>
+        <video id="potg-video" class="potg-canvas" style="display: none;" muted playsinline></video>
+    </div>
+    <div class="potg-chrome">
+        <div class="potg-top">
+            <div class="potg-headline" id="potg-headline"></div>
+        </div>
+        <div class="potg-bottom">
+            <div id="potg-save-status"></div>
+            <div id="potg-highlights" class="potg-highlights"></div>
+            <div class="potg-actions">
+                <div class="potg-actions-left">
+                    <button id="potg-replay" class="potg-icon-btn" title="Replay">⟳</button>
+                    <div class="potg-volume" title="Clip volume">
+                        <span class="potg-vol-icon" id="potg-vol-icon">🔊</span>
+                        <input id="potg-vol" class="potg-slider" type="range" min="0" max="100" step="1" value="100">
+                    </div>
+                </div>
+                <div class="potg-actions-center">
+                    <button id="potg-save" class="potg-btn">Save Highlight</button>
+                    <button id="potg-more" class="potg-btn">Show More Highlights</button>
+                </div>
+                <div class="potg-actions-right">
+                    <button id="potg-continue" class="potg-btn potg-btn-primary">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="endgame-screen">
+    <div class="eg-wrap" id="eg-wrap"></div>
+</div>
+
 <div id="hidden-audio-container" style="display: none;"></div>
 
 <script>
@@ -903,6 +1196,1046 @@
         }
     });
 
+    // play of the game
+    const potgAudio = { node: null, tapBus: null, chunks: [], clips: new Map() };
+
+    function startPotgRecording() {
+        if (!audioCtx || potgAudio.node) return;
+        try {
+            const bus = audioCtx.createGain();
+            if (masterGain) masterGain.connect(bus);
+            try {
+                const pubs = Array.from(room.localParticipant.audioTrackPublications.values());
+                const track = pubs.length > 0 ? pubs[0].track : null;
+                if (track) {
+                    const micSrc = audioCtx.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
+                    micSrc.connect(bus);
+                }
+            } catch (e) {}
+
+            const proc = audioCtx.createScriptProcessor(4096, 1, 1);
+            proc.onaudioprocess = (e) => {
+                const d = e.inputBuffer.getChannelData(0);
+                potgAudio.chunks.push({t: Date.now() - (d.length / audioCtx.sampleRate) * 1000, d: new Float32Array(d)});
+                const cutoff = Date.now() - 120000;
+                while (potgAudio.chunks.length && potgAudio.chunks[0].t < cutoff) potgAudio.chunks.shift();
+            };
+            bus.connect(proc);
+            proc.connect(audioCtx.destination);
+            potgAudio.node = proc;
+            potgAudio.tapBus = bus;
+            connectGameAudioToTap();
+        } catch (e) {}
+    }
+
+    function stopPotgRecording() {
+        stopGameAudio();
+        try { if (potgAudio.node) potgAudio.node.disconnect(); } catch (e) {}
+        try { if (potgAudio.tapBus) potgAudio.tapBus.disconnect(); } catch (e) {}
+        potgAudio.node = null;
+        potgAudio.tapBus = null;
+        potgAudio.chunks = [];
+    }
+
+    function encodeWavPCM16(samples, sampleRate) {
+        const buf = new ArrayBuffer(44 + samples.length * 2);
+        const dv = new DataView(buf);
+        const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+        writeStr(0, 'RIFF');
+        dv.setUint32(4, 36 + samples.length * 2, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        dv.setUint32(16, 16, true);
+        dv.setUint16(20, 1, true);
+        dv.setUint16(22, 1, true);
+        dv.setUint32(24, sampleRate, true);
+        dv.setUint32(28, sampleRate * 2, true);
+        dv.setUint16(32, 2, true);
+        dv.setUint16(34, 16, true);
+        writeStr(36, 'data');
+        dv.setUint32(40, samples.length * 2, true);
+        for (let i = 0; i < samples.length; i++) {
+            const s = Math.max(-1, Math.min(1, samples[i]));
+            dv.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+        return new Blob([buf], {type: 'audio/wav'});
+    }
+
+    function sliceVoiceClip(startMs, endMs) {
+        if (!audioCtx || potgAudio.chunks.length === 0) return null;
+        const sr = audioCtx.sampleRate;
+        const parts = potgAudio.chunks.filter(c => (c.t + (c.d.length / sr) * 1000) >= startMs && c.t <= endMs);
+        if (parts.length === 0) return null;
+
+        let total = 0;
+        parts.forEach(c => total += c.d.length);
+        const all = new Float32Array(total);
+        let o = 0;
+        parts.forEach(c => { all.set(c.d, o); o += c.d.length; });
+
+        const firstT = parts[0].t;
+        const startIdx = Math.max(0, Math.round(((startMs - firstT) / 1000) * sr));
+        const endIdx = Math.min(all.length, Math.round(((endMs - firstT) / 1000) * sr));
+        if (endIdx <= startIdx) return null;
+
+        return encodeWavPCM16(all.subarray(startIdx, endIdx), sr);
+    }
+
+    // play of the game: 60fps screen capture
+    const potgVideo = { stream: null, recorders: [], segments: [], lockedClips: new Map(), pendingMarks: [], active: false, onSegmentFinalized: null };
+
+    const POTG_SEG_MS = 50000;
+
+    function potgLog(msg) {
+        console.log('[PotG] ' + msg);
+        try {
+            if (trackerSocket && trackerSocket.readyState === WebSocket.OPEN) {
+                trackerSocket.send(JSON.stringify({type: 'CLIENT_LOG', msg: '[PotG] ' + msg}));
+            }
+        } catch (e) {}
+    }
+
+    function requestStreamWithTimeout(factory, ms) {
+        return new Promise((resolve, reject) => {
+            let timedOut = false;
+            const timer = setTimeout(() => {
+                timedOut = true;
+                reject(new DOMException('timeout', 'TimeoutError'));
+            }, ms);
+            factory().then(s => {
+                clearTimeout(timer);
+                if (timedOut) {
+                    try { s.getTracks().forEach(t => t.stop()); } catch (e) {}
+                } else {
+                    resolve(s);
+                }
+            }).catch(err => {
+                clearTimeout(timer);
+                reject(err);
+            });
+        });
+    }
+
+    const CAPTURE_METHODS = [
+        ['getDisplayMedia', () => navigator.mediaDevices.getDisplayMedia({
+            video: {frameRate: {ideal: 60, max: 60}},
+            audio: false
+        })],
+        ['legacy screen capture', () => navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {mandatory: {chromeMediaSource: 'screen', maxWidth: 4096, maxHeight: 2304, maxFrameRate: 60}}
+        })],
+        ['legacy desktop capture', () => navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {mandatory: {chromeMediaSource: 'desktop', maxWidth: 4096, maxHeight: 2304, maxFrameRate: 60}}
+        })]
+    ];
+
+    async function acquireScreenStream(startIndex) {
+        let lastError = null;
+        for (let i = 0; i < CAPTURE_METHODS.length; i++) {
+            const idx = (startIndex + i) % CAPTURE_METHODS.length;
+            const [label, factory] = CAPTURE_METHODS[idx];
+            try {
+                const stream = await requestStreamWithTimeout(factory, 4000);
+                potgLog(`capture method: ${label}`);
+                return {stream, methodIndex: idx};
+            } catch (e) {
+                lastError = e;
+                potgLog(`${label} failed (${e && e.name ? e.name : e}) - trying next capture method`);
+            }
+        }
+        throw lastError || new DOMException('no capture method', 'NotSupportedError');
+    }
+
+    let potgGameAudioStream = null;
+    let potgGameAudioSrc = null;
+    let potgGameAudioGain = null;
+
+    function connectGameAudioToTap() {
+        if (!potgGameAudioStream || !potgAudio.tapBus || !audioCtx || potgGameAudioSrc) return;
+        try {
+            potgGameAudioSrc = audioCtx.createMediaStreamSource(potgGameAudioStream);
+            potgGameAudioGain = audioCtx.createGain();
+            potgGameAudioGain.gain.value = 0.9;
+            potgGameAudioSrc.connect(potgGameAudioGain);
+            potgGameAudioGain.connect(potgAudio.tapBus);
+            potgLog('game sound routed into highlight audio');
+        } catch (e) {}
+    }
+
+    function stopGameAudio() {
+        try { if (potgGameAudioSrc) potgGameAudioSrc.disconnect(); } catch (e) {}
+        try { if (potgGameAudioGain) potgGameAudioGain.disconnect(); } catch (e) {}
+        try { if (potgGameAudioStream) potgGameAudioStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        potgGameAudioSrc = null;
+        potgGameAudioGain = null;
+        potgGameAudioStream = null;
+    }
+
+    let potgRetryMs = 5000;
+    const POTG_METHOD_KEY = 'potgCaptureMethodIdx';
+
+    function savedCaptureMethodIndex() {
+        try {
+            const v = parseInt(localStorage.getItem(POTG_METHOD_KEY), 10);
+            if (v >= 0 && v < CAPTURE_METHODS.length) return v;
+        } catch (e) {
+        }
+        return 0;
+    }
+
+    async function startPotgVideoCapture() {
+        if (potgVideo.active || potgVideo.stream) return;
+
+        try {
+            let acq = await acquireScreenStream(savedCaptureMethodIndex());
+            potgVideo.stream = acq.stream;
+            potgVideo.active = true;
+            acq.stream.getVideoTracks()[0].addEventListener('ended', stopPotgVideoCapture);
+
+            const st = acq.stream.getVideoTracks()[0].getSettings();
+            potgLog(`screen capture running: ${st.width || '?'}x${st.height || '?'}@${Math.round(st.frameRate || 0)}fps`);
+
+            let tries = 0;
+            while (potgVideo.workingMime === undefined && potgVideo.active) {
+                await selectValidatedCodec(tries === 0);
+                if (potgVideo.workingMime !== undefined) break;
+                tries++;
+                if (tries >= 24) {
+                    potgLog('no playable recording codec found - clips will use the backend frame buffer');
+                    stopPotgVideoCapture();
+                    return;
+                }
+                if (tries === 1) potgLog('codec validation inconclusive (static screen?) - will keep retrying');
+                if (tries % 2 === 0) {
+                    potgLog('capture still producing nothing - switching capture method');
+                    try { potgVideo.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                    try {
+                        acq = await acquireScreenStream((acq.methodIndex + 1) % CAPTURE_METHODS.length);
+                        potgVideo.stream = acq.stream;
+                        acq.stream.getVideoTracks()[0].addEventListener('ended', stopPotgVideoCapture);
+                    } catch (e) {
+                        potgLog('capture re-acquisition failed - clips will use the backend frame buffer');
+                        stopPotgVideoCapture();
+                        return;
+                    }
+                }
+                await new Promise(r => setTimeout(r, potgRetryMs));
+            }
+            if (!potgVideo.active || potgVideo.workingMime === undefined) return;
+
+            try { localStorage.setItem(POTG_METHOD_KEY, String(acq.methodIndex)); } catch (e) {}
+
+            spawnPotgSegment(0);
+            setTimeout(() => spawnPotgSegment(1), POTG_SEG_MS / 2);
+        } catch (e) {
+            potgLog(`screen capture unavailable (${e && e.name ? e.name : e}) - clips will use the backend frame buffer instead`);
+        }
+    }
+
+    function validateCodecPlayback(mime) {
+        return new Promise(resolve => {
+            let rec;
+            try {
+                const opts = {videoBitsPerSecond: 2000000};
+                if (mime) opts.mimeType = mime;
+                rec = new MediaRecorder(potgVideo.stream, opts);
+            } catch (e) {
+                resolve({ok: false, why: 'not constructible'});
+                return;
+            }
+
+            const parts = [];
+            rec.ondataavailable = ev => { if (ev.data && ev.data.size > 0) parts.push(ev.data); };
+            rec.onstop = () => {
+                const blob = new Blob(parts, {type: rec.mimeType || 'video/webm'});
+                if (blob.size < 1024) {
+                    resolve({ok: false, why: `empty recording (${blob.size}B)`});
+                    return;
+                }
+                const v = document.createElement('video');
+                v.muted = true;
+                const url = URL.createObjectURL(blob);
+                let settled = false;
+                const done = (ok, why) => {
+                    if (settled) return;
+                    settled = true;
+                    try { URL.revokeObjectURL(url); } catch (e) {}
+                    resolve({ok, why: why || ''});
+                };
+                v.onerror = () => done(false, `decode error code ${v.error ? v.error.code : '?'}`);
+                v.onloadeddata = () => done(true);
+                setTimeout(() => done(false, `decode timeout (${Math.round(blob.size / 1024)}KB)`), 4000);
+                v.src = url;
+            };
+
+            try {
+                rec.start(250);
+            } catch (e) {
+                resolve({ok: false, why: 'start failed'});
+                return;
+            }
+            setTimeout(() => {
+                try { rec.stop(); } catch (e) { resolve({ok: false, why: 'stop failed'}); }
+            }, 1500);
+        });
+    }
+
+    async function selectValidatedCodec(verbose) {
+        if (potgVideo.workingMime !== undefined) return;
+        const candidates = ['video/x-matroska;codecs=avc1', 'video/webm;codecs=h264', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', ''];
+        for (const mime of candidates) {
+            const res = await validateCodecPlayback(mime);
+            if (res.ok) {
+                potgVideo.workingMime = mime;
+                potgLog(`recording codec validated: ${mime || 'browser default'}`);
+                return;
+            }
+            if (verbose) potgLog(`codec ${mime || 'browser default'} skipped: ${res.why}`);
+            if (res.why.startsWith('empty recording')) return;
+        }
+    }
+
+    function spawnPotgSegment(lane) {
+        if (!potgVideo.active || !potgVideo.stream || potgVideo.workingMime === undefined) return;
+
+        const startMs = Date.now();
+        const parts = [];
+        let rec;
+        try {
+            const opts = {videoBitsPerSecond: 16000000};
+            if (potgVideo.workingMime) opts.mimeType = potgVideo.workingMime;
+            rec = new MediaRecorder(potgVideo.stream, opts);
+        } catch (e) {
+            potgLog('recorder construction failed - video clips disabled, using backend frames');
+            stopPotgVideoCapture();
+            return;
+        }
+
+        rec.ondataavailable = ev => { if (ev.data && ev.data.size > 0) parts.push(ev.data); };
+        rec.onstop = () => {
+            potgVideo.segments.push({startMs, endMs: Date.now(), blob: new Blob(parts, {type: rec.mimeType || 'video/webm'})});
+            const cutoff = Date.now() - 60000;
+            potgVideo.segments = potgVideo.segments.filter(s => s.endMs >= cutoff);
+            tryResolvePotgMarks();
+            spawnPotgSegment(lane);
+            if (potgVideo.onSegmentFinalized) potgVideo.onSegmentFinalized();
+        };
+
+        try {
+            rec.start();
+        } catch (e) {
+            potgLog('recorder start failed - video clips disabled, using backend frames');
+            stopPotgVideoCapture();
+            return;
+        }
+        potgVideo.recorders[lane] = rec;
+        setTimeout(() => { try { if (rec.state === 'recording' && potgVideo.active) rec.stop(); } catch (e) {} }, POTG_SEG_MS);
+    }
+
+    async function finalizePotgVideoCapture() {
+        if (!potgVideo.active) {
+            tryResolvePotgMarks();
+            return;
+        }
+        potgVideo.active = false;
+
+        const running = potgVideo.recorders.filter(r => r && r.state === 'recording');
+        if (running.length > 0) {
+            await new Promise(resolve => {
+                let left = running.length;
+                const timer = setTimeout(resolve, 3000);
+                potgVideo.onSegmentFinalized = () => {
+                    if (--left <= 0) {
+                        clearTimeout(timer);
+                        potgVideo.onSegmentFinalized = null;
+                        resolve();
+                    }
+                };
+                running.forEach(r => { try { r.stop(); } catch (e) {} });
+            });
+        }
+        try { if (potgVideo.stream) potgVideo.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        potgVideo.stream = null;
+        potgVideo.recorders = [];
+        tryResolvePotgMarks();
+    }
+
+    function stopPotgVideoCapture() {
+        potgVideo.active = false;
+        potgVideo.recorders.forEach(r => { try { if (r && r.state === 'recording') r.stop(); } catch (e) {} });
+        potgVideo.recorders = [];
+        try { if (potgVideo.stream) potgVideo.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        potgVideo.stream = null;
+    }
+
+    function tryResolvePotgMarks() {
+        for (let i = potgVideo.pendingMarks.length - 1; i >= 0; i--) {
+            const m = potgVideo.pendingMarks[i];
+
+            let bestSeg = null;
+            let bestCover = -1;
+            for (const s of potgVideo.segments) {
+                const overlap = Math.min(s.endMs, m.endMs) - Math.max(s.startMs, m.startMs);
+                if (overlap <= 0) continue;
+                const fullyContains = s.startMs <= m.startMs + 300 && s.endMs >= m.endMs - 300;
+                const cover = (fullyContains ? 1e9 : 0) + overlap;
+                if (cover > bestCover) {
+                    bestCover = cover;
+                    bestSeg = s;
+                }
+            }
+            if (!bestSeg) continue;
+
+            const fullyContains = bestSeg.startMs <= m.startMs + 300 && bestSeg.endMs >= m.endMs - 300;
+            if (fullyContains) {
+                potgVideo.lockedClips.set(m.id, {blob: bestSeg.blob, segStartMs: bestSeg.startMs, startMs: m.startMs, endMs: m.endMs});
+                potgVideo.pendingMarks.splice(i, 1);
+                potgLog(`video clip locked: ${Math.round((m.endMs - m.startMs) / 100) / 10}s, ${Math.round(bestSeg.blob.size / 1024)}KB segment`);
+            } else if (!potgVideo.active) {
+                potgVideo.lockedClips.set(m.id, {
+                    blob: bestSeg.blob,
+                    segStartMs: bestSeg.startMs,
+                    startMs: Math.max(m.startMs, bestSeg.startMs),
+                    endMs: Math.min(m.endMs, bestSeg.endMs)
+                });
+                potgVideo.pendingMarks.splice(i, 1);
+                potgLog('video clip locked with partial coverage (capture ended mid-window)');
+            }
+        }
+    }
+
+    let potgReplayData = null;
+    let potgAnimHandle = null;
+    let potgAudioEl = null;
+    let potgHighlights = [];
+    let potgCurrent = null;
+    let potgSaving = false;
+
+    let potgClipVolume = 1;
+    try { const v = parseFloat(localStorage.getItem('potgClipVolume')); if (v >= 0 && v <= 1) potgClipVolume = v; } catch (e) {}
+
+    async function loadFramesFor(h) {
+        if (h.frames) return h.frames;
+        let frames = [];
+        if (Array.isArray(h.frameTimes) && h.frameTimes.length > 0) {
+            const imgs = await Promise.all(h.frameTimes.map((relMs, i) => new Promise(res => {
+                const im = new Image();
+                im.onload = () => res({im, t: relMs});
+                im.onerror = () => res(null);
+                im.src = `/potg/frame/${h.index}/${i}`;
+            })));
+            frames = imgs.filter(Boolean);
+        }
+        h.frames = frames;
+        return frames;
+    }
+
+    async function maybeShowPlayOfGame() {
+        try {
+            await finalizePotgVideoCapture();
+
+            const meta = await (await fetch('/potg/meta', {cache: 'no-store'})).json();
+            if (!meta.available || !Array.isArray(meta.clips) || meta.clips.length === 0) return;
+
+            potgHighlights = meta.clips.map((c, i) => {
+                const id = String(c.startEpochMs);
+                return {
+                    index: i, id,
+                    headline: c.headline, score: c.score, gameClock: c.gameClock,
+                    startEpochMs: c.startEpochMs, endEpochMs: c.endEpochMs,
+                    frameTimes: c.frames, frames: null,
+                    video: potgVideo.lockedClips.get(id) || null,
+                    audio: potgAudio.clips.get(id) || null
+                };
+            });
+
+            const best = potgHighlights[0];
+            await loadFramesFor(best);
+            if (!best.video && best.frames.length === 0) return;
+
+            potgLog(`showing ${potgHighlights.length} highlight(s), best via `
+                + `${best.video ? 'video (60fps)' : 'frame-flip fallback'} path${best.audio ? ' with voice' : ''}`);
+
+            showPotgIntro();
+        } catch (e) {}
+    }
+
+    function openHighlightViewer() {
+        const best = potgHighlights[0];
+        if (!best) return;
+        buildHighlightsStrip();
+        document.getElementById('potg-highlights').style.display = 'none';
+        document.getElementById('potg-more').style.display = potgHighlights.length > 1 ? '' : 'none';
+        document.getElementById('potg-save-status').innerText = '';
+        const viewer = document.getElementById('potg-viewer');
+        viewer.classList.remove('controls-hidden');
+        fadeInOverlay(viewer, 'flex');
+        showHighlight(best);
+    }
+
+    const POTG_INTRO_TEXT = 'Thanks for playing.\nWe hope you had fun, here are a few moments worth reliving.';
+    let potgIntroTimer = null;
+
+    function showPotgIntro() {
+        const intro = document.getElementById('potg-intro');
+        const textEl = document.getElementById('potg-intro-text');
+        const btn = document.getElementById('potg-intro-btn');
+
+        clearTimeout(potgIntroTimer);
+        textEl.innerHTML = '<span class="intro-caret"></span>';
+        btn.classList.remove('shown');
+        intro.classList.remove('controls-hidden');
+        fadeInOverlay(intro, 'flex');
+
+        let i = 0;
+        const render = (done) => {
+            const shown = POTG_INTRO_TEXT.slice(0, i).replace(/\n/g, '<br>');
+            textEl.innerHTML = shown + (done ? '' : '<span class="intro-caret"></span>');
+        };
+        const step = () => {
+            if (i >= POTG_INTRO_TEXT.length) {
+                render(true);
+                btn.classList.add('shown');
+                return;
+            }
+            i++;
+            render(false);
+            const ch = POTG_INTRO_TEXT[i - 1];
+            const delay = (ch === '.' || ch === '\n') ? 420 : ch === ',' ? 240 : 42;
+            potgIntroTimer = setTimeout(step, delay);
+        };
+        potgIntroTimer = setTimeout(step, 500);
+    }
+
+    function enterHighlightsFromIntro() {
+        clearTimeout(potgIntroTimer);
+        openHighlightViewer();
+        fadeOutOverlay(document.getElementById('potg-intro'));
+    }
+
+    function buildHighlightsStrip() {
+        const strip = document.getElementById('potg-highlights');
+        strip.innerHTML = '';
+        potgHighlights.forEach(h => {
+            const card = document.createElement('div');
+            card.className = 'potg-hl';
+            card.id = `potg-hl-${h.index}`;
+            const title = document.createElement('div');
+            title.className = 'hl-title';
+            title.innerText = h.headline;
+            const meta = document.createElement('div');
+            meta.className = 'hl-meta';
+            meta.innerText = h.gameClock;
+            card.appendChild(title);
+            card.appendChild(meta);
+            card.addEventListener('click', () => { if (!potgSaving) showHighlight(h); });
+            strip.appendChild(card);
+        });
+    }
+
+    async function showHighlight(h) {
+        potgCurrent = h;
+        document.querySelectorAll('.potg-hl').forEach(el => el.classList.remove('active'));
+        const card = document.getElementById(`potg-hl-${h.index}`);
+        if (card) card.classList.add('active');
+        document.getElementById('potg-headline').innerText = `${h.headline}  ·  ${h.gameClock}`;
+        await loadFramesFor(h);
+        potgReplayData = {video: h.video, frames: h.frames, audio: h.audio};
+        playPotg();
+    }
+
+    function playPotg() {
+        if (!potgReplayData) return;
+        const {video, frames, audio} = potgReplayData;
+        if (!video && (!frames || frames.length === 0)) return;
+        const canvas = document.getElementById('potg-canvas');
+        const videoEl = document.getElementById('potg-video');
+
+        potgPlaybackEnded = false;
+        showPotgControls();
+
+        if (potgAnimHandle) cancelAnimationFrame(potgAnimHandle);
+        if (potgAudioEl) { try { potgAudioEl.pause(); } catch (e) {} }
+        try { videoEl.pause(); } catch (e) {}
+        potgAudioEl = audio ? new Audio(URL.createObjectURL(audio)) : null;
+        if (potgAudioEl) potgAudioEl.volume = potgClipVolume;
+
+        if (video) {
+            canvas.style.display = 'none';
+            videoEl.style.display = '';
+            playPotgVideo(videoEl, video);
+            return;
+        }
+
+        videoEl.style.display = 'none';
+        canvas.style.display = '';
+        const ctx2d = canvas.getContext('2d');
+        canvas.width = frames[0].im.naturalWidth;
+        canvas.height = frames[0].im.naturalHeight;
+        if (potgAudioEl) potgAudioEl.play().catch(() => {});
+
+        const t0 = performance.now();
+        const draw = () => {
+            const elapsed = performance.now() - t0;
+            let frame = frames[0];
+            for (const f of frames) {
+                if (f.t <= elapsed) frame = f; else break;
+            }
+            ctx2d.drawImage(frame.im, 0, 0);
+            if (elapsed < frames[frames.length - 1].t + 500) {
+                potgAnimHandle = requestAnimationFrame(draw);
+            } else {
+                onPotgPlaybackEnded();
+            }
+        };
+        draw();
+    }
+
+    function fallbackToFrames() {
+        try { document.getElementById('potg-video').pause(); } catch (e) {}
+        if (potgCurrent) potgCurrent.video = null;
+        if (potgReplayData && potgReplayData.video
+            && potgReplayData.frames && potgReplayData.frames.length > 0) {
+            potgReplayData = {video: null, frames: potgReplayData.frames, audio: potgReplayData.audio};
+            playPotg();
+        }
+    }
+
+    async function preparePotgVideoSrc(videoEl, clip) {
+        if (videoEl.dataset.clipUrlFor === String(clip.startMs)) return;
+        if (videoEl.src) { try { URL.revokeObjectURL(videoEl.src); } catch (e) {} }
+        videoEl.src = URL.createObjectURL(clip.blob);
+        videoEl.dataset.clipUrlFor = String(clip.startMs);
+        await new Promise(res => { videoEl.onloadedmetadata = res; setTimeout(res, 2000); });
+        if (!isFinite(videoEl.duration)) {
+            await new Promise(res => {
+                videoEl.ondurationchange = () => { if (isFinite(videoEl.duration)) res(); };
+                videoEl.currentTime = Number.MAX_SAFE_INTEGER;
+                setTimeout(res, 2000);
+            });
+        }
+    }
+
+    async function playPotgVideo(videoEl, clip) {
+        try {
+            videoEl.onerror = () => {
+                const err = videoEl.error;
+                potgLog(`video playback error (code ${err ? err.code : '?'}) - falling back to frames`);
+                fallbackToFrames();
+            };
+
+            await preparePotgVideoSrc(videoEl, clip);
+
+            let seekTo = Math.max(0, (clip.startMs - clip.segStartMs) / 1000);
+            const endOffset = Math.max(seekTo + 0.5, (clip.endMs - clip.segStartMs) / 1000);
+
+            if (isFinite(videoEl.duration) && seekTo >= videoEl.duration - 0.3) seekTo = 0;
+
+            videoEl.currentTime = seekTo;
+            await new Promise(res => { videoEl.onseeked = res; setTimeout(res, 1500); });
+
+            const from = seekTo;
+            videoEl.ontimeupdate = () => {
+                if (videoEl.currentTime >= endOffset && videoEl.currentTime > from + 0.2) {
+                    videoEl.pause();
+                    onPotgPlaybackEnded();
+                }
+            };
+            videoEl.onended = onPotgPlaybackEnded;
+            videoEl.play().catch(() => {});
+            if (potgAudioEl) potgAudioEl.play().catch(() => {});
+
+            const probeStart = videoEl.currentTime;
+            setTimeout(() => {
+                if (!potgReplayData || !potgReplayData.video) return;
+                const advanced = videoEl.currentTime > probeStart + 0.2;
+                if (!advanced || videoEl.readyState < 2) {
+                    potgLog('video not advancing - retrying from segment start');
+                    try { videoEl.currentTime = 0; videoEl.play().catch(() => {}); } catch (e) {}
+                    setTimeout(() => {
+                        if (!potgReplayData || !potgReplayData.video) return;
+                        if (videoEl.currentTime < 0.2 || videoEl.readyState < 2) {
+                            potgLog('video still not playing - falling back to frames');
+                            fallbackToFrames();
+                        }
+                    }, 1500);
+                }
+            }, 1500);
+        } catch (e) {
+            fallbackToFrames();
+        }
+    }
+
+    function haltPotgPlayback() {
+        if (potgAnimHandle) cancelAnimationFrame(potgAnimHandle);
+        if (potgAudioEl) { try { potgAudioEl.pause(); } catch (e) {} }
+        try { document.getElementById('potg-video').pause(); } catch (e) {}
+    }
+
+    function fadeInOverlay(el, display) {
+        el.classList.remove('anim-out');
+        el.style.display = display;
+        void el.offsetWidth;
+        el.classList.add('anim-in');
+    }
+
+    function fadeOutOverlay(el) {
+        return new Promise(resolve => {
+            if (el.style.display === 'none' || !el.style.display) { resolve(); return; }
+            el.classList.remove('anim-in');
+            el.classList.add('anim-out');
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                el.style.display = 'none';
+                el.classList.remove('anim-out');
+                resolve();
+            };
+            el.addEventListener('transitionend', finish, {once: true});
+            setTimeout(finish, 520);
+        });
+    }
+
+    function closePotgViewer() {
+        haltPotgPlayback();
+        fadeOutOverlay(document.getElementById('potg-viewer'));
+    }
+
+    let potgControlsTimer = null;
+    let potgPlaybackEnded = false;
+
+    function schedulePotgControlsHide() {
+        clearTimeout(potgControlsTimer);
+        if (potgPlaybackEnded || potgSaving) return;
+        potgControlsTimer = setTimeout(() => {
+            document.getElementById('potg-viewer').classList.add('controls-hidden');
+        }, 2600);
+    }
+
+    function showPotgControls() {
+        document.getElementById('potg-viewer').classList.remove('controls-hidden');
+        schedulePotgControlsHide();
+    }
+
+    function onPotgPlaybackEnded() {
+        potgPlaybackEnded = true;
+        clearTimeout(potgControlsTimer);
+        document.getElementById('potg-viewer').classList.remove('controls-hidden');
+    }
+
+    function buildSaveRecorder(stream) {
+        const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', ''];
+        for (const m of candidates) {
+            try {
+                const opts = {videoBitsPerSecond: 8000000};
+                if (m) opts.mimeType = m;
+                return new MediaRecorder(stream, opts);
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    async function recordHighlight(h, useVideo) {
+        const canvas = document.getElementById('potg-canvas');
+        const videoEl = document.getElementById('potg-video');
+        const ctx2d = canvas.getContext('2d');
+        videoEl.style.display = 'none';
+        canvas.style.display = '';
+
+        let drawLoop;
+        if (useVideo) {
+            const clip = h.video;
+            videoEl.ontimeupdate = null;
+            videoEl.onerror = null;
+            await preparePotgVideoSrc(videoEl, clip);
+            let seekTo = Math.max(0, (clip.startMs - clip.segStartMs) / 1000);
+            if (isFinite(videoEl.duration) && seekTo >= videoEl.duration - 0.3) seekTo = 0;
+            const endOffset = Math.max(seekTo + 0.5, (clip.endMs - clip.segStartMs) / 1000);
+            videoEl.currentTime = seekTo;
+            await new Promise(res => { videoEl.onseeked = res; setTimeout(res, 1500); });
+            canvas.width = videoEl.videoWidth || 1280;
+            canvas.height = videoEl.videoHeight || 720;
+            drawLoop = () => new Promise((res, rej) => {
+                let lastT = -1;
+                let stalledSince = performance.now();
+                const step = () => {
+                    try { ctx2d.drawImage(videoEl, 0, 0, canvas.width, canvas.height); } catch (e) {}
+                    if (videoEl.currentTime !== lastT) { lastT = videoEl.currentTime; stalledSince = performance.now(); }
+                    if (videoEl.currentTime >= endOffset || videoEl.ended) { videoEl.pause(); res(); return; }
+                    if (performance.now() - stalledSince > 4000) { videoEl.pause(); rej(new Error('video stalled')); return; }
+                    potgAnimHandle = requestAnimationFrame(step);
+                };
+                videoEl.play().catch(() => {});
+                step();
+            });
+        } else {
+            const frames = h.frames;
+            canvas.width = frames[0].im.naturalWidth;
+            canvas.height = frames[0].im.naturalHeight;
+            drawLoop = () => new Promise(res => {
+                const t0 = performance.now();
+                const step = () => {
+                    const elapsed = performance.now() - t0;
+                    let frame = frames[0];
+                    for (const f of frames) {
+                        if (f.t <= elapsed) frame = f; else break;
+                    }
+                    ctx2d.drawImage(frame.im, 0, 0);
+                    if (elapsed < frames[frames.length - 1].t + 400) potgAnimHandle = requestAnimationFrame(step);
+                    else res();
+                };
+                step();
+            });
+        }
+
+        const stream = canvas.captureStream(30);
+        let voiceSrc = null;
+        if (h.audio && audioCtx) {
+            try {
+                const dest = audioCtx.createMediaStreamDestination();
+                const buf = await audioCtx.decodeAudioData(await h.audio.arrayBuffer());
+                voiceSrc = audioCtx.createBufferSource();
+                voiceSrc.buffer = buf;
+
+                const vol = audioCtx.createGain();
+                vol.gain.value = potgClipVolume;
+                voiceSrc.connect(vol);
+                vol.connect(dest);
+                vol.connect(audioCtx.destination);
+                stream.addTrack(dest.stream.getAudioTracks()[0]);
+            } catch (e) {
+                voiceSrc = null;
+            }
+        }
+
+        const rec = buildSaveRecorder(stream);
+        if (!rec) throw new Error('no recorder available');
+        const parts = [];
+        rec.ondataavailable = ev => { if (ev.data && ev.data.size > 0) parts.push(ev.data); };
+        const stopped = new Promise(res => { rec.onstop = res; });
+        rec.start(250);
+        if (voiceSrc) { try { voiceSrc.start(); } catch (e) {} }
+
+        let err = null;
+        try {
+            await drawLoop();
+        } catch (e) {
+            err = e;
+        }
+        if (voiceSrc) { try { voiceSrc.stop(); } catch (e) {} }
+        try { rec.stop(); } catch (e) {}
+        await stopped;
+        stream.getTracks().forEach(t => t.stop());
+        if (err) throw err;
+        return new Blob(parts, {type: rec.mimeType || 'video/webm'});
+    }
+
+    async function savePotgHighlight() {
+        if (potgSaving || !potgCurrent) return;
+        const h = potgCurrent;
+        const btn = document.getElementById('potg-save');
+        const status = document.getElementById('potg-save-status');
+        potgSaving = true;
+        btn.disabled = true;
+        status.innerText = '● Recording highlight…';
+        haltPotgPlayback();
+        onPotgPlaybackEnded();
+
+        try {
+            await loadFramesFor(h);
+            let blob;
+            try {
+                blob = await recordHighlight(h, !!h.video);
+            } catch (e) {
+                if (h.video && h.frames && h.frames.length > 0) {
+                    potgLog('save via video path failed - retrying with backend frames');
+                    blob = await recordHighlight(h, false);
+                } else {
+                    throw e;
+                }
+            }
+            if (!blob || blob.size < 1024) throw new Error('empty recording');
+
+            status.innerText = 'Writing to disk…';
+            const name = `${h.headline} ${h.gameClock.replace(':', '.')}`;
+            const resp = await fetch(`/potg/save?name=${encodeURIComponent(name)}`, {method: 'POST', body: blob});
+            const j = await resp.json().catch(() => ({}));
+            if (!resp.ok || !j.path) throw new Error(j.error || `HTTP ${resp.status}`);
+            status.innerText = `Saved to ${j.path}`;
+            potgLog(`highlight saved to ${j.path}`);
+        } catch (e) {
+            status.innerText = `Save failed (${e && e.message ? e.message : e})`;
+            potgLog(`highlight save failed (${e && e.message ? e.message : e})`);
+        } finally {
+            potgSaving = false;
+            btn.disabled = false;
+        }
+    }
+
+    // end-game stats screen
+
+    const escHtml = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+    function returnToLobby() {
+        fadeOutOverlay(document.getElementById('endgame-screen'));
+    }
+
+    async function showEndgameScreen() {
+        const scr = document.getElementById('endgame-screen');
+        const wrap = document.getElementById('eg-wrap');
+        wrap.innerHTML = '<div class="eg-sub" style="margin-top: 40vh">Loading match stats…</div>';
+
+        fadeInOverlay(scr, 'block');
+        haltPotgPlayback();
+        fadeOutOverlay(document.getElementById('potg-viewer'));
+
+        try {
+            const s = await (await fetch('/potg/stats', {cache: 'no-store'})).json();
+            if (!s.available) throw new Error('unavailable');
+            await renderEndgame(s);
+        } catch (e) {
+            wrap.innerHTML = `
+                <div class="eg-result">Game Complete</div>
+                <div class="eg-sub">Match stats are unavailable for this game</div>
+                <div class="eg-footer"><button id="eg-return" class="potg-btn potg-btn-primary">Return to Lobby</button></div>`;
+            document.getElementById('eg-return').addEventListener('click', returnToLobby);
+        }
+    }
+
+    const EG_MAP_NAMES = {8: 'Crystal Scar', 10: 'Twisted Treeline', 11: 'Summoner’s Rift', 12: 'Howling Abyss', 21: 'Nexus Blitz', 22: 'Convergence', 30: 'Rings of Wrath', 33: 'The Bandlewood', 35: 'Swarm'};
+    const EG_MODE_NAMES = {CLASSIC: 'Summoner’s Rift', ARAM: 'Howling Abyss', TUTORIAL: 'Summoner’s Rift', PRACTICETOOL: 'Practice Tool', URF: 'Ultra Rapid Fire', ARURF: 'ARURF', ONEFORALL: 'One for All', NEXUSBLITZ: 'Nexus Blitz', CHERRY: 'Arena', ULTBOOK: 'Ultimate Spellbook'};
+    const DOT = '<span class="eg-dot">◆</span>';
+    const fmtBigNum = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+
+    async function renderEndgame(s) {
+        const wrap = document.getElementById('eg-wrap');
+        const ver = await ddragonVersionPromise;
+        const players = s.players || [];
+        const local = players.find(p => p.riotId && p.riotId.toLowerCase() === String(s.localIdentity || '').toLowerCase());
+        const localTeam = local ? local.team : 'ORDER';
+        const champIds = await Promise.all(players.map(p => getChampionIdByAlias(p.champion).catch(() => null)));
+
+        const resultClass = s.result === 'Lose' ? 'defeat' : '';
+        const resultText = s.result === 'Win' ? 'Victory' : (s.result === 'Lose' ? 'Defeat' : 'Game Complete');
+        const mapName = EG_MAP_NAMES[s.mapNumber]
+            || EG_MODE_NAMES[String(s.gameMode || '').toUpperCase()]
+            || (s.gameMode ? s.gameMode.charAt(0).toUpperCase() + s.gameMode.slice(1).toLowerCase() : 'Summoner’s Rift');
+
+        const maxDmg = Math.max(0, ...players.map(p => p.damage > 0 ? p.damage : 0));
+
+        const rowHtml = (p) => {
+            const i = players.indexOf(p);
+            const cid = champIds[i];
+            const champImg = cid
+                ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${cid}.png`
+                : (ver ? `https://ddragon.leagueoflegends.com/cdn/${ver}/img/champion/${encodeURIComponent(p.champion)}.png` : '');
+            const items = (ver && Array.isArray(p.items))
+                ? p.items.filter(id => id > 0).map(id => `<img src="https://ddragon.leagueoflegends.com/cdn/${ver}/img/item/${id}.png" alt="" onerror="this.remove()">`).join('')
+                : '';
+            const kdaRatio = ((p.kills + p.assists) / Math.max(1, p.deaths)).toFixed(1);
+            const champFix = CHAMP_NAME_FIXES[p.champion] || p.champion;
+            const dmgCell = (p.damage >= 0 && maxDmg > 0)
+                ? `<div class="eg-dmg">
+                        <div class="eg-dmg-num">${fmtBigNum(p.damage)}</div>
+                        <div class="eg-dmg-bar"><div class="eg-dmg-fill" data-fill="${Math.round(p.damage / maxDmg * 100)}" style="width:0"></div></div>
+                   </div>`
+                : `<div class="eg-dmg-none">—</div>`;
+            return `
+                <div class="eg-row${p === local ? ' eg-local' : ''}" data-champ="${escHtml(champFix)}" data-skin="${Number(p.skinId) || 0}">
+                    <div class="eg-splash"></div>
+                    <div class="eg-champ">${champImg ? `<img src="${champImg}" alt="">` : ''}<span class="eg-level">${p.level}</span></div>
+                    <div><div class="eg-name">${escHtml(p.riotId || p.champion)}</div><div class="eg-champname">${escHtml(p.champion)}</div></div>
+                    <div class="eg-kda">${p.kills} / ${p.deaths} / ${p.assists}<span>${kdaRatio} KDA</span></div>
+                    <div class="eg-stat">${p.creepScore}<span>CS</span></div>
+                    <div class="eg-stat">${p.wardScore}<span>Wards</span></div>
+                    ${dmgCell}
+                    <div class="eg-items">${items}</div>
+                </div>`;
+        };
+
+        const teamHtml = (label, cls, list) => {
+            const k = list.reduce((a, p) => a + p.kills, 0);
+            const d = list.reduce((a, p) => a + p.deaths, 0);
+            const a2 = list.reduce((a, p) => a + p.assists, 0);
+            const hasGold = list.length > 0 && list.every(p => p.gold >= 0);
+            const gold = list.reduce((acc, p) => acc + Math.max(0, p.gold), 0);
+            const goldPart = hasGold ? `${DOT}<span class="team-stat">${fmtBigNum(gold)}</span>` : '';
+            return `
+                <div>
+                    <div class="eg-team-label">
+                        <span class="team-name ${cls}">${label}</span>
+                        ${DOT}<span class="team-stat">${k} / ${d} / ${a2}</span>
+                        ${goldPart}
+                    </div>
+                    <div class="eg-rows">${list.map(rowHtml).join('')}</div>
+                </div>`;
+        };
+
+        const allies = players.filter(p => p.team === localTeam);
+        const enemies = players.filter(p => p.team !== localTeam);
+
+        wrap.innerHTML = `
+            <div class="eg-result ${resultClass}">${resultText}</div>
+            <div class="eg-sub">${escHtml(mapName)}${DOT}${escHtml(s.gameClock || '')}</div>
+            ${teamHtml('Allies', 'allies', allies)}
+            ${teamHtml('Enemies', 'enemies', enemies)}
+            <div class="eg-footer"><button id="eg-return" class="potg-btn potg-btn-primary">Return to Lobby</button></div>`;
+
+        wrap.querySelectorAll('.eg-row').forEach((row, idx) => {
+            row.style.animationDelay = `${0.14 + idx * 0.05}s`;
+
+            const fill = row.querySelector('.eg-dmg-fill');
+            if (fill) requestAnimationFrame(() => { fill.style.width = `${fill.dataset.fill}%`; });
+
+            const champ = row.dataset.champ;
+            if (!champ) return;
+            const splash = row.querySelector('.eg-splash');
+            const trySplash = (skin) => {
+                const url = SPLASH_URL(champ, skin);
+                const probe = new Image();
+                probe.onload = () => {
+                    splash.style.backgroundImage = `url("${url}")`;
+                    row.classList.add('has-splash');
+                };
+                probe.onerror = () => { if (skin !== 0) trySplash(0); };
+                probe.src = url;
+            };
+            resolveSkinNum(champ, Number(row.dataset.skin) || 0).then(trySplash);
+        });
+
+        document.getElementById('eg-return').addEventListener('click', returnToLobby);
+    }
+
+    document.getElementById('potg-replay').addEventListener('click', () => { if (!potgSaving) playPotg(); });
+    document.getElementById('potg-save').addEventListener('click', savePotgHighlight);
+    document.getElementById('potg-viewer').addEventListener('mousemove', showPotgControls);
+    document.getElementById('potg-more').addEventListener('click', () => {
+        const strip = document.getElementById('potg-highlights');
+        const hidden = strip.style.display === 'none' || strip.style.display === '';
+        strip.style.display = hidden ? 'flex' : 'none';
+        document.getElementById('potg-more').innerText = hidden ? 'Hide Highlights' : 'Show More Highlights';
+    });
+    document.getElementById('potg-continue').addEventListener('click', () => { if (!potgSaving) showEndgameScreen(); });
+    document.getElementById('potg-intro-btn').addEventListener('click', enterHighlightsFromIntro);
+
+    const potgVolSlider = document.getElementById('potg-vol');
+    function refreshPotgVolumeUI() {
+        const pct = Math.round(potgClipVolume * 100);
+        potgVolSlider.value = pct;
+        potgVolSlider.style.setProperty('--vol', pct + '%');
+        document.getElementById('potg-vol-icon').textContent = pct === 0 ? '🔇' : (pct < 50 ? '🔉' : '🔊');
+    }
+    potgVolSlider.addEventListener('input', () => {
+        potgClipVolume = potgVolSlider.value / 100;
+        if (potgAudioEl) potgAudioEl.volume = potgClipVolume;
+        try { localStorage.setItem('potgClipVolume', String(potgClipVolume)); } catch (e) {}
+        refreshPotgVolumeUI();
+    });
+    refreshPotgVolumeUI();
+
     function closeApplicationTab() {
         try { if (room) room.disconnect(); } catch (e) {}
 
@@ -928,6 +2261,7 @@
 
     function resetToIdleState() {
         if (window.voiceInterval) { clearInterval(window.voiceInterval); window.voiceInterval = null; }
+        stopPotgRecording();
 
         try { if (room) room.disconnect(); } catch (e) {}
 
@@ -1337,6 +2671,7 @@
             btn.classList.add('is-waiting');
             btn.innerText = 'Waiting for match… (click to cancel)';
             trackerSocket.send("REQUEST_JOIN");
+            startPotgVideoCapture();
         } else {
             isWaitingForMatch = false;
             btn.classList.remove('is-waiting');
@@ -1540,6 +2875,7 @@
                 }
 
                 if (data.type === "GAME_ENDED") {
+                    maybeShowPlayOfGame();
                     resetToIdleState();
                     return;
                 }
@@ -1551,6 +2887,27 @@
 
                 if (data.type === "TOGGLE_DEAFEN") {
                     document.getElementById('deafen-btn').click();
+                    return;
+                }
+
+                if (data.type === "POTG_MARKS") {
+                    const ids = new Set();
+                    for (const m of (data.marks || [])) {
+                        const id = String(m.id);
+                        ids.add(id);
+                        if (!potgAudio.clips.has(id)) {
+                            const wav = sliceVoiceClip(m.startEpochMs, m.endEpochMs);
+                            if (wav) potgAudio.clips.set(id, wav);
+                        }
+                        if (!potgVideo.lockedClips.has(id) && !potgVideo.pendingMarks.some(p => p.id === id)) {
+                            potgVideo.pendingMarks.push({id, startMs: m.startEpochMs, endMs: m.endEpochMs});
+                        }
+                    }
+
+                    for (const id of [...potgVideo.lockedClips.keys()]) if (!ids.has(id)) potgVideo.lockedClips.delete(id);
+                    for (const id of [...potgAudio.clips.keys()]) if (!ids.has(id)) potgAudio.clips.delete(id);
+                    potgVideo.pendingMarks = potgVideo.pendingMarks.filter(p => ids.has(p.id));
+                    tryResolvePotgMarks();
                     return;
                 }
 
@@ -1690,6 +3047,7 @@
             if (window.voiceInterval) { clearInterval(window.voiceInterval); window.voiceInterval = null; }
 
             document.querySelectorAll('.player-item.speaking').forEach(row => row.classList.remove('speaking'));
+            stopPotgRecording();
 
             document.getElementById('lk-status').className = 'status error';
             document.getElementById('lk-status').innerText = 'Audio Server: Disconnected - ready to retry.';
@@ -1877,6 +3235,7 @@
             await room.localParticipant.setMicrophoneEnabled(true);
 
             await applyKrispState();
+            startPotgRecording();
 
             if (!hasReceivedPosition) {
                 positionGateActive = true;

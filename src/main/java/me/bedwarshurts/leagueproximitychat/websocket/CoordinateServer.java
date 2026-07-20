@@ -68,6 +68,12 @@ public class CoordinateServer extends WebSocketServer {
                 String identity = json.optString("identity");
                 String name = json.optString("name", "Unknown");
 
+                // browser-side diagnostics surfaced into the backend log (admin debug viewer)
+                if ("CLIENT_LOG".equals(type)) {
+                    System.out.println("[Client] " + json.optString("msg", ""));
+                    return;
+                }
+
                 if (LeagueProximityChat.getActiveRoom() != null) {
 
                     LiveKitUser targetUser = new LiveKitUser(identity, name);

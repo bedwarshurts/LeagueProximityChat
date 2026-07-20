@@ -32,13 +32,23 @@ public class UiWindowManager {
     public boolean launch() {
         try {
             CefAppBuilder builder = new CefAppBuilder();
-            builder.setInstallDir(resolveInstallDir());
+            File installDir = resolveInstallDir();
+            builder.setInstallDir(installDir);
             builder.getCefSettings().windowless_rendering_enabled = false;
+
+            String profileDir = new File(installDir.getParentFile(), "browser-profile").getAbsolutePath();
+            builder.getCefSettings().cache_path = profileDir;
+            builder.getCefSettings().root_cache_path = profileDir;
             builder.addJcefArgs(
                     "--enable-media-stream",
                     "--use-fake-ui-for-media-stream",
                     "--autoplay-policy=no-user-gesture-required",
-                    "--disable-background-timer-throttling");
+                    "--disable-background-timer-throttling",
+                    "--disable-renderer-backgrounding",
+                    "--disable-backgrounding-occluded-windows",
+                    "--auto-select-desktop-capture-source=Entire screen",
+                    "--enable-usermedia-screen-capturing",
+                    "--disable-features=AllowWgcScreenCapturer,AllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer");
 
             cefApp = builder.build();
             CefClient client = cefApp.createClient();
@@ -54,6 +64,7 @@ public class UiWindowManager {
                 frame.add(browser.getUIComponent());
                 frame.setSize(1180, 760);
                 frame.setLocationRelativeTo(null);
+                frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
 
                 frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
                 frame.addWindowListener(new WindowAdapter() {

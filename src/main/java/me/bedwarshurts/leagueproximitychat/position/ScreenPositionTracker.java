@@ -1,5 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.position;
 
+import me.bedwarshurts.leagueproximitychat.managers.ClipRecorder;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.utils.ImageUtils;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
@@ -212,6 +213,8 @@ public class ScreenPositionTracker {
             fullScreenMat.release();
             fullScreenMat = croppedScreen;
         }
+
+        ClipRecorder.record(fullScreenMat);
 
         float normalizedScale = userMinimapScale;
         if (normalizedScale > 5.0f) normalizedScale /= 100.0f;

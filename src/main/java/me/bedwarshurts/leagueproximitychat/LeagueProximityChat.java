@@ -13,6 +13,7 @@ import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.managers.LogManager;
 import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
+import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
@@ -29,8 +30,14 @@ import java.io.OutputStream;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -81,6 +88,8 @@ public class LeagueProximityChat {
             gameOverFlag.set(false);
             return;
         }
+
+        PlayOfGameManager.poll(server);
 
         String phase = RitoApiUtils.getGameflowPhase();
         if (phase != null) {
@@ -319,7 +328,7 @@ public class LeagueProximityChat {
         server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead());
 
         long elapsedTime = System.currentTimeMillis() - startTime;
-        long sleepTime = Math.max(10, 60 - elapsedTime);
+        long sleepTime = Math.max(1, 16 - elapsedTime);
 
         Thread.sleep(sleepTime);
     }
@@ -409,6 +418,97 @@ public class LeagueProximityChat {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(body);
             }
+        });
+
+        server.createContext("/potg/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+
+            if (path.equals("/potg/meta")) {
+                byte[] body = PlayOfGameManager.metaJson().getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                exchange.sendResponseHeaders(200, body.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(body);
+                }
+                return;
+            }
+
+            if (path.equals("/potg/stats")) {
+                byte[] body = PlayOfGameManager.statsJson().getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                exchange.getResponseHeaders().set("Cache-Control", "no-store");
+                exchange.sendResponseHeaders(200, body.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(body);
+                }
+                return;
+            }
+
+            if (path.equals("/potg/save") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                JSONObject result = new JSONObject();
+                int status = 200;
+                try {
+                    byte[] webm = exchange.getRequestBody().readAllBytes();
+                    if (webm.length < 1024) throw new IOException("empty recording");
+
+                    String name = "Play of the Game";
+                    String query = exchange.getRequestURI().getQuery();
+                    if (query != null) {
+                        for (String kv : query.split("&")) {
+                            if (kv.startsWith("name=")) {
+                                name = URLDecoder.decode(kv.substring(5), StandardCharsets.UTF_8);
+                            }
+                        }
+                    }
+                    name = name.replaceAll("[^A-Za-z0-9 _.-]", "").trim();
+                    if (name.isEmpty()) name = "Play of the Game";
+
+                    Path dir = Paths.get(System.getProperty("user.home"), "Videos", "LeagueProximityChat");
+                    Files.createDirectories(dir);
+                    String stamp = new SimpleDateFormat("yyyy-MM-dd HH.mm.ss").format(new Date());
+                    Path file = dir.resolve(name + " " + stamp + ".webm");
+                    Files.write(file, webm);
+
+                    result.put("path", file.toString());
+                    System.out.println("[PotG] Highlight saved to " + file);
+                } catch (Exception ex) {
+                    status = 500;
+                    result.put("error", String.valueOf(ex.getMessage()));
+                    System.out.println("[PotG] Highlight save failed: " + ex.getMessage());
+                }
+                byte[] body = result.toString().getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(status, body.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(body);
+                }
+                return;
+            }
+
+            if (path.startsWith("/potg/frame/")) {
+                byte[] img = null;
+                try {
+                    String rest = path.substring("/potg/frame/".length());
+                    int slash = rest.indexOf('/');
+                    img = PlayOfGameManager.frameBytes(
+                            Integer.parseInt(rest.substring(0, slash)),
+                            Integer.parseInt(rest.substring(slash + 1)));
+                } catch (Exception ignored) {
+                }
+                if (img == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+                exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
+                exchange.sendResponseHeaders(200, img.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(img);
+                }
+                return;
+            }
+
+            exchange.sendResponseHeaders(404, -1);
         });
 
         server.createContext("/livekit-client.umd.min.js", exchange -> {

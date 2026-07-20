@@ -361,6 +361,22 @@ public class RitoApiUtils {
         }
     }
 
+    public static JSONObject getGameStats() {
+        String json = fetchAPI("https://127.0.0.1:2999/liveclientdata/gamestats");
+        if (json == null || json.isEmpty()) {
+            return null;
+        }
+        try {
+            return new JSONObject(json);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static String getEndOfGameStatsBlock() {
+        return fetchClientAPI("/lol-end-of-game/v1/eog-stats-block");
+    }
+
     public static String fetchPlayerListRaw() {
         long now = System.currentTimeMillis();
         String cached = cachedPlayerListJson;
