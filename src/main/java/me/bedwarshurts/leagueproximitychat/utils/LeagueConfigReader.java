@@ -16,8 +16,6 @@ public class LeagueConfigReader {
     private static final String DEFAULT_CONFIG_PATH = "C:/Riot Games/League of Legends/Config";
 
     public static class LeagueSettings {
-        @Getter private int width = 1920;
-        @Getter private int height = 1080;
         @Getter private float minimapScale = 1.0f;
         @Getter private boolean isColorblind = false;
     }
@@ -41,11 +39,7 @@ public class LeagueConfigReader {
             try (BufferedReader br = new BufferedReader(new FileReader(gameCfg))) {
                 String line;
                 while ((line = br.readLine()) != null) {
-                    if (line.startsWith("Width=")) {
-                        settings.width = Integer.parseInt(line.split("=")[1].trim());
-                    } else if (line.startsWith("Height=")) {
-                        settings.height = Integer.parseInt(line.split("=")[1].trim());
-                    } else if (line.startsWith("ColorPalette=")) {
+                    if (line.startsWith("ColorPalette=")) {
                         settings.isColorblind = line.split("=")[1].trim().equals("1");
                     }
                 }

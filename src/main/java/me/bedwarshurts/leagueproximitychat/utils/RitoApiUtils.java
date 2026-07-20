@@ -350,15 +350,8 @@ public class RitoApiUtils {
     }
 
     public static double getGameTime() {
-        String json = fetchAPI("https://127.0.0.1:2999/liveclientdata/gamestats");
-        if (json == null || json.isEmpty()) {
-            return -1.0;
-        }
-        try {
-            return new JSONObject(json).optDouble("gameTime", -1.0);
-        } catch (Exception e) {
-            return -1.0;
-        }
+        JSONObject stats = getGameStats();
+        return stats != null ? stats.optDouble("gameTime", -1.0) : -1.0;
     }
 
     public static JSONObject getGameStats() {

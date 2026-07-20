@@ -207,11 +207,6 @@
             from { opacity: 0; transform: translateY(18px); }
             to   { opacity: 1; transform: none; }
         }
-        @keyframes potgPop {
-            from { opacity: 0; transform: translateY(8px) scale(0.96); }
-            to   { opacity: 1; transform: none; }
-        }
-
         /* potg viewer*/
         #potg-viewer { display: none; position: fixed; inset: 0; z-index: 60; background: #000; }
         .potg-media { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
@@ -291,6 +286,7 @@
             transition: color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s, background 0.18s;
         }
 
+        /* diagonal sheen sweep; moved via transform so hovering never triggers layout */
         .potg-btn::before {
             content: '';
             position: absolute;
@@ -298,7 +294,7 @@
             width: 55%; height: 100%;
             background: linear-gradient(100deg, transparent, rgba(240, 230, 210, 0.28), transparent);
             transform: skewX(-18deg);
-            transition: left 0.55s ease;
+            transition: transform 0.55s ease;
             pointer-events: none;
         }
         .potg-btn:hover:not(:disabled) {
@@ -308,7 +304,7 @@
             box-shadow: 0 0 18px -5px rgba(200, 170, 110, 0.6), inset 0 0 14px -9px rgba(240, 230, 210, 0.6);
             transform: translateY(-1px);
         }
-        .potg-btn:hover:not(:disabled)::before { left: 135%; }
+        .potg-btn:hover:not(:disabled)::before { transform: translateX(482%) skewX(-18deg); }
         .potg-btn:active:not(:disabled) { transform: translateY(0); box-shadow: 0 0 10px -6px rgba(200, 170, 110, 0.6); }
         .potg-btn:disabled { opacity: 0.4; cursor: default; }
         .potg-btn-primary {
@@ -401,7 +397,6 @@
         .eg-items img { width: 26px; height: 26px; border-radius: 2px; border: 1px solid var(--hairline); background: #0a1428; }
         .eg-dmg { display: flex; flex-direction: column; gap: 3px; }
         .eg-dmg-num { color: #f0e6d2; font-size: 12px; text-align: center; line-height: 1; }
-        .eg-dmg-num span { color: #6b7585; font-size: 9.5px; letter-spacing: 0.06em; }
         .eg-dmg-bar { height: 6px; background: rgba(200, 170, 110, 0.10); border: 1px solid var(--hairline); border-radius: 2px; overflow: hidden; }
         .eg-dmg-fill { height: 100%; background: linear-gradient(90deg, #7a5a24, #c8aa6e); border-radius: 1px; transition: width 0.6s ease; }
         .eg-dmg-none { color: #6b7585; font-size: 12px; text-align: center; }
@@ -1050,19 +1045,17 @@
                 champSkinDataCache[champ] = fetch(`https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champions/${champId}.json`)
                     .then(r => r.json())
                     .then(d => {
-                        const skinNums = [];
+
                         const chromaToParent = {};
                         (d.skins || []).forEach(s => {
                             const num = s.id - champId * 1000;
-                            skinNums.push(num);
                             (s.chromas || []).forEach(c => { chromaToParent[c.id - champId * 1000] = num; });
                         });
-                        return { skinNums, chromaToParent };
+                        return chromaToParent;
                     });
             }
-            const { skinNums, chromaToParent } = await champSkinDataCache[champ];
+            const chromaToParent = await champSkinDataCache[champ];
             if (chromaToParent[skinId] !== undefined) return chromaToParent[skinId];
-            if (skinNums.includes(skinId)) return skinId;
             return skinId;
         } catch (e) {
             return skinId;
@@ -1213,10 +1206,17 @@
                 }
             } catch (e) {}
 
-            const proc = audioCtx.createScriptProcessor(4096, 1, 1);
+
+            const proc = audioCtx.createScriptProcessor(4096, 2, 2);
             proc.onaudioprocess = (e) => {
-                const d = e.inputBuffer.getChannelData(0);
-                potgAudio.chunks.push({t: Date.now() - (d.length / audioCtx.sampleRate) * 1000, d: new Float32Array(d)});
+                const ib = e.inputBuffer;
+                const l = ib.getChannelData(0);
+                const r = ib.numberOfChannels > 1 ? ib.getChannelData(1) : l;
+                potgAudio.chunks.push({
+                    t: Date.now() - (l.length / audioCtx.sampleRate) * 1000,
+                    l: new Float32Array(l),
+                    r: new Float32Array(r)
+                });
                 const cutoff = Date.now() - 120000;
                 while (potgAudio.chunks.length && potgAudio.chunks[0].t < cutoff) potgAudio.chunks.shift();
             };
@@ -1224,12 +1224,10 @@
             proc.connect(audioCtx.destination);
             potgAudio.node = proc;
             potgAudio.tapBus = bus;
-            connectGameAudioToTap();
         } catch (e) {}
     }
 
     function stopPotgRecording() {
-        stopGameAudio();
         try { if (potgAudio.node) potgAudio.node.disconnect(); } catch (e) {}
         try { if (potgAudio.tapBus) potgAudio.tapBus.disconnect(); } catch (e) {}
         potgAudio.node = null;
@@ -1237,26 +1235,31 @@
         potgAudio.chunks = [];
     }
 
-    function encodeWavPCM16(samples, sampleRate) {
-        const buf = new ArrayBuffer(44 + samples.length * 2);
+    function encodeWavPCM16(left, right, sampleRate) {
+        const frames = left.length;
+        const dataBytes = frames * 4;
+        const buf = new ArrayBuffer(44 + dataBytes);
         const dv = new DataView(buf);
         const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
         writeStr(0, 'RIFF');
-        dv.setUint32(4, 36 + samples.length * 2, true);
+        dv.setUint32(4, 36 + dataBytes, true);
         writeStr(8, 'WAVE');
         writeStr(12, 'fmt ');
         dv.setUint32(16, 16, true);
         dv.setUint16(20, 1, true);
-        dv.setUint16(22, 1, true);
+        dv.setUint16(22, 2, true);
         dv.setUint32(24, sampleRate, true);
-        dv.setUint32(28, sampleRate * 2, true);
-        dv.setUint16(32, 2, true);
+        dv.setUint32(28, sampleRate * 4, true);
+        dv.setUint16(32, 4, true);
         dv.setUint16(34, 16, true);
         writeStr(36, 'data');
-        dv.setUint32(40, samples.length * 2, true);
-        for (let i = 0; i < samples.length; i++) {
-            const s = Math.max(-1, Math.min(1, samples[i]));
-            dv.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        dv.setUint32(40, dataBytes, true);
+        let off = 44;
+        for (let i = 0; i < frames; i++) {
+            const sl = Math.max(-1, Math.min(1, left[i]));
+            const sr2 = Math.max(-1, Math.min(1, right[i]));
+            dv.setInt16(off, sl < 0 ? sl * 0x8000 : sl * 0x7FFF, true); off += 2;
+            dv.setInt16(off, sr2 < 0 ? sr2 * 0x8000 : sr2 * 0x7FFF, true); off += 2;
         }
         return new Blob([buf], {type: 'audio/wav'});
     }
@@ -1264,21 +1267,22 @@
     function sliceVoiceClip(startMs, endMs) {
         if (!audioCtx || potgAudio.chunks.length === 0) return null;
         const sr = audioCtx.sampleRate;
-        const parts = potgAudio.chunks.filter(c => (c.t + (c.d.length / sr) * 1000) >= startMs && c.t <= endMs);
+        const parts = potgAudio.chunks.filter(c => (c.t + (c.l.length / sr) * 1000) >= startMs && c.t <= endMs);
         if (parts.length === 0) return null;
 
         let total = 0;
-        parts.forEach(c => total += c.d.length);
-        const all = new Float32Array(total);
+        parts.forEach(c => total += c.l.length);
+        const allL = new Float32Array(total);
+        const allR = new Float32Array(total);
         let o = 0;
-        parts.forEach(c => { all.set(c.d, o); o += c.d.length; });
+        parts.forEach(c => { allL.set(c.l, o); allR.set(c.r, o); o += c.l.length; });
 
         const firstT = parts[0].t;
         const startIdx = Math.max(0, Math.round(((startMs - firstT) / 1000) * sr));
-        const endIdx = Math.min(all.length, Math.round(((endMs - firstT) / 1000) * sr));
+        const endIdx = Math.min(total, Math.round(((endMs - firstT) / 1000) * sr));
         if (endIdx <= startIdx) return null;
 
-        return encodeWavPCM16(all.subarray(startIdx, endIdx), sr);
+        return encodeWavPCM16(allL.subarray(startIdx, endIdx), allR.subarray(startIdx, endIdx), sr);
     }
 
     // play of the game: 60fps screen capture
@@ -1346,31 +1350,6 @@
             }
         }
         throw lastError || new DOMException('no capture method', 'NotSupportedError');
-    }
-
-    let potgGameAudioStream = null;
-    let potgGameAudioSrc = null;
-    let potgGameAudioGain = null;
-
-    function connectGameAudioToTap() {
-        if (!potgGameAudioStream || !potgAudio.tapBus || !audioCtx || potgGameAudioSrc) return;
-        try {
-            potgGameAudioSrc = audioCtx.createMediaStreamSource(potgGameAudioStream);
-            potgGameAudioGain = audioCtx.createGain();
-            potgGameAudioGain.gain.value = 0.9;
-            potgGameAudioSrc.connect(potgGameAudioGain);
-            potgGameAudioGain.connect(potgAudio.tapBus);
-            potgLog('game sound routed into highlight audio');
-        } catch (e) {}
-    }
-
-    function stopGameAudio() {
-        try { if (potgGameAudioSrc) potgGameAudioSrc.disconnect(); } catch (e) {}
-        try { if (potgGameAudioGain) potgGameAudioGain.disconnect(); } catch (e) {}
-        try { if (potgGameAudioStream) potgGameAudioStream.getTracks().forEach(t => t.stop()); } catch (e) {}
-        potgGameAudioSrc = null;
-        potgGameAudioGain = null;
-        potgGameAudioStream = null;
     }
 
     let potgRetryMs = 5000;
@@ -1667,7 +1646,9 @@
         if (!best) return;
         buildHighlightsStrip();
         document.getElementById('potg-highlights').style.display = 'none';
-        document.getElementById('potg-more').style.display = potgHighlights.length > 1 ? '' : 'none';
+        const moreBtn = document.getElementById('potg-more');
+        moreBtn.style.display = potgHighlights.length > 1 ? '' : 'none';
+        moreBtn.innerText = 'Show More Highlights';
         document.getElementById('potg-save-status').innerText = '';
         const viewer = document.getElementById('potg-viewer');
         viewer.classList.remove('controls-hidden');
@@ -1686,7 +1667,6 @@
         clearTimeout(potgIntroTimer);
         textEl.innerHTML = '<span class="intro-caret"></span>';
         btn.classList.remove('shown');
-        intro.classList.remove('controls-hidden');
         fadeInOverlay(intro, 'flex');
 
         let i = 0;
@@ -1740,6 +1720,7 @@
         document.querySelectorAll('.potg-hl').forEach(el => el.classList.remove('active'));
         const card = document.getElementById(`potg-hl-${h.index}`);
         if (card) card.classList.add('active');
+        document.getElementById('potg-save-status').innerText = '';
         document.getElementById('potg-headline').innerText = `${h.headline}  ·  ${h.gameClock}`;
         await loadFramesFor(h);
         potgReplayData = {video: h.video, frames: h.frames, audio: h.audio};
@@ -1897,11 +1878,6 @@
             el.addEventListener('transitionend', finish, {once: true});
             setTimeout(finish, 520);
         });
-    }
-
-    function closePotgViewer() {
-        haltPotgPlayback();
-        fadeOutOverlay(document.getElementById('potg-viewer'));
     }
 
     let potgControlsTimer = null;
@@ -2125,10 +2101,10 @@
             || (s.gameMode ? s.gameMode.charAt(0).toUpperCase() + s.gameMode.slice(1).toLowerCase() : 'Summoner’s Rift');
 
         const maxDmg = Math.max(0, ...players.map(p => p.damage > 0 ? p.damage : 0));
+        const champIdOf = new Map(players.map((p, i) => [p, champIds[i]]));
 
         const rowHtml = (p) => {
-            const i = players.indexOf(p);
-            const cid = champIds[i];
+            const cid = champIdOf.get(p);
             const champImg = cid
                 ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${cid}.png`
                 : (ver ? `https://ddragon.leagueoflegends.com/cdn/${ver}/img/champion/${encodeURIComponent(p.champion)}.png` : '');

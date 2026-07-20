@@ -1137,10 +1137,6 @@ public class ScreenPositionTracker {
         return null;
     }
 
-    private EvalResult evaluateTemplateAtAlly(Mat minimap, Point ally, Mat template, int padding) {
-        return evaluateTemplateAtAlly(minimap, ally, template, null, padding);
-    }
-
     private EvalResult evaluateTemplateAtAlly(Mat minimap, Point ally, Mat template,
                                               Mat enhancedTemplate, int padding) {
         int cw = (enhancedTemplate != null ? enhancedTemplate : template).width();

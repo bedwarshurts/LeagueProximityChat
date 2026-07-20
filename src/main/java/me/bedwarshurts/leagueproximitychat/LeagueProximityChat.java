@@ -334,9 +334,9 @@ public class LeagueProximityChat {
     }
 
     public static void startHttpServer() throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
+        HttpServer httpServer = HttpServer.create(new InetSocketAddress(8000), 0);
 
-        server.createContext("/", exchange -> {
+        httpServer.createContext("/", exchange -> {
             try (InputStream is = LeagueProximityChat.class.getResourceAsStream("/index.html")) {
                 if (is == null) {
                     throw new Exception("Could not find index.html.");
@@ -359,7 +359,7 @@ public class LeagueProximityChat {
             }
         });
 
-        server.createContext("/settings", exchange -> {
+        httpServer.createContext("/settings", exchange -> {
             try {
                 if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                     byte[] body = new JSONObject()
@@ -406,7 +406,7 @@ public class LeagueProximityChat {
             }
         });
 
-        server.createContext("/logs", exchange -> {
+        httpServer.createContext("/logs", exchange -> {
             byte[] body = LogManager.snapshot().getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
             exchange.getResponseHeaders().set("Cache-Control", "no-store");
@@ -420,7 +420,7 @@ public class LeagueProximityChat {
             }
         });
 
-        server.createContext("/potg/", exchange -> {
+        httpServer.createContext("/potg/", exchange -> {
             String path = exchange.getRequestURI().getPath();
 
             if (path.equals("/potg/meta")) {
@@ -511,7 +511,7 @@ public class LeagueProximityChat {
             exchange.sendResponseHeaders(404, -1);
         });
 
-        server.createContext("/livekit-client.umd.min.js", exchange -> {
+        httpServer.createContext("/livekit-client.umd.min.js", exchange -> {
             try (InputStream is = LeagueProximityChat.class.getResourceAsStream("/livekit-client.umd.min.js")) {
                 if (is == null) {
                     exchange.sendResponseHeaders(404, -1);
@@ -531,7 +531,7 @@ public class LeagueProximityChat {
             }
         });
 
-        server.createContext("/profile-icon/", exchange -> {
+        httpServer.createContext("/profile-icon/", exchange -> {
             byte[] image = null;
             try {
                 String idPart = exchange.getRequestURI().getPath()
@@ -555,13 +555,13 @@ public class LeagueProximityChat {
             }
         });
 
-        server.setExecutor(Executors.newFixedThreadPool(4, r -> {
+        httpServer.setExecutor(Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "http-server");
             t.setDaemon(true);
             return t;
         }));
 
-        server.start();
+        httpServer.start();
         System.out.println("Local Web Server running on port 8000!");
 
         try {
@@ -644,8 +644,6 @@ public class LeagueProximityChat {
         roomLeaderRiotId = RitoApiUtils.getLobbyLeader();
         if (roomLeaderRiotId == null) {
             System.err.println("Please launch this app while waiting in the game lobby!");
-            //Thread.sleep(10000);
-            //System.exit(0);
         }
 
         DiscordRPCManager.start();
