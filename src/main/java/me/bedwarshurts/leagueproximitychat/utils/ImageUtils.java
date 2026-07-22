@@ -7,7 +7,7 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.CLAHE;
 import org.opencv.imgproc.Imgproc;
 
-public class ImageUtils {
+public final class ImageUtils {
 
     public static double getStdDev(Mat mat) {
         Mat gray = new Mat();

@@ -45,7 +45,6 @@ public class OverlayManager {
         this.onDeafenHotkey = onDeafenHotkey;
     }
 
-    /** Standalone-window mode: hotkeys drive the JCEF window directly, no browser involved. */
     public void launchWithNativeWindow(UiWindowManager window) {
         this.nativeWindow = window;
         startHotkeyListener();

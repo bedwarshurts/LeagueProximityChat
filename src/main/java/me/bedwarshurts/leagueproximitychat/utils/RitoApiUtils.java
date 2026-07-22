@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 
-public class RitoApiUtils {
+public final class RitoApiUtils {
 
     private static boolean sslBypassed = false;
     private static String cachedSummonerName = null;

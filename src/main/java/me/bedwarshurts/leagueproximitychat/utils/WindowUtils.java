@@ -8,7 +8,7 @@ import com.sun.jna.platform.win32.WinDef.POINT;
 import com.sun.jna.win32.W32APIOptions;
 import java.awt.Rectangle;
 
-public class WindowUtils {
+public final class WindowUtils {
 
     public interface CustomUser32 extends User32 {
         CustomUser32 INSTANCE = Native.load("user32", CustomUser32.class, W32APIOptions.DEFAULT_OPTIONS);

@@ -11,7 +11,7 @@ import java.nio.file.Paths;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class LeagueConfigReader {
+public final class LeagueConfigReader {
 
     private static final String DEFAULT_CONFIG_PATH = "C:/Riot Games/League of Legends/Config";
 
