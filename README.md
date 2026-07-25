@@ -1,6 +1,6 @@
 # League of Legends Proximity Chat
 
-![version](https://img.shields.io/badge/version-3.6.1-blue)
+[![version](https://img.shields.io/github/v/release/bedwarshurts/LeagueProximityChat?color=blue&label=version)](https://github.com/bedwarshurts/LeagueProximityChat/releases/latest)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![java](https://img.shields.io/badge/Java-21-orange)
 
