@@ -78,7 +78,7 @@ New detected locations that are close to the previous ones are "boosted" in the 
 
 There is also a calibration system to help reduce the offset between the 2 methods.
 
-> **Note**: Viego and Kayn Champions are not yet supported, I havent thought of a solution, please do not pick Viego or Kayn (They are literally 200 year design anyway).
+> **Note**: Viego, Yuumi and Kayn Champions are not yet supported, I havent thought of a solution, please do not pick Viego, Yuumi or Kayn (They are literally 200 year design anyway). Yuumi will probably NEVER be supported. I hate that champ with too much passion to waste time implementing code just for her.
 
 ---
 
