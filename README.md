@@ -163,6 +163,6 @@ app.
 ---
 
 I was held at gunpoint by my imaginary lawyers to include the sentence below:
-This obviously is a fun made project and not affiliated with League of Legends or Riot Games in any way!
+This obviously is a fan-made project and not affiliated with League of Legends or Riot Games in any way!
 
 I do hope that my work can bring a smile on your face. Have fun!
