@@ -120,8 +120,6 @@ mvn clean package
 Produces a fat jar in `target/` (Maven Shade, main class
 `me.bedwarshurts.leagueproximitychat.LeagueProximityChat`).
 
-**Disclaimer**: This is a fan-made project and is not affiliated with Riot Games or League of Legends.
-
 ---
 
 ## Troubleshooting
@@ -164,4 +162,7 @@ app.
 
 ---
 
-Have fun!
+I was held at gunpoint by my imaginary lawyers to include the sentence below:
+This obviously is a fun made project and not affiliated with League of Legends or Riot Games in any way!
+
+I do hope that my work can bring a smile on your face. Have fun!
