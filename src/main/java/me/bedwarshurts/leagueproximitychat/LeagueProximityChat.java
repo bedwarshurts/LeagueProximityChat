@@ -156,6 +156,7 @@ public class LeagueProximityChat {
                 .put("players", players)
                 .put("localIdentity", localPlayer.getRiotId())
                 .put("roomLeader", roomLeader == null ? JSONObject.NULL : roomLeader)
+                .put("debug", DebugManager.isENABLED())
                 .toString();
     }
 

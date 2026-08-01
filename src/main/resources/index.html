@@ -2283,7 +2283,7 @@
         }
     }
 
-    function buildRosterUI(players, localId, leaderId) {
+    function buildRosterUI(players, localId, leaderId, debugEnabled) {
         localUserIdentity = localId;
         matchLeaderIdentity = leaderId;
         const container = document.getElementById('roster-container');
@@ -2292,7 +2292,10 @@
         const isAdmin = localUserIdentity &&
             ["only forward#star", "stab enchanters#star"].includes(localUserIdentity.toLowerCase());
 
-        document.getElementById('debug-btn').style.display = isAdmin ? '' : 'none';
+        const debugMode = debugEnabled === true;
+        const showDistances = isAdmin && debugMode;
+
+        document.getElementById('debug-btn').style.display = debugMode ? '' : 'none';
 
         const localPlayer = players.find(p => p.identity === localId);
         const localTeam = localPlayer ? localPlayer.team : undefined;
@@ -2441,7 +2444,7 @@
             controlsContainer.style.alignItems = 'center';
             controlsContainer.style.gap = '10px';
 
-            if (player.identity !== localUserIdentity && isAdmin) {
+            if (player.identity !== localUserIdentity && showDistances) {
                 const distSpan = document.createElement('span');
                 distSpan.className = 'distance-badge';
                 distSpan.id = `dist-${player.identity}`;
@@ -2888,7 +2891,7 @@
                 }
 
                 if (data.type === "MATCH_ROSTER") {
-                    buildRosterUI(data.players, data.localIdentity, data.roomLeader);
+                    buildRosterUI(data.players, data.localIdentity, data.roomLeader, data.debug);
                     return;
                 }
 
