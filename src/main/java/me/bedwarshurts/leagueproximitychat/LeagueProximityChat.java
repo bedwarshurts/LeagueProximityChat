@@ -369,6 +369,7 @@ public class LeagueProximityChat {
                             .put("apiKey", ConfigManager.getApiKey())
                             .put("apiSecret", ConfigManager.getApiSecret())
                             .put("lowPerformanceMode", ConfigManager.isLowPerformanceMode())
+                            .put("debugMode", ConfigManager.isDebugMode())
                             .toString().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
                     exchange.getResponseHeaders().set("Cache-Control", "no-store");
@@ -389,7 +390,8 @@ public class LeagueProximityChat {
                             json.optString("url", ""),
                             json.optString("apiKey", ""),
                             json.optString("apiSecret", ""),
-                            json.optBoolean("lowPerformanceMode", false));
+                            json.optBoolean("lowPerformanceMode", false),
+                            json.optBoolean("debugMode", false));
 
                     byte[] body = new JSONObject().put("ok", ok).toString().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
@@ -606,7 +608,7 @@ public class LeagueProximityChat {
         System.out.println("OpenCV loaded successfully.");
 
         if (DebugManager.isENABLED()) {
-            System.out.println("[Debug] LPC_DEBUG is set - debug images and verbose tracking logs enabled.");
+            System.out.println("[Debug] Debug mode active - debug images and verbose tracking logs enabled. This reduces performance.");
         }
 
         try {

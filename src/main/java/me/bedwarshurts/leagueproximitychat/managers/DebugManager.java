@@ -1,26 +1,31 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
-import lombok.Getter;
-
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
 public final class DebugManager {
 
-    @Getter private static final boolean ENABLED = "true".equalsIgnoreCase(System.getenv("LPC_DEBUG"))
+    private static final boolean ENV_UNLOCKED = "true".equalsIgnoreCase(System.getenv("LPC_DEBUG"))
             || "1".equals(System.getenv("LPC_DEBUG"));
 
-    static {
-        if (ENABLED) {
-            try {
-                System.out.println("Debug mode is enabled. This reduces performance.");
-                Files.createDirectories(Paths.get("debug"));
-            } catch (Exception e) {
-                System.err.println("[Debug] Could not create the debug directory: " + e.getMessage());
-            }
-        }
-    }
+    private static volatile boolean debugDirReady = false;
 
     private DebugManager() {
+    }
+
+    public static boolean isENABLED() {
+        if (!ENV_UNLOCKED || !ConfigManager.isDebugMode()) return false;
+        if (!debugDirReady) ensureDebugDir();
+        return true;
+    }
+
+    private static synchronized void ensureDebugDir() {
+        if (debugDirReady) return;
+        debugDirReady = true;
+        try {
+            Files.createDirectories(Paths.get("debug"));
+        } catch (Exception e) {
+            System.err.println("[Debug] Could not create the debug directory: " + e.getMessage());
+        }
     }
 }

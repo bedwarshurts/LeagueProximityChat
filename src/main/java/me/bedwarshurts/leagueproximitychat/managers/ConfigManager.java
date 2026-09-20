@@ -17,8 +17,9 @@ public final class ConfigManager {
     @Getter private static volatile String livekitUrl = "";
     @Getter private static volatile String apiKey = "";
     @Getter private static volatile String apiSecret = "";
-    /** Skips all play-of-the-game clip recording (screen capture + frame ring) to save CPU. */
+
     @Getter private static volatile boolean lowPerformanceMode = false;
+    @Getter private static volatile boolean debugMode = false;
 
     static {
         load();
@@ -46,12 +47,14 @@ public final class ConfigManager {
             apiKey = props.getProperty("livekit.apiKey", "").trim();
             apiSecret = props.getProperty("livekit.apiSecret", "").trim();
             lowPerformanceMode = Boolean.parseBoolean(props.getProperty("app.lowPerformanceMode", "false"));
+            debugMode = Boolean.parseBoolean(props.getProperty("app.debugMode", "false"));
         } catch (IOException e) {
             System.err.println("[Config] Failed to read " + CONFIG_FILE + ": " + e.getMessage());
         }
     }
 
-    public static synchronized boolean save(String url, String key, String secret, boolean lowPerformance) {
+    public static synchronized boolean save(String url, String key, String secret,
+                                            boolean lowPerformance, boolean debug) {
         String normalizedUrl = normalizeUrl(url);
         if (normalizedUrl.isBlank() || key.isBlank() || secret.isBlank()) {
             return false;
@@ -64,14 +67,16 @@ public final class ConfigManager {
             props.setProperty("livekit.apiKey", key.trim());
             props.setProperty("livekit.apiSecret", secret.trim());
             props.setProperty("app.lowPerformanceMode", String.valueOf(lowPerformance));
+            props.setProperty("app.debugMode", String.valueOf(debug));
             try (OutputStream out = Files.newOutputStream(CONFIG_FILE)) {
-                props.store(out, "League Proximity Chat - LiveKit credentials (must match your teammates')");
+                props.store(out, "League Proximity Chat - Settings");
             }
 
             livekitUrl = normalizedUrl;
             apiKey = key.trim();
             apiSecret = secret.trim();
             lowPerformanceMode = lowPerformance;
+            debugMode = debug;
             System.out.println("[Config] Settings saved to " + CONFIG_FILE
                     + (lowPerformance ? " (low performance mode ON - clip recording disabled)" : ""));
             return true;
