@@ -127,7 +127,8 @@
         .settings-btn:hover { border-color: rgba(200, 170, 110, 0.5); color: var(--ink-1); }
 
         #setup-screen { display: none; height: 100vh; align-items: center; justify-content: center; padding: 24px; }
-        .setup-card { width: min(560px, 94vw); padding: 26px 28px; display: flex; flex-direction: column; gap: 14px; }
+        /* settings */
+        .setup-card { width: min(1500px, 95vw); height: min(1400px, 100%); padding: 30px 38px; display: flex; flex-direction: column; gap: 14px; }
         .setup-text { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.55; }
         .setup-text a { color: var(--teal); }
         .setup-warning { color: var(--gold-soft); border: 1px solid var(--hairline); background: rgba(200, 170, 110, 0.06); padding: 10px 12px; border-radius: 2px; }
@@ -135,6 +136,45 @@
         .setup-input { padding: 10px 12px; font-family: var(--mono); font-size: 13px; color: var(--ink-1); background: rgba(3, 9, 16, 0.6); border: 1px solid var(--hairline); border-radius: 2px; outline: none; }
         .setup-input:focus { border-color: rgba(200, 170, 110, 0.55); }
         .setup-error { display: none; font-size: 12.5px; color: var(--danger); }
+        /* categories */
+        .setup-body { display: flex; flex: 1; min-height: 0; gap: 26px; }
+        .setup-tabs {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            width: 210px;
+            flex-shrink: 0;
+            padding-right: 14px;
+            border-right: 1px solid var(--hairline);
+        }
+        .setup-content { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 14px; max-width: 1000px; }
+
+        #setup-screen.onboarding .setup-card { width: min(560px, 94vw); height: auto; padding: 26px 28px; }
+        #setup-screen.onboarding .setup-tabs { display: none; }
+        #setup-screen.onboarding .setup-body { flex: 0 0 auto; }
+
+        #setup-screen.onboarding .setup-content { max-width: none; min-width: 0; }
+        #setup-screen.onboarding .setup-cat.active { flex: 0 0 auto; overflow-y: visible; }
+        .setup-tab {
+            padding: 11px 16px;
+            font-family: var(--display);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            text-align: left;
+            color: var(--ink-3);
+            background: transparent;
+            border: none;
+            border-left: 2px solid transparent;
+            border-radius: 0;
+            transition: color 0.15s, border-color 0.15s, background 0.15s;
+        }
+        .setup-tab:hover { color: var(--ink-1); background: rgba(200, 170, 110, 0.05); }
+        .setup-tab.active { color: var(--gold); border-left-color: var(--gold); background: rgba(200, 170, 110, 0.08); }
+        .setup-cat { display: none; flex-direction: column; gap: 14px; }
+
+        .setup-cat.active { display: flex; flex: 1; min-height: 0; overflow-y: auto; }
         .setup-toggle {
             display: flex;
             align-items: center;
@@ -178,7 +218,7 @@
         #endgame-screen.anim-out { opacity: 0; transform: translateY(18px); }
         #potg-intro.anim-out { opacity: 0; transform: scale(1.02); }
 
-        /* post-game greeting */
+        /* post game */
         #potg-intro { display: none; position: fixed; inset: 0; z-index: 62;
             background: radial-gradient(120% 90% at 50% 30%, #0c1a2e 0%, #060d17 60%, #03070d 100%);
             align-items: center; justify-content: center; padding: 32px; }
@@ -296,7 +336,6 @@
             transition: color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s, background 0.18s;
         }
 
-        /* diagonal sheen sweep; moved via transform so hovering never triggers layout */
         .potg-btn::before {
             content: '';
             position: absolute;
@@ -933,38 +972,68 @@
 
 <div id="setup-screen">
     <div class="panel setup-card">
-        <span class="section-label">Voice Server Setup</span>
-        <p class="setup-text">
-            Yowaimo's LeagueProximityChat needs a LiveKit server to carry voice between players. Create a free project at
-            <a href="https://cloud.livekit.io" target="_blank" rel="noreferrer">cloud.livekit.io</a>,
-            open <em>Settings &rarr; Keys</em>, and paste the project URL, API key and API secret below.
-            These values are saved locally on this computer only.
-        </p>
-        <p class="setup-text setup-warning">
-            Everyone who wants to play together must use the exact same three values
-        </p>
-        <label class="setup-label">Server URL
-            <input id="setup-url" class="setup-input" type="text" placeholder="https://your-project.livekit.cloud" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="setup-label">API Key
-            <input id="setup-key" class="setup-input" type="text" placeholder="APIxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="setup-label">API Secret
-            <input id="setup-secret" class="setup-input" type="password" placeholder="••••••••••••••••" autocomplete="off">
-        </label>
-        <div class="setup-toggle">
-            <span class="s-title">
-                Low Performance Mode
-                <span class="setting-hint">Turns off highlight clip recording to save CPU</span>
-            </span>
-            <label class="switch">
-                <input type="checkbox" id="setup-lowperf">
-                <span class="slider-track"></span>
+        <span class="section-label" id="setup-title">Settings</span>
+
+        <div class="setup-body">
+        <nav class="setup-tabs">
+            <button class="setup-tab" data-cat="general">General</button>
+            <button class="setup-tab" data-cat="voice">Voice Server</button>
+            <button class="setup-tab" data-cat="dev">Development</button>
+        </nav>
+
+        <div class="setup-content">
+        <div class="setup-cat" id="setup-cat-general">
+            <div class="setup-toggle">
+                <span class="s-title">
+                    Low Performance Mode
+                    <span class="setting-hint">Turns off highlight clip recording to save CPU</span>
+                </span>
+                <label class="switch">
+                    <input type="checkbox" id="setup-lowperf">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="setup-cat" id="setup-cat-voice">
+            <p class="setup-text">
+                Yowaimo's LeagueProximityChat needs a LiveKit server to carry voice between players. Create a free project at
+                <a href="https://cloud.livekit.io" target="_blank" rel="noreferrer">cloud.livekit.io</a>,
+                open <em>Settings &rarr; Keys</em>, and paste the project URL, API key and API secret below.
+                These values are saved locally on this computer only.
+            </p>
+            <p class="setup-text setup-warning">
+                Everyone who wants to play together must use the exact same three values
+            </p>
+            <label class="setup-label">Server URL
+                <input id="setup-url" class="setup-input" type="text" placeholder="https://your-project.livekit.cloud" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="setup-label">API Key
+                <input id="setup-key" class="setup-input" type="text" placeholder="APIxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="setup-label">API Secret
+                <input id="setup-secret" class="setup-input" type="password" placeholder="••••••••••••••••" autocomplete="off">
             </label>
         </div>
+
+        <div class="setup-cat" id="setup-cat-dev">
+            <div class="setup-toggle">
+                <span class="s-title">
+                    Debug Mode
+                    <span class="setting-hint">Saves annotated tracking images and verbose logs. Reduces performance.</span>
+                </span>
+                <label class="switch">
+                    <input type="checkbox" id="setup-debug">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+        </div>
+
         <div id="setup-error" class="setup-error"></div>
         <div class="setup-actions">
             <button id="setup-save" class="btn-primary">Save &amp; Continue</button>
+        </div>
+        </div>
         </div>
     </div>
 </div>
@@ -1125,12 +1194,29 @@
         document.getElementById('setup-secret').value = s.apiSecret || '';
         lowPerformanceMode = Boolean(s.lowPerformanceMode);
         document.getElementById('setup-lowperf').checked = lowPerformanceMode;
+        document.getElementById('setup-debug').checked = Boolean(s.debugMode);
     }
 
+    function selectSettingsCategory(cat) {
+        document.querySelectorAll('.setup-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+        document.querySelectorAll('.setup-cat').forEach(p => p.classList.toggle('active', p.id === `setup-cat-${cat}`));
+    }
+
+    document.querySelectorAll('.setup-tab').forEach(tab => {
+        tab.addEventListener('click', () => selectSettingsCategory(tab.dataset.cat));
+    });
+
     function showSetupScreen() {
+        const screen = document.getElementById('setup-screen');
+
+        const onboarding = !livekitConfigured;
+        screen.classList.toggle('onboarding', onboarding);
+        document.getElementById('setup-title').innerText = onboarding ? 'Voice Server Setup' : 'Settings';
         document.getElementById('setup-error').style.display = 'none';
+
+        selectSettingsCategory(onboarding ? 'voice' : 'general');
         document.getElementById('main-ui').style.display = 'none';
-        document.getElementById('setup-screen').style.display = 'flex';
+        screen.style.display = 'flex';
     }
 
     function hideSetupScreen() {
@@ -1154,9 +1240,11 @@
         const apiKey = document.getElementById('setup-key').value.trim();
         const apiSecret = document.getElementById('setup-secret').value.trim();
         const lowPerf = document.getElementById('setup-lowperf').checked;
+        const debugOn = document.getElementById('setup-debug').checked;
         const errorEl = document.getElementById('setup-error');
 
         if (!url || !apiKey || !apiSecret) {
+            selectSettingsCategory('voice');
             errorEl.innerText = 'All three fields are required.';
             errorEl.style.display = 'block';
             return;
@@ -1166,7 +1254,7 @@
             const resp = await fetch('/settings', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({url, apiKey, apiSecret, lowPerformanceMode: lowPerf})
+                body: JSON.stringify({url, apiKey, apiSecret, lowPerformanceMode: lowPerf, debugMode: debugOn})
             });
             const out = await resp.json();
             if (!out.ok) throw new Error('rejected');
@@ -1223,7 +1311,7 @@
     const potgAudio = { node: null, tapBus: null, chunks: [], clips: new Map() };
 
     function startPotgRecording() {
-        if (lowPerformanceMode) return; // no clips, so the voice ring would just burn memory
+        if (lowPerformanceMode) return;
         if (!audioCtx || potgAudio.node) return;
         try {
             const bus = audioCtx.createGain();
