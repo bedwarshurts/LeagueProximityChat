@@ -98,6 +98,8 @@ public final class PlayOfGameManager {
             }
         }
 
+        if (ConfigManager.isLowPerformanceMode()) return;
+
         String raw = RitoApiUtils.fetchAPI("https://127.0.0.1:2999/liveclientdata/eventdata");
         if (raw == null || raw.isEmpty()) return;
 

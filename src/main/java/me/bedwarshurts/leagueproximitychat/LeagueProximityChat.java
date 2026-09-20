@@ -368,6 +368,7 @@ public class LeagueProximityChat {
                             .put("url", ConfigManager.getLivekitUrl())
                             .put("apiKey", ConfigManager.getApiKey())
                             .put("apiSecret", ConfigManager.getApiSecret())
+                            .put("lowPerformanceMode", ConfigManager.isLowPerformanceMode())
                             .toString().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
                     exchange.getResponseHeaders().set("Cache-Control", "no-store");
@@ -387,7 +388,8 @@ public class LeagueProximityChat {
                     boolean ok = ConfigManager.save(
                             json.optString("url", ""),
                             json.optString("apiKey", ""),
-                            json.optString("apiSecret", ""));
+                            json.optString("apiSecret", ""),
+                            json.optBoolean("lowPerformanceMode", false));
 
                     byte[] body = new JSONObject().put("ok", ok).toString().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");

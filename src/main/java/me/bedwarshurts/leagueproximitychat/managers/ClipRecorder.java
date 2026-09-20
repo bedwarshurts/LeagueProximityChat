@@ -36,6 +36,7 @@ public final class ClipRecorder {
     }
 
     public static void record(Mat screenBgr) {
+        if (ConfigManager.isLowPerformanceMode()) return; // clip recording disabled by the user
         if (worker.getQueue().size() >= 60) return;
 
         Mat copy = screenBgr.clone();
