@@ -135,6 +135,16 @@
         .setup-input { padding: 10px 12px; font-family: var(--mono); font-size: 13px; color: var(--ink-1); background: rgba(3, 9, 16, 0.6); border: 1px solid var(--hairline); border-radius: 2px; outline: none; }
         .setup-input:focus { border-color: rgba(200, 170, 110, 0.55); }
         .setup-error { display: none; font-size: 12.5px; color: var(--danger); }
+        .setup-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 11px 13px;
+            border-radius: 2px;
+            background: rgba(3, 9, 16, 0.5);
+            border: 1px solid var(--hairline);
+        }
         .setup-actions { display: flex; gap: 10px; margin-top: 4px; }
         .setup-actions .btn-primary { flex: 1; }
         .setup-actions .btn-control { flex: 0 0 auto; padding: 0 26px; }
@@ -942,6 +952,16 @@
         <label class="setup-label">API Secret
             <input id="setup-secret" class="setup-input" type="password" placeholder="••••••••••••••••" autocomplete="off">
         </label>
+        <div class="setup-toggle">
+            <span class="s-title">
+                Low Performance Mode
+                <span class="setting-hint">Turns off highlight clip recording to save CPU</span>
+            </span>
+            <label class="switch">
+                <input type="checkbox" id="setup-lowperf">
+                <span class="slider-track"></span>
+            </label>
+        </div>
         <div id="setup-error" class="setup-error"></div>
         <div class="setup-actions">
             <button id="setup-save" class="btn-primary">Save &amp; Continue</button>
@@ -1011,6 +1031,8 @@
 <script>
     let LIVEKIT_URL = '';
     let livekitConfigured = false;
+
+    let lowPerformanceMode = false;
 
     const PROFILE_ICON_URL = (id) => `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/${id}.jpg`;
     const SPLASH_URL = (champ, skin) => `https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${champ}_${skin}.jpg`;
@@ -1101,6 +1123,8 @@
         document.getElementById('setup-url').value = s.url || '';
         document.getElementById('setup-key').value = s.apiKey || '';
         document.getElementById('setup-secret').value = s.apiSecret || '';
+        lowPerformanceMode = Boolean(s.lowPerformanceMode);
+        document.getElementById('setup-lowperf').checked = lowPerformanceMode;
     }
 
     function showSetupScreen() {
@@ -1129,6 +1153,7 @@
         const url = document.getElementById('setup-url').value.trim();
         const apiKey = document.getElementById('setup-key').value.trim();
         const apiSecret = document.getElementById('setup-secret').value.trim();
+        const lowPerf = document.getElementById('setup-lowperf').checked;
         const errorEl = document.getElementById('setup-error');
 
         if (!url || !apiKey || !apiSecret) {
@@ -1141,11 +1166,16 @@
             const resp = await fetch('/settings', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({url, apiKey, apiSecret})
+                body: JSON.stringify({url, apiKey, apiSecret, lowPerformanceMode: lowPerf})
             });
             const out = await resp.json();
             if (!out.ok) throw new Error('rejected');
             await fetchLivekitSettings();
+            // mid session switch
+            if (lowPerformanceMode) {
+                stopPotgVideoCapture();
+                stopPotgRecording();
+            }
             hideSetupScreen();
         } catch (e) {
             errorEl.innerText = 'Could not save the settings is the app still running?';
@@ -1193,6 +1223,7 @@
     const potgAudio = { node: null, tapBus: null, chunks: [], clips: new Map() };
 
     function startPotgRecording() {
+        if (lowPerformanceMode) return; // no clips, so the voice ring would just burn memory
         if (!audioCtx || potgAudio.node) return;
         try {
             const bus = audioCtx.createGain();
@@ -1285,7 +1316,6 @@
         return encodeWavPCM16(allL.subarray(startIdx, endIdx), allR.subarray(startIdx, endIdx), sr);
     }
 
-    // play of the game: 60fps screen capture
     const potgVideo = { stream: null, recorders: [], segments: [], lockedClips: new Map(), pendingMarks: [], active: false, onSegmentFinalized: null };
 
     const POTG_SEG_MS = 50000;
@@ -1365,6 +1395,10 @@
     }
 
     async function startPotgVideoCapture() {
+        if (lowPerformanceMode) {
+            potgLog('low performance mode is on - skipping highlight screen capture');
+            return;
+        }
         if (potgVideo.active || potgVideo.stream) return;
 
         try {
