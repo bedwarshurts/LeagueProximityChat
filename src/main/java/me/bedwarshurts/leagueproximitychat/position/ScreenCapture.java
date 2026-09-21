@@ -18,7 +18,6 @@ import java.awt.Rectangle;
 public final class ScreenCapture {
 
     private static final Pointer DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = Pointer.createConstant(-4);
-    private static final int CAPTUREBLT = 0x40000000;
 
     private static volatile boolean dpiContextSupported = true;
 
@@ -48,7 +47,7 @@ public final class ScreenCapture {
 
             HANDLE previous = GDI32.INSTANCE.SelectObject(memDc, bitmap);
             boolean copied = GDI32.INSTANCE.BitBlt(memDc, 0, 0, bounds.width, bounds.height,
-                    screenDc, bounds.x, bounds.y, GDI32.SRCCOPY | CAPTUREBLT);
+                    screenDc, bounds.x, bounds.y, GDI32.SRCCOPY);
             GDI32.INSTANCE.SelectObject(memDc, previous);
             if (!copied) return null;
 
