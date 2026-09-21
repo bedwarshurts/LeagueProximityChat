@@ -13,6 +13,7 @@ import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.managers.LogManager;
 import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
+import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
@@ -69,6 +70,7 @@ public class LeagueProximityChat {
 
     private static int gameEndFailureStreak = 0;
     private static final long GAME_END_CHECK_INTERVAL_MS = 2000;
+    private static final long PAUSE_CHECK_INTERVAL_MS = 500;
     private static final int GAME_END_FAILURE_THRESHOLD = 3;
 
     private static final double GAME_START_MIN_TIME = 1.0;
@@ -320,6 +322,11 @@ public class LeagueProximityChat {
         if (wasPaused) {
             System.out.println("League of Legends focused. Resuming tracking.");
             wasPaused = false;
+        }
+
+        if (PauseDetector.isPaused()) {
+            Thread.sleep(250);
+            return;
         }
 
         long startTime = System.currentTimeMillis();
@@ -630,6 +637,18 @@ public class LeagueProximityChat {
         });
         gameEndPoller.scheduleWithFixedDelay(LeagueProximityChat::pollGameEnd,
                 GAME_END_CHECK_INTERVAL_MS, GAME_END_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
+
+        ScheduledExecutorService pausePoller = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "pause-poller");
+            t.setDaemon(true);
+            return t;
+        });
+        pausePoller.scheduleWithFixedDelay(() -> {
+            try {
+                PauseDetector.poll(server);
+            } catch (Exception ignored) {
+            }
+        }, PAUSE_CHECK_INTERVAL_MS, PAUSE_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {

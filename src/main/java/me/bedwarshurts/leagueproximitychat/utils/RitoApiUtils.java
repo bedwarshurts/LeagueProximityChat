@@ -177,12 +177,17 @@ public final class RitoApiUtils {
         Path lockfile = getLockfilePath();
         if (lockfile == null) return null;
 
-        String[] lockfileParts = lockfile.toString().split(":");
-        String port = lockfileParts[2];
-        String password = lockfileParts[3];
-        String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
+        try {
+            String[] lockfileParts = Files.readString(lockfile).trim().split(":");
+            if (lockfileParts.length < 4) return null;
+            String port = lockfileParts[2];
+            String password = lockfileParts[3];
+            String base64Auth = Base64.getEncoder().encodeToString(("riot:" + password).getBytes());
 
-        return new LockfileAuth(port, password, base64Auth);
+            return new LockfileAuth(port, password, base64Auth);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public static byte[] getProfileIconImage(int iconId) {

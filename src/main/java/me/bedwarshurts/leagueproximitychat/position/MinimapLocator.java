@@ -197,7 +197,7 @@ public class MinimapLocator {
                     new Point(rect.x() - x0, rect.y() - y0),
                     new Point(rect.x() - x0 + rect.size(), rect.y() - y0 + rect.size()),
                     new Scalar(0, 255, 0), 2);
-            Imgcodecs.imwrite("debug/debug_minimap_lock.png", ctx);
+            Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_minimap_lock.png", ctx);
         } catch (Exception ignored) {
         } finally {
             if (ctx != null) ctx.release();

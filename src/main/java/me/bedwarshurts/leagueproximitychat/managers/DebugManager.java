@@ -1,7 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
 import lombok.Getter;
-import retrofit2.http.GET;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,13 +11,11 @@ public final class DebugManager {
     private static final boolean ENV_UNLOCKED = "true".equalsIgnoreCase(System.getenv("LPC_DEBUG"))
             || "1".equals(System.getenv("LPC_DEBUG"));
 
+    private static final boolean RUNNING_FROM_SOURCE = isRunningFromSource();
+
     private static volatile boolean debugDirReady = false;
 
     @Getter private static String debugDir = null;
-
-    private static final boolean isIntellij =
-            System.getProperty("idea.launcher.port") != null
-                    || System.getProperty("idea.launcher.bin.path") != null;
 
     private DebugManager() {
     }
@@ -29,21 +26,30 @@ public final class DebugManager {
         return true;
     }
 
+    private static boolean isRunningFromSource() {
+        try {
+            return Files.isDirectory(Paths.get(DebugManager.class.getProtectionDomain().getCodeSource().getLocation().toURI()));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private static synchronized void ensureDebugDir() {
         if (debugDirReady) return;
         debugDirReady = true;
         try {
-            String appData = System.getenv("APPDATA");
-            Path dir = (appData != null && !appData.isBlank())
-                    ? Paths.get(appData, "LeagueProximityChat", "debug")
-                    : Paths.get(System.getProperty("user.home"), ".leagueproximitychat", "debug");
-            
+            Path dir;
+            if (RUNNING_FROM_SOURCE) {
+                dir = Paths.get("debug").toAbsolutePath();
+            } else {
+                String appData = System.getenv("APPDATA");
+                dir = (appData != null && !appData.isBlank())
+                        ? Paths.get(appData, "LeagueProximityChat", "debug")
+                        : Paths.get(System.getProperty("user.home"), ".leagueproximitychat", "debug");
+            }
+
             Files.createDirectories(dir);
             debugDir = dir.toString();
-
-            Path debug = Paths.get("debug");
-            Files.createDirectories(debug);
-            if (isIntellij) debugDir = debug.toAbsolutePath().toString();
         } catch (Exception e) {
             System.err.println("[Debug] Could not create the debug directory: " + e.getMessage());
         }
