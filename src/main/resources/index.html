@@ -823,11 +823,12 @@
         }
         .btn-primary.is-waiting::before {
             background:
-                repeating-linear-gradient(-45deg, rgba(240, 178, 50, 0.08) 0 8px, transparent 8px 16px),
+                linear-gradient(-45deg, rgba(240, 178, 50, 0.08) 25%, transparent 25% 50%,
+                    rgba(240, 178, 50, 0.08) 50% 75%, transparent 75%) 0 0 / 22px 22px,
                 linear-gradient(180deg, #1d1708, #120e05);
             animation: march 1.2s linear infinite;
         }
-        @keyframes march { to { background-position: 22.6px 0, 0 0; } }
+        @keyframes march { to { background-position: 22px 0, 0 0; } }
 
         .controls-row { display: none; gap: 10px; }
         .btn-control {
