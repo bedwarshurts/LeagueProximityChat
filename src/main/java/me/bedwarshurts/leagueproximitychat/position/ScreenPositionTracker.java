@@ -247,8 +247,8 @@ public class ScreenPositionTracker {
         Mat minimapMat = new Mat(fullScreenMat, minimapRoi).clone();
 
         if (DebugManager.isENABLED()) {
-            Imgcodecs.imwrite("debug/debug_screen.png", fullScreenMat);
-            Imgcodecs.imwrite("debug/debug_minimap.png", minimapMat);
+            Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_screen.png", fullScreenMat);
+            Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_minimap.png", minimapMat);
             debugEnemyIndicators(minimapMat);
         }
 
@@ -418,7 +418,7 @@ public class ScreenPositionTracker {
                             new Point(4, 14), Imgproc.FONT_HERSHEY_SIMPLEX, 0.4, new Scalar(0, 255, 0), 1);
                 }
 
-                Imgcodecs.imwrite("debug/debug_health_location.png", debugHealthLoc);
+                Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_health_location.png", debugHealthLoc);
                 debugHealthLoc.release();
             }
 
@@ -629,7 +629,7 @@ public class ScreenPositionTracker {
             Mat patch = extractIconTemplate(minimap, a.center(), a.radius());
             if (patch == null) continue;
             double score = championMatchScore(patch);
-            saveTemplateDebug("debug/debug_extracted_icon_template_last.png", patch, score);
+            saveTemplateDebug(DebugManager.getDebugDir() + "/debug_extracted_icon_template_last.png", patch, score);
             patch.release();
 
             if (DebugManager.isENABLED()) System.out.printf("[bootstrap] candidate @(%.0f,%.0f) championMatch=%.2f%n",
@@ -686,7 +686,7 @@ public class ScreenPositionTracker {
 
         double validationScore = championMatchScore(core);
         System.out.printf("[bootstrap] Learned-vs-DDragon validation score: %.2f%n", validationScore);
-        saveTemplateDebug("debug/debug_extracted_icon_template_lock.png", core, validationScore);
+        saveTemplateDebug(DebugManager.getDebugDir() + "/debug_extracted_icon_template_lock.png", core, validationScore);
         saveLockContext(minimap, nearest, validationScore);
 
         if (lockedCoreTemplate != null) lockedCoreTemplate.release();
@@ -766,7 +766,7 @@ public class ScreenPositionTracker {
             Imgproc.circle(ctx, pick.center(), pick.radius(), new Scalar(0, 255, 0), 1);
             Imgproc.circle(ctx, pick.center(), 1, new Scalar(0, 0, 255), -1);
             drawCaption(ctx, score);
-            Imgcodecs.imwrite("debug/debug_lock_minimap.png", ctx);
+            Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_lock_minimap.png", ctx);
         } catch (Exception ignored) {
         } finally {
             ctx.release();
@@ -812,7 +812,7 @@ public class ScreenPositionTracker {
         double redRatio = redPixelCount / totalCheckedPixels;
 
         if (DebugManager.isENABLED()) {
-            Imgcodecs.imwrite("debug/debug_enemy_red_mask.png", redMask);
+            Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_enemy_red_mask.png", redMask);
         }
 
         roi.release();
@@ -843,7 +843,7 @@ public class ScreenPositionTracker {
         try {
             enemyRedMask(minimap, redMask);
             overlay.setTo(new Scalar(0, 255, 0), redMask);
-            Imgcodecs.imwrite("debug/debug_enemy_indicators.png", overlay);
+            Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_enemy_indicators.png", overlay);
         } finally {
             redMask.release();
             overlay.release();
@@ -1018,7 +1018,7 @@ public class ScreenPositionTracker {
                             new Point(bestBar.x + bestBar.width, bestBar.y + bestBar.height),
                             new Scalar(0, 0, 255), 2);
                 }
-                Imgcodecs.imwrite("debug/debug_health_mask.png", debugHealthMap);
+                Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_health_mask.png", debugHealthMap);
                 debugHealthMap.release();
             }
 
@@ -1104,7 +1104,7 @@ public class ScreenPositionTracker {
                 if (DebugManager.isENABLED()) {
                     Mat debugMask = Mat.zeros(thresholded.size(), CvType.CV_8UC1);
                     Imgproc.drawContours(debugMask, List.of(cameraContour), -1, new Scalar(255), 1);
-                    Imgcodecs.imwrite("debug/debug_camera_mask.png", debugMask);
+                    Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_camera_mask.png", debugMask);
                     debugMask.release();
 
                     Mat debugReconstructed = minimap.clone();
@@ -1117,14 +1117,14 @@ public class ScreenPositionTracker {
                     Imgproc.rectangle(debugReconstructed, topLeft, bottomRight, boxColor, 2);
                     Imgproc.circle(debugReconstructed, center, 2, boxColor, -1);
 
-                    Imgcodecs.imwrite("debug/debug_camera_reconstructed.png", debugReconstructed);
+                    Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_camera_reconstructed.png", debugReconstructed);
                     debugReconstructed.release();
                 }
 
                 return new CameraBox(center, Math.max(0, maxSeenCamW), Math.max(0, maxSeenCamH));
             } else {
                 if (DebugManager.isENABLED()) {
-                    Imgcodecs.imwrite("debug/debug_camera_mask.png", thresholded);
+                    Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_camera_mask.png", thresholded);
                 }
             }
 
@@ -1447,7 +1447,7 @@ public class ScreenPositionTracker {
                 this.lockedCoreTemplateEnhanced = null;
             }
 
-            if (DebugManager.isENABLED()) Imgcodecs.imwrite("debug/debug_locked_template.png", lockedCoreTemplate);
+            if (DebugManager.isENABLED()) Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_locked_template.png", lockedCoreTemplate);
             this.lockedBlipRadius = Math.max(1, globalBestSize / 2);
             this.isScaleLocked = true;
             this.lockedMatchFailures = 0;
@@ -1472,10 +1472,10 @@ public class ScreenPositionTracker {
             Core.inRange(hsv, new Scalar(80, 140, 200), new Scalar(115, 255, 255), mask);
 
             if (DebugManager.isENABLED()) {
-                Imgcodecs.imwrite("debug/debug_ally_mask.png", mask);
+                Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_ally_mask.png", mask);
             }
 
-            centers = circlesFromRingMask(minimap, mask, "debug/debug_ransac_raw.png");
+            centers = circlesFromRingMask(minimap, mask, DebugManager.getDebugDir() + "/debug_ransac_raw.png");
 
             if (DebugManager.isENABLED()) {
                 Mat debugDrawMap = minimap.clone();
@@ -1483,7 +1483,7 @@ public class ScreenPositionTracker {
                     Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(0, 255, 0), 2);
                     Imgproc.circle(debugDrawMap, c.center(), 2, new Scalar(0, 0, 255), -1);
                 }
-                Imgcodecs.imwrite("debug/debug_ally_centers.png", debugDrawMap);
+                Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_ally_centers.png", debugDrawMap);
                 debugDrawMap.release();
             }
 
@@ -1508,7 +1508,7 @@ public class ScreenPositionTracker {
                 for (AllyCircle c : centers) {
                     Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(0, 0, 255), 2);
                 }
-                Imgcodecs.imwrite("debug/debug_enemy_circles.png", debugDrawMap);
+                Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_enemy_circles.png", debugDrawMap);
                 debugDrawMap.release();
             }
         } finally {
@@ -1615,7 +1615,7 @@ public class ScreenPositionTracker {
                     currentX += crop.width();
                     roi.release();
                 }
-                Imgcodecs.imwrite("debug/debug_cropped_templates.png", spriteSheet);
+                Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_cropped_templates.png", spriteSheet);
                 spriteSheet.release();
             }
         }
@@ -1648,7 +1648,7 @@ public class ScreenPositionTracker {
                     Imgproc.FONT_HERSHEY_SIMPLEX, 0.35, boxColor, 1);
         }
 
-        Imgcodecs.imwrite("debug/debug_template_top10_match.png", top10Map);
+        Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_template_top10_match.png", top10Map);
         top10Map.release();
     }
 
@@ -1659,7 +1659,7 @@ public class ScreenPositionTracker {
         Point topLeft = new Point(centerX - (width / 2.0), centerY - (height / 2.0));
         Point bottomRight = new Point(topLeft.x + width, topLeft.y + height);
         Imgproc.rectangle(debugMap, topLeft, bottomRight, color, 2);
-        Imgcodecs.imwrite("debug/debug_template_match.png", debugMap);
+        Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_template_match.png", debugMap);
         debugMap.release();
     }
 

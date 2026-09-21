@@ -1,6 +1,10 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
+import lombok.Getter;
+import retrofit2.http.GET;
+
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public final class DebugManager {
@@ -9,6 +13,8 @@ public final class DebugManager {
             || "1".equals(System.getenv("LPC_DEBUG"));
 
     private static volatile boolean debugDirReady = false;
+
+    @Getter private static String debugDir = null;
 
     private DebugManager() {
     }
@@ -23,7 +29,17 @@ public final class DebugManager {
         if (debugDirReady) return;
         debugDirReady = true;
         try {
-            Files.createDirectories(Paths.get("debug"));
+            String appData = System.getenv("APPDATA");
+            Path dir = (appData != null && !appData.isBlank())
+                    ? Paths.get(appData, "LeagueProximityChat", "debug")
+                    : Paths.get(System.getProperty("user.home"), ".leagueproximitychat", "debug");
+            
+            Files.createDirectories(dir);
+            debugDir = dir.toString();
+
+            Path debug = Paths.get("debug");
+            Files.createDirectories(debug);
+            // debugDir = debug.toAbsolutePath().toString();
         } catch (Exception e) {
             System.err.println("[Debug] Could not create the debug directory: " + e.getMessage());
         }
