@@ -16,6 +16,10 @@ public final class DebugManager {
 
     @Getter private static String debugDir = null;
 
+    private static final boolean isIntellij =
+            System.getProperty("idea.launcher.port") != null
+                    || System.getProperty("idea.launcher.bin.path") != null;
+
     private DebugManager() {
     }
 
@@ -39,7 +43,7 @@ public final class DebugManager {
 
             Path debug = Paths.get("debug");
             Files.createDirectories(debug);
-            // debugDir = debug.toAbsolutePath().toString();
+            if (isIntellij) debugDir = debug.toAbsolutePath().toString();
         } catch (Exception e) {
             System.err.println("[Debug] Could not create the debug directory: " + e.getMessage());
         }
