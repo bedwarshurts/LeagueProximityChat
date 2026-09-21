@@ -924,6 +924,7 @@
             </div>
         </div>
         <div class="hud-status">
+            <div id="pause-status" class="status loading" style="display: none;">Game Paused: Everyone Can Hear Each Other</div>
             <div id="ws-status" class="status error">Position Tracker: Disconnected</div>
             <div id="lk-status" class="status error">Audio Server: Waiting for token...</div>
             <button id="debug-btn" class="settings-btn" title="Debug logs" style="display: none;">🐞</button>
@@ -1162,6 +1163,7 @@
 
     let hasReceivedPosition = false;
     let positionGateActive = false;
+    let gamePaused = false;
 
     let micMuted = false;
     let isDeafened = false;
@@ -2377,6 +2379,7 @@
         positionGateActive = false;
         krispProcessor = null;
         locallyMuted.clear();
+        setGamePaused(false);
         if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
 
         const startBtn = document.getElementById('start-btn');
@@ -2694,15 +2697,30 @@
     function updateRemoteAudio(identity) {
         if (!audioCtx) return;
         const nodeData = remoteAudioNodes[identity];
-        const remotePos = remotePositions[identity];
-        if (!nodeData || !remotePos) return;
-
-        const distance = Math.hypot(remotePos.x - localPosition.x, remotePos.y - localPosition.y);
+        if (!nodeData) return;
 
         const maxDist = 11;
         const fullDist = 3.0;
         const maxVolume = 2.0;
         const falloffExp = 0.6;
+
+        if (gamePaused) {
+            const t0 = audioCtx.currentTime;
+            nodeData.panner.positionX.setTargetAtTime(localPosition.x, t0, 0.1);
+            nodeData.panner.positionY.setTargetAtTime(0, t0, 0.1);
+            nodeData.panner.positionZ.setTargetAtTime(localPosition.y, t0, 0.1);
+            const pausedVolume = locallyMuted.has(identity) ? 0 : maxVolume * (playerVolumes[identity] ?? 1);
+            nodeData.gain.gain.setTargetAtTime(pausedVolume, t0, 0.1);
+            return;
+        }
+
+        const remotePos = remotePositions[identity];
+        if (!remotePos) {
+            nodeData.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+            return;
+        }
+
+        const distance = Math.hypot(remotePos.x - localPosition.x, remotePos.y - localPosition.y);
 
         let volume;
         if (distance >= maxDist) {
@@ -2733,6 +2751,12 @@
                 distSpan.style.color = (distance <= maxDist) ? "#0ac8b9" : "#6b7585";
             }
         }
+    }
+
+    function setGamePaused(paused) {
+        gamePaused = paused;
+        document.getElementById('pause-status').style.display = paused ? '' : 'none';
+        Object.keys(remoteAudioNodes).forEach(updateRemoteAudio);
     }
 
     function cleanupRemoteAudio(identity) {
@@ -2978,6 +3002,11 @@
                 if (data.type === "GAME_ENDED") {
                     maybeShowPlayOfGame();
                     resetToIdleState();
+                    return;
+                }
+
+                if (data.type === "GAME_PAUSED") {
+                    setGamePaused(Boolean(data.paused));
                     return;
                 }
 
@@ -3276,7 +3305,9 @@
                 if (playerRow) {
                     let isAudible = false;
 
-                    if (participant.isSpeaking && !locallyMuted.has(participant.identity) && !isDeafened) {
+                    if (participant.isSpeaking && !locallyMuted.has(participant.identity) && !isDeafened && gamePaused) {
+                        isAudible = true;
+                    } else if (participant.isSpeaking && !locallyMuted.has(participant.identity) && !isDeafened) {
 
                         const remotePos = remotePositions[participant.identity];
                         if (remotePos) {
