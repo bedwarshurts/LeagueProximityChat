@@ -2367,6 +2367,7 @@
         try { if (room) room.disconnect(); } catch (e) {}
 
         Object.keys(remoteAudioNodes).forEach(cleanupRemoteAudio);
+        Object.keys(remotePositions).forEach(identity => delete remotePositions[identity]);
         localPosition.x = 0;
         localPosition.y = 0;
         localPosition.isDead = false;
@@ -2710,7 +2711,7 @@
             nodeData.panner.positionX.setTargetAtTime(localPosition.x, t0, 0.1);
             nodeData.panner.positionY.setTargetAtTime(0, t0, 0.1);
             nodeData.panner.positionZ.setTargetAtTime(localPosition.y, t0, 0.1);
-            const pausedVolume = locallyMuted.has(identity) ? 0 : maxVolume * (playerVolumes[identity] ?? 1);
+            const pausedVolume = (locallyMuted.has(identity) || !remotePositions[identity]) ? 0 : maxVolume * (playerVolumes[identity] ?? 1);
             nodeData.gain.gain.setTargetAtTime(pausedVolume, t0, 0.1);
             return;
         }
@@ -2850,12 +2851,13 @@
         }
     }
 
-    function clearPositionGateStatus() {
+    function updatePositionGateStatus() {
+        if (!connected) return;
         const lk = document.getElementById('lk-status');
-        if (connected && lk.innerText.includes('Muted until')) {
-            lk.className = 'status success';
-            lk.innerText = 'Audio Server: Connected';
-        }
+        lk.className = positionGateActive ? 'status loading' : 'status success';
+        lk.innerText = positionGateActive
+            ? 'Audio Server: Connected - Position not yet detected'
+            : 'Audio Server: Connected';
     }
 
     document.getElementById('mute-btn').addEventListener('click', async () => {
@@ -3086,6 +3088,15 @@
                     return;
                 }
 
+                if (data.x !== undefined && data.y !== undefined && data.detected === false) {
+                    const coordEl = document.getElementById('local-coords');
+                    if (coordEl) {
+                        coordEl.innerText = 'Running initial detection';
+                        coordEl.style.color = '';
+                    }
+                    return;
+                }
+
                 if (data.x !== undefined && data.y !== undefined) {
                     localPosition.x = Number(data.x);
                     localPosition.y = Number(data.y);
@@ -3111,7 +3122,7 @@
 
                             applyMicState();
                             applyOutputState();
-                            clearPositionGateStatus();
+                            updatePositionGateStatus();
                         }
                     }
 
@@ -3306,7 +3317,7 @@
                 if (playerRow) {
                     let isAudible = false;
 
-                    if (participant.isSpeaking && !locallyMuted.has(participant.identity) && !isDeafened && gamePaused) {
+                    if (participant.isSpeaking && !locallyMuted.has(participant.identity) && !isDeafened && gamePaused && remotePositions[participant.identity]) {
                         isAudible = true;
                     } else if (participant.isSpeaking && !locallyMuted.has(participant.identity) && !isDeafened) {
 
@@ -3337,7 +3348,8 @@
             statusEl.innerText = 'Audio Server: Connecting…';
 
             hasReceivedPosition = false;
-            positionGateActive = false;
+            positionGateActive = true;
+            applyOutputState();
 
             initializeFreshRoom();
 
@@ -3358,7 +3370,7 @@
             micMuted = false;
             isDeafened = false;
             micMutedBeforeDeafen = false;
-            if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
+            applyOutputState();
             updateVoiceButtonsUI();
             showVoiceControls(true);
 
@@ -3370,12 +3382,14 @@
             await applyKrispState();
             startPotgRecording();
 
-            if (!hasReceivedPosition) {
-                positionGateActive = true;
+            if (positionGateActive) {
+                updatePositionGateStatus();
                 await applyMicState();
                 applyOutputState();
-                statusEl.className = 'status loading';
-                statusEl.innerText = 'Audio Server: Connected - Muted until your position is detected';
+                if (!positionGateActive) {
+                    await applyMicState();
+                    applyOutputState();
+                }
             }
             return true;
 

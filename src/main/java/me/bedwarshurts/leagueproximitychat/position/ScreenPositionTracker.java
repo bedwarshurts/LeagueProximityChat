@@ -35,6 +35,7 @@ public class ScreenPositionTracker {
 
     private float lastKnownX = 0f;
     private float lastKnownY = 0f;
+    private boolean positionDetected = false;
 
     private float healthBarCalibrateX = 0.0f;
     private float healthBarCalibrateY = 0.0f;
@@ -124,7 +125,7 @@ public class ScreenPositionTracker {
     private float anchorOffsetX = 0f;
     private float anchorOffsetY = 0f;
 
-    public record TrackResult(float x, float y, boolean isDead) {
+    public record TrackResult(float x, float y, boolean isDead, boolean detected) {
     }
 
     public record TemplateMatch(Point center, double score, double rawScore) {
@@ -410,6 +411,7 @@ public class ScreenPositionTracker {
                 debugHealthLoc.release();
             }
 
+            positionDetected = true;
             result = anchored(lastKnownX, lastKnownY, false);
 
         } else if (champMapCenter != null) {
@@ -418,6 +420,7 @@ public class ScreenPositionTracker {
             this.lastKnownY = 100f - (((float) champMapCenter.y / perfectMapSize) * 100f);
 
             if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+            positionDetected = true;
             result = anchored(lastKnownX, lastKnownY, false);
 
         } else {
@@ -433,7 +436,7 @@ public class ScreenPositionTracker {
     }
 
     private TrackResult anchored(float x, float y, boolean isDead) {
-        return new TrackResult(x + anchorOffsetX, y + anchorOffsetY, isDead);
+        return new TrackResult(x + anchorOffsetX, y + anchorOffsetY, isDead, positionDetected);
     }
 
     private void runCalibrationUpdate(Point healthBarCenter, Point champMapCenter, CameraBox cameraBox,

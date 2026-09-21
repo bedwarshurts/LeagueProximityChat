@@ -132,9 +132,9 @@ public class CoordinateServer extends WebSocketServer {
         }
     }
 
-    public void broadcastCoordinates(double x, double y, boolean isDead) {
+    public void broadcastCoordinates(double x, double y, boolean isDead, boolean detected) {
         if (hasActiveConnection()) {
-            String payload = String.format(Locale.US, "{\"x\":%f, \"y\":%f, \"isDead\":%b}", x, y, isDead);
+            String payload = String.format(Locale.US, "{\"x\":%f, \"y\":%f, \"isDead\":%b, \"detected\":%b}", x, y, isDead, detected);
             activeConnection.send(payload);
         }
     }
