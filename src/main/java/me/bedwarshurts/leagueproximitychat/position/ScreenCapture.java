@@ -1,4 +1,4 @@
-package me.bedwarshurts.leagueproximitychat.utils;
+package me.bedwarshurts.leagueproximitychat.position;
 
 import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
@@ -8,6 +8,7 @@ import com.sun.jna.platform.win32.WinDef.HBITMAP;
 import com.sun.jna.platform.win32.WinDef.HDC;
 import com.sun.jna.platform.win32.WinGDI;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
+import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;

@@ -6,7 +6,6 @@ import me.bedwarshurts.leagueproximitychat.utils.ImageUtils;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.MathUtils;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
-import me.bedwarshurts.leagueproximitychat.utils.ScreenCapture;
 import org.jetbrains.annotations.Nullable;
 import org.opencv.core.*;
 import org.opencv.core.Point;
