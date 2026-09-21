@@ -135,6 +135,8 @@
         .setup-label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--ink-1); }
         .setup-input { padding: 10px 12px; font-family: var(--mono); font-size: 13px; color: var(--ink-1); background: rgba(3, 9, 16, 0.6); border: 1px solid var(--hairline); border-radius: 2px; outline: none; }
         .setup-input:focus { border-color: rgba(200, 170, 110, 0.55); }
+        .setup-select { width: min(360px, 55%); cursor: pointer; text-overflow: ellipsis; }
+        .setup-select option { background: #0a1523; color: var(--ink-1); }
         .setup-error { display: none; font-size: 12.5px; color: var(--danger); }
         /* categories */
         .setup-body { display: flex; flex: 1; min-height: 0; gap: 26px; }
@@ -995,6 +997,13 @@
                     <span class="slider-track"></span>
                 </label>
             </div>
+            <div class="setup-toggle">
+                <span class="s-title">
+                    Microphone
+                    <span class="setting-hint">The input your voice is sent from</span>
+                </span>
+                <select id="setup-mic" class="setup-input setup-select"></select>
+            </div>
         </div>
 
         <div class="setup-cat" id="setup-cat-voice">
@@ -1172,6 +1181,15 @@
     let masterGain = null;
     let krispProcessor = null;
     let krispEnabled = localStorage.getItem('krispEnabled') !== 'false';
+
+    const MIC_DEVICE_KEY = 'micDeviceId';
+    const MIC_LABEL_KEY = 'micDeviceLabel';
+    let micDeviceId = '';
+    let micDeviceLabel = '';
+    try {
+        micDeviceId = localStorage.getItem(MIC_DEVICE_KEY) || '';
+        micDeviceLabel = localStorage.getItem(MIC_LABEL_KEY) || '';
+    } catch (e) {}
     const locallyMuted = new Set();
     const playerVolumes = (() => {
         try { return JSON.parse(localStorage.getItem('playerVolumes')) || {}; } catch (e) { return {}; }
@@ -1200,6 +1218,94 @@
         document.getElementById('setup-debug').checked = Boolean(s.debugMode);
     }
 
+    async function listMicrophones() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return [];
+        const audioInputs = async () => (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+        let inputs = await audioInputs();
+        if (inputs.length > 0 && inputs.every(d => !d.label)) {
+            try {
+                const probe = await navigator.mediaDevices.getUserMedia({audio: true});
+                probe.getTracks().forEach(t => t.stop());
+                inputs = await audioInputs();
+            } catch (e) {}
+        }
+        return inputs.filter(d => d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    }
+
+    function matchSavedMic(mics) {
+        if (!micDeviceId) return null;
+        return mics.find(d => d.deviceId === micDeviceId)
+            || (micDeviceLabel ? mics.find(d => d.label === micDeviceLabel) : null)
+            || null;
+    }
+
+    async function resolveMicDeviceId() {
+        if (!micDeviceId) return '';
+        try {
+            const match = matchSavedMic(await listMicrophones());
+            return match ? match.deviceId : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    async function populateMicSelect() {
+        const select = document.getElementById('setup-mic');
+        const pending = select.options.length ? select.value : null;
+        let mics = [];
+        try { mics = await listMicrophones(); } catch (e) {}
+        const saved = matchSavedMic(mics);
+
+        select.innerHTML = '';
+        select.add(new Option('System default', ''));
+        mics.forEach((d, i) => {
+            const opt = new Option(d.label || `Microphone ${i + 1}`, d.deviceId);
+            opt.dataset.label = d.label || '';
+            select.add(opt);
+        });
+        if (micDeviceId && !saved) {
+            const opt = new Option(`${micDeviceLabel || 'Saved microphone'} (not connected)`, micDeviceId);
+            opt.dataset.label = micDeviceLabel;
+            select.add(opt);
+        }
+
+        const values = Array.from(select.options).map(o => o.value);
+        if (pending !== null && values.includes(pending)) select.value = pending;
+        else select.value = saved ? saved.deviceId : micDeviceId;
+    }
+
+    async function saveMicrophoneChoice() {
+        const select = document.getElementById('setup-mic');
+        if (!select.options.length) return;
+        const option = select.selectedOptions[0];
+        const id = select.value;
+        const changed = id !== micDeviceId;
+        micDeviceId = id;
+        micDeviceLabel = id && option ? (option.dataset.label || '') : '';
+        try {
+            localStorage.setItem(MIC_DEVICE_KEY, micDeviceId);
+            localStorage.setItem(MIC_LABEL_KEY, micDeviceLabel);
+        } catch (e) {}
+        if (changed && room && connected) await switchLiveMicrophone();
+    }
+
+    async function switchLiveMicrophone() {
+        try {
+            const id = await resolveMicDeviceId();
+            await room.switchActiveDevice('audioinput', id || 'default');
+            retapPotgMic();
+            console.log('[Mic] Switched microphone.');
+        } catch (e) {
+            console.warn('[Mic] Could not switch microphone:', e);
+        }
+    }
+
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', () => {
+            if (document.getElementById('setup-screen').style.display === 'flex') populateMicSelect();
+        });
+    }
+
     function selectSettingsCategory(cat) {
         document.querySelectorAll('.setup-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
         document.querySelectorAll('.setup-cat').forEach(p => p.classList.toggle('active', p.id === `setup-cat-${cat}`));
@@ -1220,6 +1326,7 @@
         selectSettingsCategory(onboarding ? 'voice' : 'general');
         document.getElementById('main-ui').style.display = 'none';
         screen.style.display = 'flex';
+        if (!onboarding) populateMicSelect();
     }
 
     function hideSetupScreen() {
@@ -1262,6 +1369,7 @@
             const out = await resp.json();
             if (!out.ok) throw new Error('rejected');
             await fetchLivekitSettings();
+            await saveMicrophoneChoice();
             // mid session switch
             if (lowPerformanceMode) {
                 stopPotgVideoCapture();
@@ -1311,7 +1419,21 @@
     });
 
     // play of the game
-    const potgAudio = { node: null, tapBus: null, chunks: [], clips: new Map() };
+    const potgAudio = { node: null, tapBus: null, micSrc: null, chunks: [], clips: new Map() };
+
+    function retapPotgMic() {
+        if (!audioCtx || !potgAudio.tapBus || !room) return;
+        try { if (potgAudio.micSrc) potgAudio.micSrc.disconnect(); } catch (e) {}
+        potgAudio.micSrc = null;
+        try {
+            const pubs = Array.from(room.localParticipant.audioTrackPublications.values());
+            const track = pubs.length > 0 ? pubs[0].track : null;
+            if (track) {
+                potgAudio.micSrc = audioCtx.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
+                potgAudio.micSrc.connect(potgAudio.tapBus);
+            }
+        } catch (e) {}
+    }
 
     function startPotgRecording() {
         if (lowPerformanceMode) return;
@@ -1319,14 +1441,8 @@
         try {
             const bus = audioCtx.createGain();
             if (masterGain) masterGain.connect(bus);
-            try {
-                const pubs = Array.from(room.localParticipant.audioTrackPublications.values());
-                const track = pubs.length > 0 ? pubs[0].track : null;
-                if (track) {
-                    const micSrc = audioCtx.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
-                    micSrc.connect(bus);
-                }
-            } catch (e) {}
+            potgAudio.tapBus = bus;
+            retapPotgMic();
 
 
             const proc = audioCtx.createScriptProcessor(4096, 2, 2);
@@ -1352,8 +1468,10 @@
     function stopPotgRecording() {
         try { if (potgAudio.node) potgAudio.node.disconnect(); } catch (e) {}
         try { if (potgAudio.tapBus) potgAudio.tapBus.disconnect(); } catch (e) {}
+        try { if (potgAudio.micSrc) potgAudio.micSrc.disconnect(); } catch (e) {}
         potgAudio.node = null;
         potgAudio.tapBus = null;
+        potgAudio.micSrc = null;
         potgAudio.chunks = [];
     }
 
@@ -3157,7 +3275,7 @@
         };
     }
 
-    function initializeFreshRoom() {
+    function initializeFreshRoom(micId) {
         if (room) {
             room.removeAllListeners();
             try { room.disconnect(); } catch (e) {}
@@ -3170,7 +3288,8 @@
                 echoCancellation: false,
                 noiseSuppression: false,
                 voiceIsolation: false,
-                autoGainControl: false
+                autoGainControl: false,
+                ...(micId ? {deviceId: micId} : {})
             }
         });
 
@@ -3272,6 +3391,8 @@
         if (window.voiceInterval) clearInterval(window.voiceInterval);
 
         let localAnalyser = null;
+        let localAnalyserSource = null;
+        let localAnalyserTrack = null;
         let localDataArray = null;
 
         window.voiceInterval = setInterval(() => {
@@ -3284,12 +3405,14 @@
                     const pubs = Array.from(room.localParticipant.audioTrackPublications.values());
                     if (pubs.length > 0 && pubs[0].track && pubs[0].track.mediaStreamTrack) {
                         try {
-                            if (!localAnalyser) {
-                                const stream = new MediaStream([pubs[0].track.mediaStreamTrack]);
-                                const source = audioCtx.createMediaStreamSource(stream);
+                            const micTrack = pubs[0].track.mediaStreamTrack;
+                            if (!localAnalyser || localAnalyserTrack !== micTrack) {
+                                try { if (localAnalyserSource) localAnalyserSource.disconnect(); } catch (e) {}
+                                localAnalyserSource = audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
+                                localAnalyserTrack = micTrack;
                                 localAnalyser = audioCtx.createAnalyser();
                                 localAnalyser.fftSize = 256;
-                                source.connect(localAnalyser);
+                                localAnalyserSource.connect(localAnalyser);
                                 localDataArray = new Uint8Array(localAnalyser.frequencyBinCount);
                             }
                             localAnalyser.getByteFrequencyData(localDataArray);
@@ -3351,7 +3474,8 @@
             positionGateActive = true;
             applyOutputState();
 
-            initializeFreshRoom();
+            const micId = await resolveMicDeviceId();
+            initializeFreshRoom(micId);
 
             await room.connect(LIVEKIT_URL, token);
             connected = true;
@@ -3377,7 +3501,13 @@
             if (localUserIdentity) updatePlayerStatus(localUserIdentity, "Connected", "status-connected");
 
             await ensurePlaybackUnlocked();
-            await room.localParticipant.setMicrophoneEnabled(true);
+            try {
+                await room.localParticipant.setMicrophoneEnabled(true);
+            } catch (e) {
+                if (!micId) throw e;
+                console.warn('[Mic] Selected microphone could not be opened - using the system default.', e);
+                await room.localParticipant.setMicrophoneEnabled(true, {deviceId: 'default'});
+            }
 
             await applyKrispState();
             startPotgRecording();
