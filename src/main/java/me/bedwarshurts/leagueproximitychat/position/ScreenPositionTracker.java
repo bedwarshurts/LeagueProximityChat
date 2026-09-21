@@ -6,16 +6,13 @@ import me.bedwarshurts.leagueproximitychat.utils.ImageUtils;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.MathUtils;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
-import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
+import me.bedwarshurts.leagueproximitychat.utils.ScreenCapture;
 import org.jetbrains.annotations.Nullable;
 import org.opencv.core.*;
 import org.opencv.core.Point;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
-import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -23,7 +20,7 @@ import java.util.regex.Pattern;
 
 public class ScreenPositionTracker {
 
-    private Robot robot;
+    private final ScreenCapture screenCapture = new ScreenCapture();
     private float userMinimapScale;
     private Mat championTemplate;
     private Mat lockedCoreTemplate = null;
@@ -147,19 +144,13 @@ public class ScreenPositionTracker {
     }
 
     public ScreenPositionTracker(Mat championTemplate) {
-        try {
-            this.robot = new Robot();
-            LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
-            this.userMinimapScale = settings.getMinimapScale();
-            this.isColorblind = settings.isColorblind();
-            this.championTemplate = championTemplate;
-            this.minimapLocator = MinimapLocator.create();
-            if (DebugManager.isENABLED()) System.out.println("[constructor] Tracker initialized. Target Health Bar Color: "
-                    + (this.isColorblind ? "YELLOW" : "GREEN"));
-        } catch (AWTException e) {
-            System.err.println("[constructor] Failed to initialize Java Robot API");
-            System.err.println("[constructor] Stacktrace: " + e.getMessage());
-        }
+        LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
+        this.userMinimapScale = settings.getMinimapScale();
+        this.isColorblind = settings.isColorblind();
+        this.championTemplate = championTemplate;
+        this.minimapLocator = MinimapLocator.create();
+        if (DebugManager.isENABLED()) System.out.println("[constructor] Tracker initialized. Target Health Bar Color: "
+                + (this.isColorblind ? "YELLOW" : "GREEN"));
     }
 
     public TrackResult trackPlayerPosition() {
@@ -174,13 +165,11 @@ public class ScreenPositionTracker {
             return anchored(lastKnownX, lastKnownY, true);
         }
 
-        Rectangle gameBounds = WindowUtils.getGameWindowBounds("League of Legends (TM) Client");
+        Mat fullScreenMat = screenCapture.captureWindowClient("League of Legends (TM) Client");
 
-        if (gameBounds == null) {
+        if (fullScreenMat == null) {
             return anchored(lastKnownX, lastKnownY, false);
         }
-
-        Mat fullScreenMat = captureScreen(gameBounds);
 
         if (fullScreenMat.width() != cachedResolutionWidth) {
             cachedGameCrop = null;
@@ -1661,19 +1650,6 @@ public class ScreenPositionTracker {
         Imgproc.rectangle(debugMap, topLeft, bottomRight, color, 2);
         Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_template_match.png", debugMap);
         debugMap.release();
-    }
-
-    private Mat captureScreen(Rectangle bounds) {
-        BufferedImage rawImg = robot.createScreenCapture(bounds);
-        BufferedImage bgrImg = new BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_3BYTE_BGR);
-        Graphics2D g = bgrImg.createGraphics();
-        g.drawImage(rawImg, 0, 0, null);
-        g.dispose();
-
-        byte[] pixels = ((DataBufferByte) bgrImg.getRaster().getDataBuffer()).getData();
-        Mat mat = new Mat(bounds.height, bounds.width, CvType.CV_8UC3);
-        mat.put(0, 0, pixels);
-        return mat;
     }
 
     public void release() {

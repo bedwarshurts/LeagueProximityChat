@@ -1,6 +1,7 @@
 package me.bedwarshurts.leagueproximitychat.utils;
 
 import com.sun.jna.Native;
+import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinDef.RECT;
@@ -14,6 +15,8 @@ public final class WindowUtils {
         CustomUser32 INSTANCE = Native.load("user32", CustomUser32.class, W32APIOptions.DEFAULT_OPTIONS);
 
         boolean ClientToScreen(HWND hWnd, POINT lpPoint);
+
+        Pointer SetThreadDpiAwarenessContext(Pointer dpiContext);
     }
 
     public static boolean isWindowFocused(String windowTitleTarget) {

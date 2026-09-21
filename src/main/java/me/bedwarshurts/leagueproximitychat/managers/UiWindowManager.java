@@ -5,6 +5,10 @@ import me.friwi.jcefmaven.CefAppBuilder;
 import org.cef.CefApp;
 import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
+import org.cef.browser.CefFrame;
+import org.cef.callback.CefContextMenuParams;
+import org.cef.callback.CefMenuModel;
+import org.cef.handler.CefContextMenuHandlerAdapter;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
@@ -40,6 +44,7 @@ public class UiWindowManager {
             builder.getCefSettings().cache_path = profileDir;
             builder.getCefSettings().root_cache_path = profileDir;
             builder.addJcefArgs(
+                    "--do-not-de-elevate",
                     "--enable-media-stream",
                     "--use-fake-ui-for-media-stream",
                     "--autoplay-policy=no-user-gesture-required",
@@ -52,6 +57,13 @@ public class UiWindowManager {
 
             cefApp = builder.build();
             CefClient client = cefApp.createClient();
+            client.addContextMenuHandler(new CefContextMenuHandlerAdapter() {
+                @Override
+                public void onBeforeContextMenu(CefBrowser browser, CefFrame frame,
+                                                CefContextMenuParams params, CefMenuModel model) {
+                    model.clear();
+                }
+            });
             browser = client.createBrowser(APP_URL, false, false);
 
             SwingUtilities.invokeAndWait(() -> {
