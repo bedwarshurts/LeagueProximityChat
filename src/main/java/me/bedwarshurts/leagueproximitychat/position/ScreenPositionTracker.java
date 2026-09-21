@@ -101,6 +101,10 @@ public class ScreenPositionTracker {
     private static final double ALLY_MIN_RADIUS_FACTOR = 0.025;
     private static final double ALLY_MAX_RADIUS_FACTOR = 0.10;
 
+    private static final double TEAM_FRAMES_HEIGHT_FACTOR = 0.16;
+    private static final double TEAM_FRAMES_WIDTH_FACTOR = 0.25;
+    private static final double HEALTH_BAR_FRAME_MAX_RATIO = 0.45;
+
     private static final double OCCLUSION_MIN_VISIBLE_FRACTION = 0.25;
     private static final int OCCLUSION_JITTER_PX = 3;
 
@@ -241,7 +245,7 @@ public class ScreenPositionTracker {
             debugEnemyIndicators(minimapMat);
         }
 
-        Point healthBarCenter = locateSelfHealthBar(fullScreenMat);
+        Point healthBarCenter = locateSelfHealthBar(fullScreenMat, minimapRoi);
 
         CameraBox cameraBox = (healthBarCenter != null) ? locateMinimapCameraBox(minimapMat, fullScreenMat.width(), fullScreenMat.height()) : null;
 
@@ -936,7 +940,40 @@ public class ScreenPositionTracker {
         return playerBlock.contains("\"isDead\":true");
     }
 
-    private Point locateSelfHealthBar(Mat screen) {
+    private static Rect teamFramesZone(Mat screen, Rect minimapRoi) {
+        int width = screen.width();
+        int height = screen.height();
+        int top = Math.max(0, (int) (minimapRoi.y - height * TEAM_FRAMES_HEIGHT_FACTOR));
+        int left;
+        int right;
+        if (minimapRoi.x + minimapRoi.width / 2.0 > width / 2.0) {
+            left = (int) Math.clamp(minimapRoi.x - width * 0.01, 0, width * (1.0 - TEAM_FRAMES_WIDTH_FACTOR));
+            right = width;
+        } else {
+            left = 0;
+            right = (int) Math.clamp(minimapRoi.x + minimapRoi.width + width * 0.01, width * TEAM_FRAMES_WIDTH_FACTOR, width);
+        }
+        return new Rect(left, top, right - left, height - top);
+    }
+
+    private static boolean hasDarkFrameAbove(Mat hsv, Rect bar) {
+        if (bar.y <= 0) return true;
+        Mat inside = new Mat(hsv, bar);
+        double insideV = Core.mean(inside).val[2];
+        inside.release();
+        if (insideV <= 0) return false;
+
+        int rows = Math.max(3, (int) Math.round(hsv.rows() * 0.0025));
+        double darkestRowV = Double.MAX_VALUE;
+        for (int dy = 1; dy <= rows && bar.y - dy >= 0; dy++) {
+            Mat row = new Mat(hsv, new Rect(bar.x, bar.y - dy, bar.width, 1));
+            darkestRowV = Math.min(darkestRowV, Core.mean(row).val[2]);
+            row.release();
+        }
+        return darkestRowV / insideV < HEALTH_BAR_FRAME_MAX_RATIO;
+    }
+
+    private Point locateSelfHealthBar(Mat screen, Rect minimapRoi) {
         Mat hsv = new Mat();
         Mat mask = new Mat();
         Mat hierarchy = new Mat();
@@ -953,6 +990,8 @@ public class ScreenPositionTracker {
             int hudTopY = (int) (screen.height() * 0.75);
             Imgproc.rectangle(mask, new Point(0, hudTopY), new Point(screen.width(), screen.height()), new Scalar(0), -1);
             Imgproc.rectangle(mask, new Point(screen.width() * 0.85, 0), new Point(screen.width(), screen.height() * 0.10), new Scalar(0), -1);
+            Rect teamFrames = teamFramesZone(screen, minimapRoi);
+            Imgproc.rectangle(mask, teamFrames.tl(), teamFrames.br(), new Scalar(0), -1);
 
             int openSize = Math.max(1, (int) (screen.height() * 0.002));
             int closeWidth = Math.max(3, (int) (screen.width() * 0.005));
@@ -969,6 +1008,7 @@ public class ScreenPositionTracker {
 
             Rect bestBar = null;
             double bestDistance = Double.MAX_VALUE;
+            List<Rect> rejectedSmallBars = new ArrayList<>();
 
             double minHeight = screen.height() * 0.003;
             double maxHeight = screen.height() * 0.020;
@@ -983,6 +1023,10 @@ public class ScreenPositionTracker {
                     double aspectRatio = rect.width / (double) rect.height;
 
                     if (extent > 0.55 && (aspectRatio > 2.5 || rect.width < 30)) {
+                        if (rect.width < 30 && !hasDarkFrameAbove(hsv, rect)) {
+                            rejectedSmallBars.add(rect);
+                            continue;
+                        }
                         double centerX = rect.x + (rect.width / 2.0);
                         double centerY = rect.y + (rect.height / 2.0);
                         double distToCenter = Math.pow(centerX - (screen.width() / 2.0), 2)
@@ -1003,6 +1047,10 @@ public class ScreenPositionTracker {
             if (DebugManager.isENABLED()) {
                 Mat debugHealthMap = new Mat();
                 Imgproc.cvtColor(mask, debugHealthMap, Imgproc.COLOR_GRAY2BGR);
+                Imgproc.rectangle(debugHealthMap, teamFrames.tl(), teamFrames.br(), new Scalar(90, 90, 90), 2);
+                for (Rect rejected : rejectedSmallBars) {
+                    Imgproc.rectangle(debugHealthMap, rejected.tl(), rejected.br(), new Scalar(0, 200, 255), 1);
+                }
                 if (bestBar != null) {
                     Imgproc.rectangle(debugHealthMap,
                             new Point(bestBar.x, bestBar.y),
