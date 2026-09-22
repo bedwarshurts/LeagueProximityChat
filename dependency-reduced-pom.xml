@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>me.bedwarshurts</groupId>
   <artifactId>leagueproximitychat</artifactId>
-  <version>3.7.9-SNAPSHOT</version>
+  <version>4.0.0-SNAPSHOT</version>
   <build>
     <resources>
       <resource>
@@ -21,6 +21,31 @@
       </resource>
     </resources>
     <plugins>
+      <plugin>
+        <groupId>io.github.git-commit-id</groupId>
+        <artifactId>git-commit-id-maven-plugin</artifactId>
+        <version>10.0.1</version>
+        <executions>
+          <execution>
+            <id>git-build-info</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>revision</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <generateGitPropertiesFile>false</generateGitPropertiesFile>
+          <failOnNoGitDirectory>false</failOnNoGitDirectory>
+          <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
+          <abbrevLength>7</abbrevLength>
+          <includeOnlyProperties>
+            <includeOnlyProperty>^git.total.commit.count$</includeOnlyProperty>
+            <includeOnlyProperty>^git.commit.id.abbrev$</includeOnlyProperty>
+            <includeOnlyProperty>^git.dirty$</includeOnlyProperty>
+          </includeOnlyProperties>
+        </configuration>
+      </plugin>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.14.0</version>

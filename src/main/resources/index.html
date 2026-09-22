@@ -184,7 +184,7 @@
         }
         .setup-tab:hover { color: var(--ink-1); background: rgba(200, 170, 110, 0.05); }
         .setup-tab.active { color: var(--gold); border-left-color: var(--gold); background: rgba(200, 170, 110, 0.08); }
-        .setup-version { margin-top: auto; display: flex; align-items: center; height: 48px; padding: 0 16px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+        .setup-version { margin-top: auto; display: flex; flex-direction: column; justify-content: center; gap: 3px; height: 48px; padding: 0 16px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
         .setup-cat { display: none; flex-direction: column; gap: 14px; }
 
         .setup-cat.active { display: flex; flex: 1; min-height: 0; overflow-y: auto; }
@@ -1257,7 +1257,18 @@
         lowPerformanceMode = Boolean(s.lowPerformanceMode);
         document.getElementById('setup-lowperf').checked = lowPerformanceMode;
         document.getElementById('setup-debug').checked = Boolean(s.debugMode);
-        document.getElementById('setup-version').innerText = s.version ? `Version: ${s.version}` : '';
+        const versionEl = document.getElementById('setup-version');
+        versionEl.replaceChildren();
+        if (s.version) {
+            const versionLine = document.createElement('span');
+            versionLine.textContent = `Version: ${s.version}`;
+            versionEl.append(versionLine);
+            if (s.build) {
+                const buildLine = document.createElement('span');
+                buildLine.textContent = s.build;
+                versionEl.append(buildLine);
+            }
+        }
     }
 
     async function listMicrophones() {

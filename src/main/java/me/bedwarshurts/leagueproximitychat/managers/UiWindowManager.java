@@ -134,7 +134,7 @@ public class UiWindowManager {
             menu.addSeparator();
             menu.add(quit);
 
-            trayIcon = new TrayIcon(image, WINDOW_TITLE + " " + AppInfo.version(), menu);
+            trayIcon = new TrayIcon(image, WINDOW_TITLE + " " + AppInfo.fullVersion(), menu);
             trayIcon.setImageAutoSize(true);
             trayIcon.addMouseListener(new MouseAdapter() {
                 @Override

@@ -406,6 +406,7 @@ public class LeagueProximityChat {
                             .put("lowPerformanceMode", ConfigManager.isLowPerformanceMode())
                             .put("debugMode", ConfigManager.isDebugMode())
                             .put("version", AppInfo.version())
+                            .put("build", AppInfo.buildLabel())
                             .toString().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
                     exchange.getResponseHeaders().set("Cache-Control", "no-store");
@@ -639,6 +640,7 @@ public class LeagueProximityChat {
 
     public static void main(String[] args) {
         LogManager.install();
+        System.out.println("LeagueProximityChat " + AppInfo.fullVersion());
 
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
