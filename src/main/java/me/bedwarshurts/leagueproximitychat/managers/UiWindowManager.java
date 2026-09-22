@@ -1,5 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
+import me.bedwarshurts.leagueproximitychat.utils.AppInfo;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.friwi.jcefmaven.CefAppBuilder;
 import org.cef.CefApp;
@@ -10,17 +11,27 @@ import org.cef.callback.CefContextMenuParams;
 import org.cef.callback.CefMenuModel;
 import org.cef.handler.CefContextMenuHandlerAdapter;
 
+import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.WindowConstants;
 import java.awt.Dimension;
+import java.awt.Frame;
+import java.awt.Image;
+import java.awt.MenuItem;
+import java.awt.PopupMenu;
 import java.awt.Rectangle;
+import java.awt.SystemTray;
 import java.awt.Toolkit;
+import java.awt.TrayIcon;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.file.Paths;
 
 public class UiWindowManager {
@@ -32,6 +43,7 @@ public class UiWindowManager {
     private CefApp cefApp;
     private CefBrowser browser;
     private JFrame frame;
+    private TrayIcon trayIcon;
 
     public boolean launch() {
         try {
@@ -88,6 +100,7 @@ public class UiWindowManager {
                 frame.setVisible(true);
             });
 
+            installTrayIcon();
             System.out.println("[UiWindow] Standalone UI window started (embedded Chromium).");
             return true;
         } catch (Throwable t) {
@@ -105,14 +118,63 @@ public class UiWindowManager {
         return Paths.get(System.getProperty("user.home"), ".leagueproximitychat", "jcef-bundle").toFile();
     }
 
+    private void installTrayIcon() {
+        if (!SystemTray.isSupported()) return;
+        try (InputStream in = UiWindowManager.class.getResourceAsStream("/tray-icon.png")) {
+            if (in == null) return;
+            Image image = ImageIO.read(in);
+
+            PopupMenu menu = new PopupMenu();
+            MenuItem show = new MenuItem("Show LeagueProximityChat");
+            show.addActionListener(e -> showWindow());
+            MenuItem quit = new MenuItem("Quit");
+            quit.addActionListener(e -> quitApp());
+            menu.add(show);
+            menu.addSeparator();
+            menu.add(quit);
+
+            trayIcon = new TrayIcon(image, WINDOW_TITLE + " " + AppInfo.version(), menu);
+            trayIcon.setImageAutoSize(true);
+            trayIcon.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getButton() == MouseEvent.BUTTON1) showWindow();
+                }
+            });
+            SystemTray.getSystemTray().add(trayIcon);
+        } catch (Exception e) {
+            System.err.println("[UiWindow] Could not add the tray icon: " + e.getMessage());
+        }
+    }
+
+    public void showWindow() {
+        SwingUtilities.invokeLater(() -> {
+            if (frame == null) return;
+            frame.setAlwaysOnTop(false);
+            if ((frame.getExtendedState() & Frame.ICONIFIED) != 0) {
+                frame.setExtendedState(frame.getExtendedState() & ~Frame.ICONIFIED);
+            }
+            frame.setVisible(true);
+            frame.toFront();
+            frame.requestFocus();
+        });
+    }
+
+    private void quitApp() {
+        System.out.println("[UiWindow] Closing the app.");
+        if (frame != null) frame.setVisible(false);
+        new Thread(() -> System.exit(0), "app-close").start();
+    }
+
     private void handleCloseRequest() {
         String[] options = {"Keep in Background", "Close Completely"};
         int choice = JOptionPane.showOptionDialog(
                 frame,
                 """
                         Keep League Proximity Chat running in the background?
-                        You can bring this window back at any time with Shift+F8.
-                        
+                        You can bring this window back at any time with Shift+F8
+                        or by clicking its icon in the system tray.
+
                         """,
                 WINDOW_TITLE,
                 JOptionPane.YES_NO_OPTION,
@@ -122,9 +184,7 @@ public class UiWindowManager {
                 options[0]);
 
         if (choice == 1) {
-            System.out.println("[UiWindow] Closing the app.");
-            frame.setVisible(false);
-            new Thread(() -> System.exit(0), "app-close").start();
+            quitApp();
         } else if (choice == 0) {
             frame.setVisible(false);
         }
@@ -165,6 +225,10 @@ public class UiWindowManager {
 
     public void shutdown() {
         try {
+            if (trayIcon != null) {
+                SystemTray.getSystemTray().remove(trayIcon);
+                trayIcon = null;
+            }
             if (frame != null) {
                 JFrame f = frame;
                 frame = null;
