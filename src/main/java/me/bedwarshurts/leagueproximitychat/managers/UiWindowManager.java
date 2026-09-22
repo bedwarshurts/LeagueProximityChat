@@ -39,6 +39,7 @@ public class UiWindowManager {
     private static final String WINDOW_TITLE = "League of Legends Proximity Chat";
     private static final String GAME_WINDOW_TITLE = "League of Legends (TM) Client";
     private static final String APP_URL = "http://localhost:8000";
+    private static final long EXIT_TIMEOUT_MS = 5000;
 
     private CefApp cefApp;
     private CefBrowser browser;
@@ -162,8 +163,30 @@ public class UiWindowManager {
 
     private void quitApp() {
         System.out.println("[UiWindow] Closing the app.");
+        removeTrayIcon();
         if (frame != null) frame.setVisible(false);
-        new Thread(() -> System.exit(0), "app-close").start();
+        new Thread(() -> {
+            Thread watchdog = new Thread(() -> {
+                try {
+                    Thread.sleep(EXIT_TIMEOUT_MS);
+                } catch (InterruptedException ignored) {
+                }
+                System.err.println("[UiWindow] Shutdown is taking too long - forcing exit.");
+                Runtime.getRuntime().halt(0);
+            }, "exit-watchdog");
+            watchdog.setDaemon(true);
+            watchdog.start();
+            System.exit(0);
+        }, "app-close").start();
+    }
+
+    private void removeTrayIcon() {
+        if (trayIcon == null) return;
+        try {
+            SystemTray.getSystemTray().remove(trayIcon);
+        } catch (Exception ignored) {
+        }
+        trayIcon = null;
     }
 
     private void handleCloseRequest() {
@@ -225,10 +248,6 @@ public class UiWindowManager {
 
     public void shutdown() {
         try {
-            if (trayIcon != null) {
-                SystemTray.getSystemTray().remove(trayIcon);
-                trayIcon = null;
-            }
             if (frame != null) {
                 JFrame f = frame;
                 frame = null;
