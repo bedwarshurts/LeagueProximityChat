@@ -165,10 +165,10 @@ jobs:
             exit 0
           fi
           {
-            echo "Automatic test build of commit [${GITHUB_SHA::7}](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA). Not a stable release."
+            echo "Dev build of commit [${GITHUB_SHA::7}](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)."
             if [ -n "$COMMIT_MESSAGE" ]; then
               echo
-              echo "**Change:** ${COMMIT_MESSAGE%%$'\n'*}"
+              echo "${COMMIT_MESSAGE%%$'\n'*}"
             fi
           } > notes.md
           gh release create "$TAG" release_files/* \
