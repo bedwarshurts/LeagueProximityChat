@@ -184,6 +184,7 @@
         }
         .setup-tab:hover { color: var(--ink-1); background: rgba(200, 170, 110, 0.05); }
         .setup-tab.active { color: var(--gold); border-left-color: var(--gold); background: rgba(200, 170, 110, 0.08); }
+        .setup-version { margin-top: auto; display: flex; align-items: center; height: 48px; padding: 0 16px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
         .setup-cat { display: none; flex-direction: column; gap: 14px; }
 
         .setup-cat.active { display: flex; flex: 1; min-height: 0; overflow-y: auto; }
@@ -1004,6 +1005,7 @@
             <button class="setup-tab" data-cat="general">General</button>
             <button class="setup-tab" data-cat="voice">Voice Server</button>
             <button class="setup-tab" data-cat="dev">Development</button>
+            <span class="setup-version" id="setup-version"></span>
         </nav>
 
         <div class="setup-content">
@@ -1247,6 +1249,7 @@
         lowPerformanceMode = Boolean(s.lowPerformanceMode);
         document.getElementById('setup-lowperf').checked = lowPerformanceMode;
         document.getElementById('setup-debug').checked = Boolean(s.debugMode);
+        document.getElementById('setup-version').innerText = s.version ? `Version: ${s.version}` : '';
     }
 
     async function listMicrophones() {
