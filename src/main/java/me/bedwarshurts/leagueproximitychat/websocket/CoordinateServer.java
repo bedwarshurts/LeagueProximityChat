@@ -29,6 +29,7 @@ public class CoordinateServer extends WebSocketServer {
             activeConnection.close(1000, "Replaced by a newer tab.");
         }
         activeConnection = conn;
+        LeagueProximityChat.sendConfigWarning();
     }
 
     @Override
@@ -70,6 +71,11 @@ public class CoordinateServer extends WebSocketServer {
 
                 if ("CLIENT_LOG".equals(type)) {
                     System.out.println("[Client] " + json.optString("msg", ""));
+                    return;
+                }
+
+                if ("WARNING_ACK".equals(type)) {
+                    LeagueProximityChat.acknowledgeWarning(json.optString("id"));
                     return;
                 }
 

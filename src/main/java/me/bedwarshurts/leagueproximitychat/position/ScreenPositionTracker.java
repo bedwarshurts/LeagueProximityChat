@@ -28,6 +28,7 @@ public class ScreenPositionTracker {
     private boolean isScaleLocked = false;
     private boolean isBootstrapped = false;
     private boolean isColorblind = false;
+    private LeagueConfigReader.Warning configWarning = null;
 
     private int maxSeenCamW = 0;
     private int maxSeenCamH = 0;
@@ -151,10 +152,15 @@ public class ScreenPositionTracker {
         LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
         this.userMinimapScale = settings.getMinimapScale();
         this.isColorblind = settings.isColorblind();
+        this.configWarning = settings.getWarning();
         this.championTemplate = championTemplate;
         this.minimapLocator = MinimapLocator.create();
         if (DebugManager.isENABLED()) System.out.println("[constructor] Tracker initialized. Target Health Bar Color: "
                 + (this.isColorblind ? "YELLOW" : "GREEN"));
+    }
+
+    public LeagueConfigReader.Warning getConfigWarning() {
+        return configWarning;
     }
 
     public TrackResult trackPlayerPosition() {

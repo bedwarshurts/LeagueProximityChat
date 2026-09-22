@@ -16,6 +16,7 @@ import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
+import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
@@ -64,6 +65,8 @@ public class LeagueProximityChat {
     @Setter private static String detectedChampion = null;
 
     private static ScreenPositionTracker tracker = null;
+    private static volatile LeagueConfigReader.Warning configWarning = null;
+    private static final String CONFIG_WARNING_ID = "league-settings";
     private static CoordinateServer server = null;
     private static OverlayManager overlay = null;
     private static UiWindowManager uiWindow = null;
@@ -74,6 +77,24 @@ public class LeagueProximityChat {
     private static final int GAME_END_FAILURE_THRESHOLD = 3;
 
     private static final double GAME_START_MIN_TIME = 1.0;
+
+    public static void sendConfigWarning() {
+        LeagueConfigReader.Warning warning = configWarning;
+        if (server != null && warning != null) {
+            server.sendToActive(new JSONObject()
+                    .put("type", "WARNING")
+                    .put("id", CONFIG_WARNING_ID)
+                    .put("title", "League Settings")
+                    .put("message", warning.message())
+                    .put("items", new JSONArray(warning.settingsToChange()))
+                    .put("footer", warning.footer() == null ? JSONObject.NULL : warning.footer())
+                    .toString());
+        }
+    }
+
+    public static void acknowledgeWarning(String id) {
+        if (CONFIG_WARNING_ID.equals(id)) configWarning = null;
+    }
 
     public static LeaguePlayer findLocalPlayer(LeagueGame gameData, String localSummonerName) {
         for (LeaguePlayer p : gameData.players()) {
@@ -177,6 +198,7 @@ public class LeagueProximityChat {
         hasSentRoster = false;
         hasConnectedToLiveKit = false;
         isTrackerReady = false;
+        configWarning = null;
         wasPaused = false;
         detectedChampion = null;
         roomLeaderRiotId = null;
@@ -309,6 +331,11 @@ public class LeagueProximityChat {
 
             tracker = new ScreenPositionTracker(championTemplate);
             isTrackerReady = true;
+            configWarning = tracker.getConfigWarning();
+            if (configWarning != null) {
+                System.err.println("[Config] " + configWarning.toLogLine());
+                sendConfigWarning();
+            }
             System.out.println("Starting position tracking.");
         }
 
