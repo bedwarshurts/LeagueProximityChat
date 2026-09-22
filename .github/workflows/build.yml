@@ -71,7 +71,31 @@ jobs:
           Write-Host "Using $($wix.FullName)"
           "$($wix.FullName)\bin" >> $env:GITHUB_PATH
 
-      - name: Package the installer with jpackage
+      - name: Find the Windows SDK tools
+        shell: pwsh
+        run: |
+          foreach ($tool in "mt", "signtool") {
+            $exe = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter "$tool.exe" |
+              Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $exe) { throw "$tool.exe not found." }
+            "$($tool.ToUpper())=$($exe.FullName)" >> $env:GITHUB_ENV
+          }
+
+      - name: Load the signing certificate
+        shell: pwsh
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
+        run: |
+          if (-not $env:SIGNING_CERT_BASE64) {
+            if ("${{ steps.meta.outputs.is_release }}" -eq "true") { throw "Signing secrets are not set up - refusing to publish an unsigned release." }
+            Write-Host "::warning::Signing secrets are not set up - this test build is unsigned."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          "SIGNING_PFX=$pfx" >> $env:GITHUB_ENV
+
+      - name: Build the app image with jpackage
         shell: pwsh
         run: |
           $jar = Get-ChildItem target -Filter "leagueproximitychat-*.jar" | Where-Object { $_.Name -notlike "original-*" } | Select-Object -First 1
@@ -79,57 +103,87 @@ jobs:
           New-Item -ItemType Directory -Force build_input | Out-Null
           Copy-Item $jar.FullName build_input/
           jpackage `
-            --type exe `
+            --type app-image `
             --name "$env:APP_NAME" `
             --app-version "${{ steps.meta.outputs.version }}" `
             --vendor "Fate Sealed" `
             --input build_input `
             --main-jar $jar.Name `
             --main-class "$env:MAIN_CLASS" `
+            --dest build_image `
+            --icon packaging/icon.ico
+          if ($LASTEXITCODE -ne 0) { throw "jpackage failed." }
+
+      - name: Make the app require admin privileges
+        shell: pwsh
+        run: |
+          # Only the execution level changes; the launcher's other manifest settings (DPI awareness etc.) are kept.
+          $launcher = Get-Item "build_image/$env:APP_NAME/$env:APP_NAME.exe"
+          $manifest = Join-Path $env:RUNNER_TEMP "launcher.manifest"
+          & $env:MT -nologo "-inputresource:$($launcher.FullName);#1" "-out:$manifest"
+          if ($LASTEXITCODE -ne 0) { throw "Reading the launcher manifest failed." }
+          $content = Get-Content $manifest -Raw
+          if ($content -notmatch 'level="asInvoker"') { throw "Unexpected launcher manifest:`n$content" }
+          [IO.File]::WriteAllText($manifest, ($content -replace 'level="asInvoker"', 'level="requireAdministrator"'))
+          $launcher.IsReadOnly = $false
+          & $env:MT -nologo -manifest $manifest "-outputresource:$($launcher.FullName);#1"
+          if ($LASTEXITCODE -ne 0) { throw "Embedding the launcher manifest failed." }
+
+      - name: Sign the app launcher
+        if: env.SIGNING_PFX != ''
+        shell: pwsh
+        env:
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          $launcher = "build_image/$env:APP_NAME/$env:APP_NAME.exe"
+          & $env:SIGNTOOL sign /f $env:SIGNING_PFX /p $env:SIGNING_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 `
+            /d "$env:APP_NAME" /du "https://github.com/${{ github.repository }}" $launcher
+          if ($LASTEXITCODE -ne 0) { throw "Signing failed." }
+          (Get-Item $launcher).IsReadOnly = $true
+
+      - name: Package the installer with jpackage
+        shell: pwsh
+        run: |
+          jpackage `
+            --type exe `
+            --app-image "build_image/$env:APP_NAME" `
+            --name "$env:APP_NAME" `
+            --app-version "${{ steps.meta.outputs.version }}" `
+            --vendor "Fate Sealed" `
             --dest build_output `
             --icon packaging/icon.ico `
+            --resource-dir packaging/jpackage `
             --win-upgrade-uuid "$env:UPGRADE_UUID" `
             --win-shortcut `
             --win-menu
           if ($LASTEXITCODE -ne 0) { throw "jpackage failed." }
+          $jar = Get-ChildItem build_input -Filter "*.jar" | Select-Object -First 1
           Copy-Item $jar.FullName "build_output/$env:APP_NAME-${{ steps.meta.outputs.version }}.jar"
 
       - name: Add require admin perms manifest to the installer
         shell: pwsh
         run: |
           $installer = Get-ChildItem build_output -Filter "*.exe" | Select-Object -First 1
-          $mt = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter mt.exe |
-            Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $mt) { throw "mt.exe not found." }
-          & $mt.FullName -nologo -manifest packaging/installer.manifest "-outputresource:$($installer.FullName);#1"
+          & $env:MT -nologo -manifest packaging/installer.manifest "-outputresource:$($installer.FullName);#1"
           if ($LASTEXITCODE -ne 0) { throw "Embedding the manifest failed." }
 
       - name: Sign the installer
+        if: env.SIGNING_PFX != ''
         shell: pwsh
         env:
-          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: |
           $installer = Get-ChildItem build_output -Filter "*.exe" | Select-Object -First 1
-          if (-not $env:SIGNING_CERT_BASE64) {
-            if ("${{ steps.meta.outputs.is_release }}" -eq "true") { throw "Signing secrets are not set up - refusing to publish an unsigned release." }
-            Write-Host "::warning::Signing secrets are not set up - this test build is unsigned."
-            exit 0
-          }
-          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
-          try {
-            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
-            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-              Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
-            if (-not $signtool) { throw "signtool.exe not found." }
-            & $signtool.FullName sign /f $pfx /p $env:SIGNING_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 `
-              /d "$env:APP_NAME" /du "https://github.com/${{ github.repository }}" $installer.FullName
-            if ($LASTEXITCODE -ne 0) { throw "Signing failed." }
-          } finally {
-            if (Test-Path $pfx) { Remove-Item $pfx -Force }
-          }
+          & $env:SIGNTOOL sign /f $env:SIGNING_PFX /p $env:SIGNING_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 `
+            /d "$env:APP_NAME" /du "https://github.com/${{ github.repository }}" $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Signing failed." }
           $signature = Get-AuthenticodeSignature $installer.FullName
           Write-Host "Signed by: $($signature.SignerCertificate.Subject)"
+
+      - name: Remove the signing certificate
+        if: always() && env.SIGNING_PFX != ''
+        shell: pwsh
+        run: Remove-Item $env:SIGNING_PFX -Force -ErrorAction SilentlyContinue
 
       - name: Name the files
         shell: pwsh
