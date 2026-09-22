@@ -25,6 +25,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       build: ${{ steps.meta.outputs.build }}
       is_release: ${{ steps.meta.outputs.is_release }}
+      is_snapshot: ${{ steps.meta.outputs.is_snapshot }}
     steps:
       - name: Check out
         uses: actions/checkout@v5
@@ -54,6 +55,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "build=$build" >> $env:GITHUB_OUTPUT
           "is_release=$($isRelease.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "is_snapshot=$($isSnapshot.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           Write-Host "pom.xml version $pomVersion -> version $version, build $build, stable release: $isRelease"
 
       - name: Build the jar
@@ -285,3 +287,28 @@ jobs:
             ARGS+=(--notes-start-tag "$PREVIOUS")
           fi
           gh release create "$VERSION" release_files/* "${ARGS[@]}"
+
+  maven-package:
+    needs: build
+    if: github.ref == 'refs/heads/master' && (needs.build.outputs.is_snapshot == 'true' || needs.build.outputs.is_release == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Publish the jar to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mvn -B deploy -DskipTests
