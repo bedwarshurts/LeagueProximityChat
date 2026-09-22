@@ -1,4 +1,4 @@
-package me.bedwarshurts.leagueproximitychat.utils;
+package me.bedwarshurts.leagueproximitychat.app;
 
 import java.io.InputStream;
 import java.util.Properties;

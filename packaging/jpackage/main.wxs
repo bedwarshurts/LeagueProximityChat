@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- JDK 21 jpackage's default main.wxs, plus the LaunchApp custom action that starts the app after installing. -->
+<!-- JDK 21 jpackage's default main.wxs, with LaunchApp custom action -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
 

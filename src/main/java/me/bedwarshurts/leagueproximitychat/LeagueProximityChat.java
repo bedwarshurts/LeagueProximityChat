@@ -16,7 +16,7 @@ import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
-import me.bedwarshurts.leagueproximitychat.utils.AppInfo;
+import me.bedwarshurts.leagueproximitychat.app.AppInfo;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;

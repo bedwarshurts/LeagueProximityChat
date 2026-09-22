@@ -1,8 +1,11 @@
 package me.bedwarshurts.leagueproximitychat.utils;
 
 import lombok.Getter;
+import me.bedwarshurts.leagueproximitychat.app.AppIcon;
 
+import javax.swing.JDialog;
 import javax.swing.JFileChooser;
+import java.awt.Component;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
@@ -126,7 +129,14 @@ public final class LeagueConfigReader {
     }
 
     private static File promptUserForConfigDirectory() {
-        JFileChooser fileChooser = new JFileChooser();
+        JFileChooser fileChooser = new JFileChooser() {
+            @Override
+            protected JDialog createDialog(Component parent) {
+                JDialog dialog = super.createDialog(parent);
+                dialog.setIconImage(AppIcon.image());
+                return dialog;
+            }
+        };
         fileChooser.setDialogTitle("Select your League of Legends 'Config' folder");
         fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         fileChooser.setAcceptAllFileFilterUsed(false);

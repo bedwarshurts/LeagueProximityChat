@@ -1,6 +1,7 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
-import me.bedwarshurts.leagueproximitychat.utils.AppInfo;
+import me.bedwarshurts.leagueproximitychat.app.AppIcon;
+import me.bedwarshurts.leagueproximitychat.app.AppInfo;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.friwi.jcefmaven.CefAppBuilder;
 import org.cef.CefApp;
@@ -11,7 +12,6 @@ import org.cef.callback.CefContextMenuParams;
 import org.cef.callback.CefMenuModel;
 import org.cef.handler.CefContextMenuHandlerAdapter;
 
-import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -31,7 +31,6 @@ import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
-import java.io.InputStream;
 import java.nio.file.Paths;
 
 public class UiWindowManager {
@@ -86,6 +85,7 @@ public class UiWindowManager {
                 }
 
                 frame = new JFrame(WINDOW_TITLE);
+                frame.setIconImage(AppIcon.image());
                 frame.add(browser.getUIComponent());
                 frame.setSize(1180, 760);
                 frame.setLocationRelativeTo(null);
@@ -120,11 +120,9 @@ public class UiWindowManager {
     }
 
     private void installTrayIcon() {
-        if (!SystemTray.isSupported()) return;
-        try (InputStream in = UiWindowManager.class.getResourceAsStream("/tray-icon.png")) {
-            if (in == null) return;
-            Image image = ImageIO.read(in);
-
+        Image image = AppIcon.image();
+        if (!SystemTray.isSupported() || image == null) return;
+        try {
             PopupMenu menu = new PopupMenu();
             MenuItem show = new MenuItem("Show LeagueProximityChat");
             show.addActionListener(e -> showWindow());
