@@ -15,6 +15,7 @@
             --panel-lo: rgba(6, 12, 22, 0.96);
             --hairline: rgba(200, 170, 110, 0.16);
             --hairline-soft: rgba(240, 230, 210, 0.07);
+            --setup-control-height: 39px;
             --ink-1: #f0e6d2;
             --ink-2: #a8a290;
             --ink-3: #6b7585;
@@ -135,7 +136,16 @@
         .setup-label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--ink-1); }
         .setup-input { padding: 10px 12px; font-family: var(--mono); font-size: 13px; color: var(--ink-1); background: rgba(3, 9, 16, 0.6); border: 1px solid var(--hairline); border-radius: 2px; outline: none; }
         .setup-input:focus { border-color: rgba(200, 170, 110, 0.55); }
-        .setup-select { width: min(360px, 55%); cursor: pointer; text-overflow: ellipsis; }
+        .setup-select {
+            width: min(360px, 55%);
+            height: var(--setup-control-height);
+            padding-right: 38px;
+            cursor: pointer;
+            text-overflow: ellipsis;
+            appearance: none;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23f0e6d2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center / 10px 6px,
+                rgba(3, 9, 16, 0.6);
+        }
         .setup-select option { background: #0a1523; color: var(--ink-1); }
         .setup-error { display: none; font-size: 12.5px; color: var(--danger); }
         /* categories */
@@ -182,6 +192,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 16px;
+            min-height: calc(var(--setup-control-height) + 24px);
             padding: 11px 13px;
             border-radius: 2px;
             background: rgba(3, 9, 16, 0.5);
@@ -190,6 +201,16 @@
         .setup-actions { display: flex; gap: 10px; margin-top: 4px; }
         .setup-actions .btn-primary { flex: 1; }
         .setup-actions .btn-control { flex: 0 0 auto; padding: 0 26px; }
+
+        #warning-popup { display: none; position: fixed; inset: 0; z-index: 90; background: rgba(2, 6, 12, 0.72); align-items: center; justify-content: center; padding: 30px; }
+        .warning-card { width: min(520px, 94vw); display: flex; flex-direction: column; gap: 14px; padding: 24px 26px; }
+        .warning-title { color: var(--warn); }
+        .warning-message, .warning-footer { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--ink-1); }
+        .warning-footer { color: var(--ink-2); }
+        .warning-items { margin: 0; padding: 10px 14px 10px 32px; font-size: 13.5px; line-height: 1.8; background: rgba(3, 9, 16, 0.5); border: 1px solid var(--hairline); border-radius: 2px; }
+        .warning-items li::marker { color: var(--gold); }
+        .warning-items strong { color: var(--gold-soft); }
+        #warning-ok { margin-top: 4px; }
 
         #log-viewer { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(2, 6, 12, 0.72); align-items: center; justify-content: center; padding: 30px; }
         .log-card { width: min(920px, 94vw); height: min(70vh, 640px); display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; }
@@ -1046,6 +1067,16 @@
         </div>
         </div>
         </div>
+    </div>
+</div>
+
+<div id="warning-popup">
+    <div class="panel warning-card" role="alertdialog" aria-modal="true" aria-labelledby="warning-title" aria-describedby="warning-message">
+        <span class="section-label warning-title" id="warning-title">Warning</span>
+        <p class="warning-message" id="warning-message"></p>
+        <ul class="warning-items" id="warning-items"></ul>
+        <p class="warning-footer" id="warning-footer"></p>
+        <button id="warning-ok" class="btn-primary">I understand</button>
     </div>
 </div>
 
@@ -2873,6 +2904,60 @@
         }
     }
 
+    const warningQueue = [];
+    let activeWarning = null;
+
+    function showWarning(warning) {
+        if (!warning || !warning.message) return;
+        const sameId = w => w && warning.id && w.id === warning.id;
+        if (sameId(activeWarning) || warningQueue.some(sameId)) return;
+        warningQueue.push(warning);
+        if (!activeWarning) showNextWarning();
+    }
+
+    function showNextWarning() {
+        const popup = document.getElementById('warning-popup');
+        activeWarning = warningQueue.shift() || null;
+        if (!activeWarning) {
+            popup.style.display = 'none';
+            return;
+        }
+
+        document.getElementById('warning-title').innerText = activeWarning.title || 'Warning';
+        document.getElementById('warning-message').innerText = activeWarning.message;
+
+        const list = document.getElementById('warning-items');
+        list.innerHTML = '';
+        (activeWarning.items || []).forEach(item => {
+            const li = document.createElement('li');
+            const split = item.indexOf(':');
+            if (split > 0) {
+                li.append(item.slice(0, split + 1) + ' ');
+                const value = document.createElement('strong');
+                value.textContent = item.slice(split + 1).trim();
+                li.append(value);
+            } else {
+                li.textContent = item;
+            }
+            list.append(li);
+        });
+        list.style.display = list.children.length ? '' : 'none';
+
+        const footer = document.getElementById('warning-footer');
+        footer.innerText = activeWarning.footer || '';
+        footer.style.display = activeWarning.footer ? '' : 'none';
+
+        popup.style.display = 'flex';
+        document.getElementById('warning-ok').focus();
+    }
+
+    document.getElementById('warning-ok').addEventListener('click', () => {
+        if (activeWarning && activeWarning.id && trackerSocket && trackerSocket.readyState === WebSocket.OPEN) {
+            trackerSocket.send(JSON.stringify({type: 'WARNING_ACK', id: activeWarning.id}));
+        }
+        showNextWarning();
+    });
+
     function setGamePaused(paused) {
         gamePaused = paused;
         document.getElementById('pause-status').style.display = paused ? '' : 'none';
@@ -3123,6 +3208,11 @@
                 if (data.type === "GAME_ENDED") {
                     maybeShowPlayOfGame();
                     resetToIdleState();
+                    return;
+                }
+
+                if (data.type === "WARNING") {
+                    showWarning(data);
                     return;
                 }
 
