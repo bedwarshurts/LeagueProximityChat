@@ -3,12 +3,11 @@ name: Build installer
 on:
   push:
     branches: [ master ]
-    tags: [ '[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+' ]
   workflow_dispatch:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -38,24 +37,23 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Work out version and build number
+      - name: Work out version, build number and release type
         id: meta
         shell: pwsh
         run: |
           $pomVersion = (mvn -B -q help:evaluate "-Dexpression=project.version" -DforceStdout).Trim()
+          $isSnapshot = $pomVersion.EndsWith("-SNAPSHOT")
           $version = $pomVersion -replace '-SNAPSHOT$', ''
           $build = (git rev-list --count HEAD).Trim()
-          $isRelease = "${{ github.ref_type }}" -eq "tag"
-          if ($isRelease) {
-            $tagVersion = "${{ github.ref_name }}" -replace '^v', ''
-            if ($tagVersion -ne $version) {
-              throw "Tag ${{ github.ref_name }} does not match the version in pom.xml ($version). Bump pom.xml or fix the tag."
-            }
-          }
+          $onMaster = "${{ github.ref }}" -eq "refs/heads/master"
+          $alreadyReleased = [bool](git tag --list $version "v$version")
+
+          $isRelease = $onMaster -and -not $isSnapshot -and -not $alreadyReleased
+
           "version=$version" >> $env:GITHUB_OUTPUT
           "build=$build" >> $env:GITHUB_OUTPUT
           "is_release=$($isRelease.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-          Write-Host "Version $version, build $build, release: $isRelease"
+          Write-Host "pom.xml version $pomVersion -> version $version, build $build, stable release: $isRelease"
 
       - name: Build the jar
         run: mvn -B package -DskipTests
@@ -143,7 +141,7 @@ jobs:
 
   prerelease:
     needs: build
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' && needs.build.outputs.is_release != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -182,20 +180,25 @@ jobs:
 
   release:
     needs: build
-    if: needs.build.outputs.is_release == 'true'
+    if: github.ref == 'refs/heads/master' && needs.build.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Download build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ${{ env.APP_NAME }}-${{ needs.build.outputs.version }}-b${{ needs.build.outputs.build }}
           path: release_files
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ needs.build.outputs.version }}
-          files: release_files/*
-          generate_release_notes: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          PREVIOUS=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""')
+          ARGS=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$VERSION" --generate-notes --latest)
+          if [ -n "$PREVIOUS" ]; then
+            ARGS+=(--notes-start-tag "$PREVIOUS")
+          fi
+          gh release create "$VERSION" release_files/* "${ARGS[@]}"
