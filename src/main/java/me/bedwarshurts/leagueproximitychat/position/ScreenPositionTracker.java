@@ -37,6 +37,8 @@ public class ScreenPositionTracker {
     private float lastKnownX = 0f;
     private float lastKnownY = 0f;
     private boolean positionDetected = false;
+    private float deadListenX = Float.NaN;
+    private float deadListenY = Float.NaN;
 
     private float healthBarCalibrateX = 0.0f;
     private float healthBarCalibrateY = 0.0f;
@@ -106,6 +108,12 @@ public class ScreenPositionTracker {
     private static final double TEAM_FRAMES_WIDTH_FACTOR = 0.25;
     private static final double HEALTH_BAR_FRAME_MAX_RATIO = 0.45;
 
+    private static final double ENEMY_RING_MIN_RADIUS_RATIO = 0.85;
+    private static final double EXPECTED_ICON_RADIUS_FACTOR = 0.042;
+    private static final double RING_INTERIOR_FACTOR = 0.65;
+    private static final double STRUCTURE_MIN_RED_FRACTION = 0.15;
+    private static final double STRUCTURE_MAX_COLOUR_FRACTION = 0.10;
+
     private static final double OCCLUSION_MIN_VISIBLE_FRACTION = 0.25;
     private static final int OCCLUSION_JITTER_PX = 3;
 
@@ -130,7 +138,10 @@ public class ScreenPositionTracker {
     private float anchorOffsetX = 0f;
     private float anchorOffsetY = 0f;
 
-    public record TrackResult(float x, float y, boolean isDead, boolean detected) {
+    public record TrackResult(float x, float y, boolean isDead, boolean detected, DeadView deadView) {
+    }
+
+    public record DeadView(float listenX, float listenY, List<float[]> visibleEnemies) {
     }
 
     public record TemplateMatch(Point center, double score, double rawScore) {
@@ -163,22 +174,18 @@ public class ScreenPositionTracker {
         return configWarning;
     }
 
-    public TrackResult trackPlayerPosition() {
-        boolean isDead = checkDeathState();
-
-        if (wasDeadLastFrame && !isDead) {
-            fountainSampleFramesLeft = FOUNTAIN_SAMPLE_WINDOW_FRAMES;
+    private record CapturedFrame(Mat screen, Mat minimap, Rect minimapRoi, int mapSize) {
+        void release() {
+            screen.release();
+            minimap.release();
         }
-        wasDeadLastFrame = isDead;
+    }
 
-        if (isDead) {
-            return anchored(lastKnownX, lastKnownY, true);
-        }
-
+    private CapturedFrame captureFrame() {
         Mat fullScreenMat = screenCapture.captureWindowClient("League of Legends (TM) Client");
 
         if (fullScreenMat == null) {
-            return anchored(lastKnownX, lastKnownY, false);
+            return null;
         }
 
         if (fullScreenMat.width() != cachedResolutionWidth) {
@@ -214,8 +221,6 @@ public class ScreenPositionTracker {
             fullScreenMat = croppedScreen;
         }
 
-        ClipRecorder.record(fullScreenMat);
-
         float normalizedScale = userMinimapScale;
         if (normalizedScale > 5.0f) normalizedScale /= 100.0f;
 
@@ -244,6 +249,127 @@ public class ScreenPositionTracker {
             );
         }
         Mat minimapMat = new Mat(fullScreenMat, minimapRoi).clone();
+
+        return new CapturedFrame(fullScreenMat, minimapMat, minimapRoi, perfectMapSize);
+    }
+
+    private TrackResult trackWhileDead() {
+        TrackResult body = anchored(lastKnownX, lastKnownY, true);
+        if (Float.isNaN(deadListenX)) {
+            deadListenX = body.x();
+            deadListenY = body.y();
+        }
+
+        List<float[]> visibleEnemies = new ArrayList<>();
+        CapturedFrame frame = captureFrame();
+        if (frame != null) {
+            try {
+                CameraBox camera = locateMinimapCameraBox(frame.minimap(), frame.screen().width(), frame.screen().height());
+                if (camera != null) {
+                    deadListenX = toMapPercentX(camera.center().x, frame.mapSize()) + anchorOffsetX;
+                    deadListenY = toMapPercentY(camera.center().y, frame.mapSize()) + anchorOffsetY;
+                }
+                List<AllyCircle> champions = championRingsOnly(frame.minimap(), findEnemyCircles(frame.minimap()));
+                for (float[] ring : toMapPercent(champions, frame.mapSize())) {
+                    visibleEnemies.add(new float[]{ring[0] + anchorOffsetX, ring[1] + anchorOffsetY});
+                }
+            } finally {
+                frame.release();
+            }
+        }
+
+        return new TrackResult(body.x(), body.y(), true, body.detected(),
+                new DeadView(deadListenX, deadListenY, visibleEnemies));
+    }
+
+    private List<AllyCircle> championRingsOnly(Mat minimap, List<AllyCircle> rings) {
+        List<AllyCircle> champions = new ArrayList<>();
+        double expectedRadius = lockedBlipRadius > 0 ? lockedBlipRadius : minimap.width() * EXPECTED_ICON_RADIUS_FACTOR;
+        Mat hsv = new Mat();
+        try {
+            Imgproc.cvtColor(minimap, hsv, Imgproc.COLOR_BGR2HSV);
+            for (AllyCircle ring : rings) {
+                if (ring.radius() < expectedRadius * ENEMY_RING_MIN_RADIUS_RATIO) continue;
+                if (looksLikeStructure(hsv, ring)) continue;
+                champions.add(ring);
+            }
+        } finally {
+            hsv.release();
+        }
+        return champions;
+    }
+
+    private static boolean looksLikeStructure(Mat hsv, AllyCircle ring) {
+        int inner = (int) Math.round(ring.radius() * RING_INTERIOR_FACTOR);
+        int cx = (int) Math.round(ring.center().x);
+        int cy = (int) Math.round(ring.center().y);
+        int total = 0;
+        int red = 0;
+        int colour = 0;
+        byte[] px = new byte[3];
+        for (int dy = -inner; dy <= inner; dy++) {
+            for (int dx = -inner; dx <= inner; dx++) {
+                if (dx * dx + dy * dy > inner * inner) continue;
+                int x = cx + dx;
+                int y = cy + dy;
+                if (x < 0 || y < 0 || x >= hsv.cols() || y >= hsv.rows()) continue;
+                hsv.get(y, x, px);
+                int h = px[0] & 0xFF;
+                int s = px[1] & 0xFF;
+                int v = px[2] & 0xFF;
+                total++;
+                if ((h <= 9 || h >= 173) && s >= 110 && v >= 120) {
+                    red++;
+                } else if (s > 60 && v > 60 && h > 12 && h < 170) {
+                    colour++;
+                }
+            }
+        }
+        if (total == 0) return false;
+        return red >= total * STRUCTURE_MIN_RED_FRACTION && colour <= total * STRUCTURE_MAX_COLOUR_FRACTION;
+    }
+
+    private static List<float[]> toMapPercent(List<AllyCircle> circles, int mapSize) {
+        List<float[]> points = new ArrayList<>(circles.size());
+        for (AllyCircle circle : circles) {
+            points.add(new float[]{toMapPercentX(circle.center().x, mapSize), toMapPercentY(circle.center().y, mapSize)});
+        }
+        return points;
+    }
+
+    private static float toMapPercentX(double pixelX, int mapSize) {
+        return (float) (pixelX / mapSize * 100.0);
+    }
+
+    private static float toMapPercentY(double pixelY, int mapSize) {
+        return (float) (100.0 - pixelY / mapSize * 100.0);
+    }
+
+    public TrackResult trackPlayerPosition() {
+        boolean isDead = checkDeathState();
+
+        if (wasDeadLastFrame && !isDead) {
+            fountainSampleFramesLeft = FOUNTAIN_SAMPLE_WINDOW_FRAMES;
+        }
+        wasDeadLastFrame = isDead;
+
+        if (isDead) {
+            return trackWhileDead();
+        }
+        deadListenX = Float.NaN;
+        deadListenY = Float.NaN;
+
+        CapturedFrame frame = captureFrame();
+        if (frame == null) {
+            return anchored(lastKnownX, lastKnownY, false);
+        }
+
+        Mat fullScreenMat = frame.screen();
+        Mat minimapMat = frame.minimap();
+        Rect minimapRoi = frame.minimapRoi();
+        int perfectMapSize = frame.mapSize();
+
+        ClipRecorder.record(fullScreenMat);
 
         if (DebugManager.isENABLED()) {
             Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_screen.png", fullScreenMat);
@@ -446,7 +572,7 @@ public class ScreenPositionTracker {
     }
 
     private TrackResult anchored(float x, float y, boolean isDead) {
-        return new TrackResult(x + anchorOffsetX, y + anchorOffsetY, isDead, positionDetected);
+        return new TrackResult(x + anchorOffsetX, y + anchorOffsetY, isDead, positionDetected, null);
     }
 
     private void runCalibrationUpdate(Point healthBarCenter, Point champMapCenter, CameraBox cameraBox,
@@ -1549,9 +1675,14 @@ public class ScreenPositionTracker {
             centers = circlesFromRingMask(minimap, mask, null);
 
             if (DebugManager.isENABLED()) {
+                List<AllyCircle> champions = championRingsOnly(minimap, centers);
                 Mat debugDrawMap = minimap.clone();
                 for (AllyCircle c : centers) {
-                    Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(0, 0, 255), 2);
+                    if (champions.contains(c)) {
+                        Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(0, 0, 255), 2);
+                    } else {
+                        Imgproc.circle(debugDrawMap, c.center(), c.radius(), new Scalar(140, 140, 140), 1);
+                    }
                 }
                 Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_enemy_circles.png", debugDrawMap);
                 debugDrawMap.release();

@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
 import me.bedwarshurts.leagueproximitychat.livekit.LiveKitUser;
+import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -138,10 +139,22 @@ public class CoordinateServer extends WebSocketServer {
         }
     }
 
-    public void broadcastCoordinates(double x, double y, boolean isDead, boolean detected) {
+    public void broadcastCoordinates(double x, double y, boolean isDead, boolean detected, ScreenPositionTracker.DeadView deadView) {
         if (hasActiveConnection()) {
-            String payload = String.format(Locale.US, "{\"x\":%f, \"y\":%f, \"isDead\":%b, \"detected\":%b}", x, y, isDead, detected);
-            activeConnection.send(payload);
+            StringBuilder payload = new StringBuilder(String.format(Locale.US,
+                    "{\"x\":%f, \"y\":%f, \"isDead\":%b, \"detected\":%b", x, y, isDead, detected));
+            if (deadView != null) {
+                payload.append(String.format(Locale.US, ", \"listenX\":%f, \"listenY\":%f, \"visibleEnemies\":[",
+                        deadView.listenX(), deadView.listenY()));
+                for (int i = 0; i < deadView.visibleEnemies().size(); i++) {
+                    float[] enemy = deadView.visibleEnemies().get(i);
+                    if (i > 0) payload.append(',');
+                    payload.append(String.format(Locale.US, "[%f,%f]", enemy[0], enemy[1]));
+                }
+                payload.append(']');
+            }
+            payload.append('}');
+            activeConnection.send(payload.toString());
         }
     }
 }

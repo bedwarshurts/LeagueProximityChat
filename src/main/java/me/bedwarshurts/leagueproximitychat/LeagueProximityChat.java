@@ -361,7 +361,7 @@ public class LeagueProximityChat {
 
         ScreenPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
         CompletableFuture.runAsync(() -> DiscordRPCManager.updatePresenceActive(pos, detectedChampion));
-        server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead(), pos.detected());
+        server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead(), pos.detected(), pos.deadView());
 
         long elapsedTime = System.currentTimeMillis() - startTime;
         long sleepTime = Math.max(1, 16 - elapsedTime);

@@ -1204,6 +1204,14 @@
     const remotePositions = {};
     const localPosition = {x: 0, y: 0, isDead: false};
 
+    const rosterTeams = {};
+    let rosterLocalTeam = null;
+    let deadListen = null;
+    let visibleEnemyIcons = [];
+    const enemyLastSeen = {};
+    const DEAD_VISION_MATCH_DIST = 6;
+    const DEAD_VISION_GRACE_MS = 750;
+
     let hasReceivedPosition = false;
     let positionGateActive = false;
     let gamePaused = false;
@@ -2520,6 +2528,9 @@
 
         Object.keys(remoteAudioNodes).forEach(cleanupRemoteAudio);
         Object.keys(remotePositions).forEach(identity => delete remotePositions[identity]);
+        Object.keys(enemyLastSeen).forEach(identity => delete enemyLastSeen[identity]);
+        deadListen = null;
+        visibleEnemyIcons = [];
         localPosition.x = 0;
         localPosition.y = 0;
         localPosition.isDead = false;
@@ -2578,6 +2589,10 @@
 
         const localPlayer = players.find(p => p.identity === localId);
         const localTeam = localPlayer ? localPlayer.team : undefined;
+
+        Object.keys(rosterTeams).forEach(identity => delete rosterTeams[identity]);
+        players.forEach(p => { rosterTeams[p.identity] = p.team; });
+        rosterLocalTeam = localTeam || null;
 
         let groups;
         if (localTeam) {
@@ -2840,12 +2855,38 @@
         return masterLimiter;
     }
 
+    function listeningPoint() {
+        return (localPosition.isDead && deadListen) ? deadListen : localPosition;
+    }
+
+    function isEnemy(identity) {
+        return rosterLocalTeam !== null && rosterTeams[identity] !== rosterLocalTeam;
+    }
+
+    function refreshEnemyVisibility() {
+        const now = performance.now();
+        Object.keys(remotePositions).forEach(identity => {
+            if (!isEnemy(identity)) return;
+            const pos = remotePositions[identity];
+            if (visibleEnemyIcons.some(icon => Math.hypot(icon.x - pos.x, icon.y - pos.y) <= DEAD_VISION_MATCH_DIST)) {
+                enemyLastSeen[identity] = now;
+            }
+        });
+    }
+
+    function deadVisionAllows(identity) {
+        if (!localPosition.isDead || !deadListen || !isEnemy(identity)) return true;
+        const seen = enemyLastSeen[identity];
+        return seen !== undefined && performance.now() - seen <= DEAD_VISION_GRACE_MS;
+    }
+
     function updateListenerPosition() {
         if (!audioCtx) return;
         const now = audioCtx.currentTime;
-        audioCtx.listener.positionX.setTargetAtTime(localPosition.x, now, 0.1);
+        const listener = listeningPoint();
+        audioCtx.listener.positionX.setTargetAtTime(listener.x, now, 0.1);
         audioCtx.listener.positionY.setTargetAtTime(0, now, 0.1);
-        audioCtx.listener.positionZ.setTargetAtTime(localPosition.y, now, 0.1);
+        audioCtx.listener.positionZ.setTargetAtTime(listener.y, now, 0.1);
     }
 
     function updateRemoteAudio(identity) {
@@ -2860,9 +2901,10 @@
 
         if (gamePaused) {
             const t0 = audioCtx.currentTime;
-            nodeData.panner.positionX.setTargetAtTime(localPosition.x, t0, 0.1);
+            const listener = listeningPoint();
+            nodeData.panner.positionX.setTargetAtTime(listener.x, t0, 0.1);
             nodeData.panner.positionY.setTargetAtTime(0, t0, 0.1);
-            nodeData.panner.positionZ.setTargetAtTime(localPosition.y, t0, 0.1);
+            nodeData.panner.positionZ.setTargetAtTime(listener.y, t0, 0.1);
             const pausedVolume = (locallyMuted.has(identity) || !remotePositions[identity]) ? 0 : maxVolume * (playerVolumes[identity] ?? 1);
             nodeData.gain.gain.setTargetAtTime(pausedVolume, t0, 0.1);
             return;
@@ -2874,7 +2916,8 @@
             return;
         }
 
-        const distance = Math.hypot(remotePos.x - localPosition.x, remotePos.y - localPosition.y);
+        const listener = listeningPoint();
+        const distance = Math.hypot(remotePos.x - listener.x, remotePos.y - listener.y);
 
         let volume;
         if (distance >= maxDist) {
@@ -2888,6 +2931,7 @@
         volume *= playerVolumes[identity] ?? 1;
         if (remotePos.isDead) volume = 0;
         if (locallyMuted.has(identity)) volume = 0;
+        if (!deadVisionAllows(identity)) volume = 0;
 
         const now = audioCtx.currentTime;
         nodeData.panner.positionX.setTargetAtTime(remotePos.x, now, 0.1);
@@ -3309,9 +3353,22 @@
                 }
 
                 if (data.x !== undefined && data.y !== undefined) {
+                    const wasDead = localPosition.isDead;
                     localPosition.x = Number(data.x);
                     localPosition.y = Number(data.y);
                     localPosition.isDead = Boolean(data.isDead);
+
+                    if (localPosition.isDead && data.listenX !== undefined && data.listenY !== undefined) {
+                        deadListen = {x: Number(data.listenX), y: Number(data.listenY)};
+                        visibleEnemyIcons = (data.visibleEnemies || []).map(p => ({x: Number(p[0]), y: Number(p[1])}));
+                        refreshEnemyVisibility();
+                    } else {
+                        deadListen = null;
+                        visibleEnemyIcons = [];
+                    }
+                    if (localPosition.isDead || wasDead) {
+                        Object.keys(remoteAudioNodes).forEach(updateRemoteAudio);
+                    }
 
                     const coordEl = document.getElementById('local-coords');
                     if (coordEl) {
@@ -3539,9 +3596,11 @@
 
                         const remotePos = remotePositions[participant.identity];
                         if (remotePos) {
-                            const distance = Math.hypot(remotePos.x - localPosition.x, remotePos.y - localPosition.y);
+                            const listener = listeningPoint();
+                            const distance = Math.hypot(remotePos.x - listener.x, remotePos.y - listener.y);
+                            const canListen = !localPosition.isDead || deadListen !== null;
 
-                            if (distance < 12.2 && !remotePos.isDead && !localPosition.isDead) {
+                            if (distance < 12.2 && !remotePos.isDead && canListen && deadVisionAllows(participant.identity)) {
                                 isAudible = true;
                             }
                         }
