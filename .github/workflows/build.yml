@@ -133,7 +133,7 @@ jobs:
           Get-ChildItem build_output | ForEach-Object { Write-Host "$($_.Name)  ($([math]::Round($_.Length / 1MB, 1)) MB)" }
 
       - name: Upload build
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ steps.meta.outputs.version }}-b${{ steps.meta.outputs.build }}
           path: build_output/*
@@ -148,7 +148,7 @@ jobs:
       contents: write
     steps:
       - name: Download build
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.APP_NAME }}-${{ needs.build.outputs.version }}-b${{ needs.build.outputs.build }}
           path: release_files
@@ -204,7 +204,7 @@ jobs:
       contents: write
     steps:
       - name: Download build
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: ${{ env.APP_NAME }}-${{ needs.build.outputs.version }}-b${{ needs.build.outputs.build }}
           path: release_files
