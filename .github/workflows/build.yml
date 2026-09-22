@@ -79,7 +79,7 @@ jobs:
           New-Item -ItemType Directory -Force build_input | Out-Null
           Copy-Item $jar.FullName build_input/
           jpackage `
-            --type exe `
+            --type msi `
             --name "$env:APP_NAME" `
             --app-version "${{ steps.meta.outputs.version }}" `
             --vendor "Fate Sealed" `
@@ -100,7 +100,7 @@ jobs:
           SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: |
-          $exe = Get-ChildItem build_output -Filter "*.exe" | Select-Object -First 1
+          $installer = Get-ChildItem build_output -Filter "*.msi" | Select-Object -First 1
           if (-not $env:SIGNING_CERT_BASE64) {
             if ("${{ steps.meta.outputs.is_release }}" -eq "true") { throw "Signing secrets are not set up - refusing to publish an unsigned release." }
             Write-Host "::warning::Signing secrets are not set up - this test build is unsigned."
@@ -112,24 +112,25 @@ jobs:
             $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
               Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
             if (-not $signtool) { throw "signtool.exe not found." }
-            & $signtool.FullName sign /f $pfx /p $env:SIGNING_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe.FullName
+            & $signtool.FullName sign /f $pfx /p $env:SIGNING_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 `
+              /d "$env:APP_NAME" /du "https://github.com/${{ github.repository }}" $installer.FullName
             if ($LASTEXITCODE -ne 0) { throw "Signing failed." }
           } finally {
             if (Test-Path $pfx) { Remove-Item $pfx -Force }
           }
-          $signature = Get-AuthenticodeSignature $exe.FullName
+          $signature = Get-AuthenticodeSignature $installer.FullName
           Write-Host "Signed by: $($signature.SignerCertificate.Subject)"
 
       - name: Name the files
         shell: pwsh
         run: |
-          $exe = Get-ChildItem build_output -Filter "*.exe" | Select-Object -First 1
+          $installer = Get-ChildItem build_output -Filter "*.msi" | Select-Object -First 1
           if ("${{ steps.meta.outputs.is_release }}" -eq "true") {
-            $name = "$env:APP_NAME-${{ steps.meta.outputs.version }}.exe"
+            $name = "$env:APP_NAME-${{ steps.meta.outputs.version }}.msi"
           } else {
-            $name = "$env:APP_NAME-${{ steps.meta.outputs.version }}-b${{ steps.meta.outputs.build }}.exe"
+            $name = "$env:APP_NAME-${{ steps.meta.outputs.version }}-b${{ steps.meta.outputs.build }}.msi"
           }
-          Rename-Item $exe.FullName $name
+          Rename-Item $installer.FullName $name
           Get-ChildItem build_output | ForEach-Object { Write-Host "$($_.Name)  ($([math]::Round($_.Length / 1MB, 1)) MB)" }
 
       - name: Upload build
