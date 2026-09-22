@@ -16,6 +16,7 @@ import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
+import me.bedwarshurts.leagueproximitychat.utils.AppInfo;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
@@ -404,6 +405,7 @@ public class LeagueProximityChat {
                             .put("apiSecret", ConfigManager.getApiSecret())
                             .put("lowPerformanceMode", ConfigManager.isLowPerformanceMode())
                             .put("debugMode", ConfigManager.isDebugMode())
+                            .put("version", AppInfo.version())
                             .toString().getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
                     exchange.getResponseHeaders().set("Cache-Control", "no-store");
