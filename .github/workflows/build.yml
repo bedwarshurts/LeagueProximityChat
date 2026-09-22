@@ -1,0 +1,162 @@
+name: Build installer
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ '*.*.*', 'v*.*.*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: LeagueProximityChat
+  MAIN_CLASS: me.bedwarshurts.leagueproximitychat.LeagueProximityChat
+  UPGRADE_UUID: 05F33DB0-402A-34CF-B180-106B36672AF9
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      build: ${{ steps.meta.outputs.build }}
+      is_release: ${{ steps.meta.outputs.is_release }}
+    steps:
+      - name: Check out (full history, needed for the build number)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Work out version and build number
+        id: meta
+        shell: pwsh
+        run: |
+          $pomVersion = (mvn -B -q help:evaluate "-Dexpression=project.version" -DforceStdout).Trim()
+          $version = $pomVersion -replace '-SNAPSHOT$', ''
+          $build = (git rev-list --count HEAD).Trim()
+          $isRelease = "${{ github.ref_type }}" -eq "tag"
+          if ($isRelease) {
+            $tagVersion = "${{ github.ref_name }}" -replace '^v', ''
+            if ($tagVersion -ne $version) {
+              throw "Tag ${{ github.ref_name }} does not match the version in pom.xml ($version). Bump pom.xml or fix the tag."
+            }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "build=$build" >> $env:GITHUB_OUTPUT
+          "is_release=$($isRelease.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "Version $version, build $build, release: $isRelease"
+
+      - name: Build the jar
+        run: mvn -B package -DskipTests
+
+      - name: Make sure WiX Toolset 3 is available (jpackage needs it for .exe)
+        shell: pwsh
+        run: |
+          $wix = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset v3*" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $wix) {
+            choco install wixtoolset -y --no-progress
+            $wix = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset v3*" | Select-Object -First 1
+          }
+          if (-not $wix) { throw "WiX Toolset 3 could not be installed." }
+          Write-Host "Using $($wix.FullName)"
+          "$($wix.FullName)\bin" >> $env:GITHUB_PATH
+
+      - name: Package the installer with jpackage
+        shell: pwsh
+        run: |
+          $jar = Get-ChildItem target -Filter "leagueproximitychat-*.jar" | Where-Object { $_.Name -notlike "original-*" } | Select-Object -First 1
+          if (-not $jar) { throw "Shaded jar not found in target/." }
+          New-Item -ItemType Directory -Force build_input | Out-Null
+          Copy-Item $jar.FullName build_input/
+          jpackage `
+            --type exe `
+            --name "$env:APP_NAME" `
+            --app-version "${{ steps.meta.outputs.version }}" `
+            --vendor "Fate Sealed" `
+            --input build_input `
+            --main-jar $jar.Name `
+            --main-class "$env:MAIN_CLASS" `
+            --dest build_output `
+            --icon packaging/icon.ico `
+            --win-upgrade-uuid "$env:UPGRADE_UUID" `
+            --win-shortcut `
+            --win-menu
+          if ($LASTEXITCODE -ne 0) { throw "jpackage failed." }
+          Copy-Item $jar.FullName "build_output/$env:APP_NAME-${{ steps.meta.outputs.version }}.jar"
+
+      - name: Sign the installer
+        shell: pwsh
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          $exe = Get-ChildItem build_output -Filter "*.exe" | Select-Object -First 1
+          if (-not $env:SIGNING_CERT_BASE64) {
+            if ("${{ steps.meta.outputs.is_release }}" -eq "true") { throw "Signing secrets are not set up - refusing to publish an unsigned release." }
+            Write-Host "::warning::Signing secrets are not set up - this test build is unsigned."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signtool) { throw "signtool.exe not found." }
+            & $signtool.FullName sign /f $pfx /p $env:SIGNING_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed." }
+          } finally {
+            if (Test-Path $pfx) { Remove-Item $pfx -Force }
+          }
+          $signature = Get-AuthenticodeSignature $exe.FullName
+          Write-Host "Signed by: $($signature.SignerCertificate.Subject)"
+
+      - name: Name the files
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build_output -Filter "*.exe" | Select-Object -First 1
+          if ("${{ steps.meta.outputs.is_release }}" -eq "true") {
+            $name = "$env:APP_NAME-${{ steps.meta.outputs.version }}.exe"
+          } else {
+            $name = "$env:APP_NAME-${{ steps.meta.outputs.version }}-b${{ steps.meta.outputs.build }}.exe"
+          }
+          Rename-Item $exe.FullName $name
+          Get-ChildItem build_output | ForEach-Object { Write-Host "$($_.Name)  ($([math]::Round($_.Length / 1MB, 1)) MB)" }
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ steps.meta.outputs.version }}-b${{ steps.meta.outputs.build }}
+          path: build_output/*
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: needs.build.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ needs.build.outputs.version }}-b${{ needs.build.outputs.build }}
+          path: release_files
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.APP_NAME }} ${{ needs.build.outputs.version }}
+          files: release_files/*
+          generate_release_notes: true
