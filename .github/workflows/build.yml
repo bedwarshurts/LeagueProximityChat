@@ -16,6 +16,7 @@ env:
   APP_NAME: LeagueProximityChat
   MAIN_CLASS: me.bedwarshurts.leagueproximitychat.LeagueProximityChat
   UPGRADE_UUID: 05F33DB0-402A-34CF-B180-106B36672AF9
+  PRERELEASES_PER_VERSION: 5
 
 jobs:
   build:
@@ -177,6 +178,23 @@ jobs:
             --prerelease \
             --title "Development build $VERSION (build $BUILD)" \
             --notes-file notes.md
+
+      - name: Keep only the newest pre-releases of this version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          KEEP: ${{ env.PRERELEASES_PER_VERSION }}
+        run: |
+          OLD_TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName,isPrerelease \
+              --jq ".[] | select(.isPrerelease and (.tagName | startswith(\"$VERSION-b\"))) | .tagName" \
+            | awk -F'-b' '{ print $NF " " $0 }' \
+            | sort -k1,1nr \
+            | tail -n +$((KEEP + 1)) \
+            | cut -d' ' -f2)
+          for tag in $OLD_TAGS; do
+            echo "Deleting old pre-release $tag"
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done
 
   release:
     needs: build
