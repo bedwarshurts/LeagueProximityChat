@@ -26,7 +26,7 @@ jobs:
       build: ${{ steps.meta.outputs.build }}
       is_release: ${{ steps.meta.outputs.is_release }}
     steps:
-      - name: Check out (full history, needed for the build number)
+      - name: Check out
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -60,7 +60,7 @@ jobs:
       - name: Build the jar
         run: mvn -B package -DskipTests
 
-      - name: Make sure WiX Toolset 3 is available (jpackage needs it for .exe)
+      - name: Ensure WiX Toolset 3
         shell: pwsh
         run: |
           $wix = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset v3*" -ErrorAction SilentlyContinue | Select-Object -First 1
