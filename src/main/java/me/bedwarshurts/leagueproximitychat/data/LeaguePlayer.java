@@ -4,13 +4,9 @@ import lombok.Getter;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Getter
 public class LeaguePlayer {
-
-    private static final Pattern TRAILING_NUMBER = Pattern.compile("(\\d+)$");
 
     private final String championName;
     private final boolean isBot;
@@ -66,14 +62,17 @@ public class LeaguePlayer {
         }
         String source = (rawSkinName != null && !rawSkinName.isEmpty()) ? rawSkinName : skinName;
         if (source != null) {
-            if (source.length() > 1000) {
-                throw new RuntimeException("Raw skin name is too long: " + source.length() + " characters. Value: " + source);
+            // The skin number is the run of digits at the end of the name.
+            String name = source.trim();
+            int digitsStart = name.length();
+            while (digitsStart > 0) {
+                char c = name.charAt(digitsStart - 1);
+                if (c < '0' || c > '9') break;
+                digitsStart--;
             }
-
-            Matcher m = TRAILING_NUMBER.matcher(source.trim());
-            if (m.find()) {
+            if (digitsStart < name.length()) {
                 try {
-                    return Integer.parseInt(m.group(1));
+                    return Integer.parseInt(name.substring(digitsStart));
                 } catch (NumberFormatException ignored) {
                 }
             }

@@ -6,8 +6,13 @@ import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import javax.net.ssl.*;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManagerFactory;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -18,7 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.cert.X509Certificate;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -27,7 +34,6 @@ import java.util.Map;
 
 public final class RitoApiUtils {
 
-    private static boolean sslBypassed = false;
     private static String cachedSummonerName = null;
     private static final Map<String, Integer> profileIconCache = new HashMap<>();
     private static final Path DEFAULT_LOCKFILE_PATH = Paths.get("C:\\Riot Games\\League of Legends\\lockfile");
@@ -43,37 +49,45 @@ public final class RitoApiUtils {
 
     private record LockfileAuth(String port, String password, String base64Auth) {}
 
-    public static void disableSSLChecks() {
-        if (sslBypassed) return;
-        try {
-            TrustManager[] trustAllCerts = new TrustManager[]{
-                    new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
+    private static final class RiotTls {
+        static final SSLSocketFactory SOCKET_FACTORY = createSocketFactory();
 
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                        }
+        private static SSLSocketFactory createSocketFactory() {
+            try (InputStream in = RitoApiUtils.class.getResourceAsStream("/riotgames.pem")) {
+                if (in == null) throw new IOException("riotgames.pem is missing");
+                Certificate riotRoot = CertificateFactory.getInstance("X.509").generateCertificate(in);
 
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                        }
-                    }
-            };
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAllCerts, new java.security.SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-            HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
-            sslBypassed = true;
-        } catch (Exception e) {
-            System.err.println("Failed to bypass SSL: " + e.getMessage());
+                KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+                trustStore.load(null, null);
+                trustStore.setCertificateEntry("riotgames", riotRoot);
+
+                TrustManagerFactory trustManagers = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                trustManagers.init(trustStore);
+
+                SSLContext context = SSLContext.getInstance("TLS");
+                context.init(null, trustManagers.getTrustManagers(), null);
+                return context.getSocketFactory();
+            } catch (Exception e) {
+                System.err.println("[TLS] Could not load Riot's root certificate: " + e.getMessage());
+                return null;
+            }
         }
     }
 
-    private static String executeGetRequest(String endpoint, String authHeader) throws Exception {
-        disableSSLChecks();
+    private static final HostnameVerifier LOOPBACK_ONLY = (hostname, session) -> "127.0.0.1".equals(hostname);
 
-        URL url = new URI(endpoint).toURL();
-        HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+    private static HttpsURLConnection openRiotConnection(String endpoint) throws Exception {
+        SSLSocketFactory socketFactory = RiotTls.SOCKET_FACTORY;
+        if (socketFactory == null) throw new IOException("Riot's root certificate is unavailable");
+
+        HttpsURLConnection conn = (HttpsURLConnection) new URI(endpoint).toURL().openConnection();
+        conn.setSSLSocketFactory(socketFactory);
+        conn.setHostnameVerifier(LOOPBACK_ONLY);
+        return conn;
+    }
+
+    private static String executeGetRequest(String endpoint, String authHeader) throws Exception {
+        HttpsURLConnection conn = openRiotConnection(endpoint);
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(2000);
         conn.setReadTimeout(2000);
@@ -201,9 +215,8 @@ public final class RitoApiUtils {
             LockfileAuth auth = getLockfileAuth();
             if (auth == null) return null;
 
-            disableSSLChecks();
-            URL url = new URI("https://127.0.0.1:" + auth.port() + "/lol-game-data/assets/v1/profile-icons/" + iconId + ".jpg").toURL();
-            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            HttpsURLConnection conn = openRiotConnection(
+                    "https://127.0.0.1:" + auth.port() + "/lol-game-data/assets/v1/profile-icons/" + iconId + ".jpg");
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(3000);
