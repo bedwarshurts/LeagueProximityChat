@@ -577,7 +577,11 @@ public final class PlayOfGameManager {
     }
 
     private static String gameClock(double t) {
-        long s = (long) t;
+        if (!(t > Integer.MIN_VALUE && t < Integer.MAX_VALUE)) {
+            throw new RuntimeException("Game time is out of range: " + t);
+        };
+
+        int s = (int) t;
         return String.format("%d:%02d", s / 60, s % 60);
     }
 }
