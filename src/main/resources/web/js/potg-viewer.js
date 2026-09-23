@@ -154,7 +154,10 @@ function playPotg() {
     if (potgAudioEl) { try { potgAudioEl.pause(); } catch (e) {} }
     try { videoEl.pause(); } catch (e) {}
     potgAudioEl = audio ? new Audio(URL.createObjectURL(audio)) : null;
-    if (potgAudioEl) potgAudioEl.volume = potgClipVolume;
+    if (potgAudioEl) {
+        potgAudioEl.volume = potgClipVolume;
+        routeToSpeaker(potgAudioEl);
+    }
 
     if (video) {
         canvas.style.display = 'none';

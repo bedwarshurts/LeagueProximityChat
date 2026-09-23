@@ -4,7 +4,10 @@ document.getElementById('start-btn').addEventListener('click', async () => {
         return;
     }
     if (connected || !trackerSocket || trackerSocket.readyState !== WebSocket.OPEN) return;
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        routeToSpeaker(audioCtx);
+    }
     try { await audioCtx.resume(); } catch (e) {}
 
     const btn = document.getElementById('start-btn');

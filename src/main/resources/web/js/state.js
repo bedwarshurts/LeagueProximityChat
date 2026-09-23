@@ -33,9 +33,15 @@ const MIC_DEVICE_KEY = 'micDeviceId';
 const MIC_LABEL_KEY = 'micDeviceLabel';
 let micDeviceId = '';
 let micDeviceLabel = '';
+const SPEAKER_DEVICE_KEY = 'speakerDeviceId';
+const SPEAKER_LABEL_KEY = 'speakerDeviceLabel';
+let speakerDeviceId = '';
+let speakerDeviceLabel = '';
 try {
     micDeviceId = localStorage.getItem(MIC_DEVICE_KEY) || '';
     micDeviceLabel = localStorage.getItem(MIC_LABEL_KEY) || '';
+    speakerDeviceId = localStorage.getItem(SPEAKER_DEVICE_KEY) || '';
+    speakerDeviceLabel = localStorage.getItem(SPEAKER_LABEL_KEY) || '';
 } catch (e) {}
 const locallyMuted = new Set();
 const playerVolumes = (() => {
