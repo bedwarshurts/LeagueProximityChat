@@ -169,7 +169,8 @@ public final class PlayOfGameManager {
                     insertHighlight(new Clip(frames, startMs, endMs, p.headline(), p.score(), p.eventTime()), server);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[PotG] Could not process the event feed", e);
         }
     }
 

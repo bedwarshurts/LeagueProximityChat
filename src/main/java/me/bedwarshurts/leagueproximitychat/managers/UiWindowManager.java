@@ -1,5 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
+import me.bedwarshurts.leagueproximitychat.app.AppConstants;
 import me.bedwarshurts.leagueproximitychat.app.AppIcon;
 import me.bedwarshurts.leagueproximitychat.app.AppInfo;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
@@ -17,14 +18,12 @@ import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.WindowConstants;
-import java.awt.Dimension;
 import java.awt.Frame;
 import java.awt.Image;
 import java.awt.MenuItem;
 import java.awt.PopupMenu;
 import java.awt.Rectangle;
 import java.awt.SystemTray;
-import java.awt.Toolkit;
 import java.awt.TrayIcon;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -35,9 +34,6 @@ import java.nio.file.Paths;
 
 public class UiWindowManager {
 
-    private static final String WINDOW_TITLE = "League of Legends Proximity Chat";
-    private static final String GAME_WINDOW_TITLE = "League of Legends (TM) Client";
-    private static final String APP_URL = "http://localhost:8000";
     private static final long EXIT_TIMEOUT_MS = 5000;
 
     private CefApp cefApp;
@@ -76,7 +72,7 @@ public class UiWindowManager {
                     model.clear();
                 }
             });
-            browser = client.createBrowser(APP_URL, false, false);
+            browser = client.createBrowser(AppConstants.APP_URL, false, false);
 
             SwingUtilities.invokeAndWait(() -> {
                 try {
@@ -84,7 +80,7 @@ public class UiWindowManager {
                 } catch (Exception ignored) {
                 }
 
-                frame = new JFrame(WINDOW_TITLE);
+                frame = new JFrame(AppConstants.APP_WINDOW_TITLE);
                 frame.setIconImage(AppIcon.image());
                 frame.add(browser.getUIComponent());
                 frame.setSize(1180, 760);
@@ -132,7 +128,7 @@ public class UiWindowManager {
             menu.addSeparator();
             menu.add(quit);
 
-            trayIcon = new TrayIcon(image, WINDOW_TITLE + " " + AppInfo.fullVersion(), menu);
+            trayIcon = new TrayIcon(image, AppConstants.APP_WINDOW_TITLE + " " + AppInfo.fullVersion(), menu);
             trayIcon.setImageAutoSize(true);
             trayIcon.addMouseListener(new MouseAdapter() {
                 @Override
@@ -197,7 +193,7 @@ public class UiWindowManager {
                         or by clicking its icon in the system tray.
 
                         """,
-                WINDOW_TITLE,
+                AppConstants.APP_WINDOW_TITLE,
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.QUESTION_MESSAGE,
                 null,
@@ -217,28 +213,15 @@ public class UiWindowManager {
         SwingUtilities.invokeLater(() -> {
             if (frame.isVisible()) {
                 frame.setVisible(false);
-                WindowUtils.focusWindow(GAME_WINDOW_TITLE);
+                WindowUtils.focusWindow(AppConstants.GAME_WINDOW_TITLE);
                 return;
             }
 
-            Rectangle bounds = WindowUtils.getGameWindowBounds(GAME_WINDOW_TITLE);
-            int w, h, x, y;
-            if (bounds != null && bounds.width > 0) {
-                w = Math.clamp((int) (bounds.width * 0.62), 900, bounds.width);
-                h = Math.clamp((int) (bounds.height * 0.70), 560, bounds.height);
-                x = bounds.x + (bounds.width - w) / 2;
-                y = bounds.y + (bounds.height - h) / 2;
-            } else {
-                Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
-                w = 1180;
-                h = 760;
-                x = (screen.width - w) / 2;
-                y = (screen.height - h) / 2;
-            }
+            Rectangle bounds = WindowUtils.overlayBounds(AppConstants.GAME_WINDOW_TITLE);
 
             frame.setFocusableWindowState(false);
             frame.setAlwaysOnTop(true);
-            frame.setBounds(x, y, w, h);
+            frame.setBounds(bounds);
             frame.setVisible(true);
             frame.setFocusableWindowState(true);
         });

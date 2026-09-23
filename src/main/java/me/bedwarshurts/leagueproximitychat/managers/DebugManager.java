@@ -26,6 +26,11 @@ public final class DebugManager {
         return true;
     }
 
+    public static void logFailure(String context, Throwable t) {
+        if (!isENABLED()) return;
+        System.err.println(context + ": " + t.getClass().getSimpleName() + (t.getMessage() != null ? " - " + t.getMessage() : ""));
+    }
+
     private static boolean isRunningFromSource() {
         try {
             return Files.isDirectory(Paths.get(DebugManager.class.getProtectionDomain().getCodeSource().getLocation().toURI()));

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>League of Legends Proximity Chat</title>
+    <script src="livekit-client.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="main-ui">
+    <header class="panel command-bar">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 40 44" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="rim-gold" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" stop-color="#f0e6d2"/>
+                            <stop offset="1" stop-color="#785a28"/>
+                        </linearGradient>
+                        <linearGradient id="core-teal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0" stop-color="#0ac8b9"/>
+                            <stop offset="1" stop-color="#005a82"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M20 1.5 37.5 11.6v20.8L20 42.5 2.5 32.4V11.6Z" fill="rgba(5, 12, 22, 0.9)" stroke="url(#rim-gold)" stroke-width="1.5"/>
+                    <path d="M20 9.5 29.5 22 20 34.5 10.5 22Z" fill="url(#core-teal)"/>
+                    <path d="M20 15 25 22l-5 7-5-7Z" fill="#02060c" opacity="0.5"/>
+                </svg>
+            </div>
+            <div>
+                <h1>Yowaimo's LeagueProximityChat</h1>
+                <p>https://github.com/bedwarshurts/LeagueProximityChat</p>
+            </div>
+        </div>
+        <div class="hud-status">
+            <div id="pause-status" class="status loading" style="display: none;">Game Paused: Everyone Can Hear Each Other</div>
+            <div id="ws-status" class="status error">Position Tracker: Disconnected</div>
+            <div id="lk-status" class="status error">Audio Server: Waiting for token...</div>
+            <button id="debug-btn" class="settings-btn" title="Debug logs" style="display: none;">🐞</button>
+            <button id="settings-btn" class="settings-btn" title="Voice server settings">⚙</button>
+        </div>
+    </header>
+
+    <main class="panel squad-panel">
+        <div class="roster-head">
+            <span class="section-label">Match Roster</span>
+            <span class="roster-count" id="roster-count">-</span>
+        </div>
+        <div id="roster-container">
+            <div class="player-item empty-row">Waiting for match to begin…</div>
+        </div>
+    </main>
+
+    <footer class="panel dock">
+        <div class="pos-tracker">
+            <span class="pt-label">Your Position</span>
+            <span id="local-coords" class="highlight">Waiting for data...</span>
+        </div>
+
+        <div class="dock-center">
+            <button id="start-btn" class="btn-primary">Connect to Audio</button>
+            <div id="voice-controls" class="controls-row">
+                <button id="mute-btn" class="btn-control btn-mute">🎤 Mute</button>
+                <button id="deafen-btn" class="btn-control btn-deafen">🎧 Deafen</button>
+            </div>
+        </div>
+
+        <div class="settings-panel">
+            <div class="setting-row">
+                <span class="s-title">
+                    Noise Cancellation
+                    <span class="setting-hint">Krisp <span id="krisp-status"></span></span>
+                </span>
+                <label class="switch">
+                    <input type="checkbox" id="krisp-toggle">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+        </div>
+    </footer>
+</div>
+
+<div id="setup-screen">
+    <div class="panel setup-card">
+        <span class="section-label" id="setup-title">Settings</span>
+
+        <div class="setup-body">
+        <nav class="setup-tabs">
+            <button class="setup-tab" data-cat="general">General</button>
+            <button class="setup-tab" data-cat="voice">Voice Server</button>
+            <button class="setup-tab" data-cat="dev">Development</button>
+            <span class="setup-version" id="setup-version"></span>
+        </nav>
+
+        <div class="setup-content">
+        <div class="setup-cat" id="setup-cat-general">
+            <div class="setup-toggle">
+                <span class="s-title">
+                    Low Performance Mode
+                    <span class="setting-hint">Turns off highlight clip recording to save CPU</span>
+                </span>
+                <label class="switch">
+                    <input type="checkbox" id="setup-lowperf">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+            <div class="setup-toggle">
+                <span class="s-title">
+                    Microphone
+                    <span class="setting-hint">The input your voice is sent from</span>
+                </span>
+                <select id="setup-mic" class="setup-input setup-select"></select>
+            </div>
+        </div>
+
+        <div class="setup-cat" id="setup-cat-voice">
+            <p class="setup-text">
+                Yowaimo's LeagueProximityChat needs a LiveKit server to carry voice between players. Create a free project at
+                <a href="https://cloud.livekit.io" target="_blank" rel="noreferrer">cloud.livekit.io</a>,
+                open <em>Settings &rarr; Keys</em>, and paste the project URL, API key and API secret below.
+                These values are saved locally on this computer only.
+            </p>
+            <p class="setup-text setup-warning">
+                Everyone who wants to play together must use the exact same three values
+            </p>
+            <label class="setup-label">Server URL
+                <input id="setup-url" class="setup-input" type="text" placeholder="https://your-project.livekit.cloud" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="setup-label">API Key
+                <input id="setup-key" class="setup-input" type="text" placeholder="APIxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="setup-label">API Secret
+                <input id="setup-secret" class="setup-input" type="password" placeholder="••••••••••••••••" autocomplete="off">
+            </label>
+        </div>
+
+        <div class="setup-cat" id="setup-cat-dev">
+            <div class="setup-toggle">
+                <span class="s-title">
+                    Debug Mode
+                    <span class="setting-hint">Saves annotated tracking images and verbose logs. Reduces performance.</span>
+                </span>
+                <label class="switch">
+                    <input type="checkbox" id="setup-debug">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+        </div>
+
+        <div id="setup-error" class="setup-error"></div>
+        <div class="setup-actions">
+            <button id="setup-save" class="btn-primary">Save &amp; Continue</button>
+        </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<div id="warning-popup">
+    <div class="panel warning-card" role="alertdialog" aria-modal="true" aria-labelledby="warning-title" aria-describedby="warning-message">
+        <span class="section-label warning-title" id="warning-title">Warning</span>
+        <p class="warning-message" id="warning-message"></p>
+        <ul class="warning-items" id="warning-items"></ul>
+        <p class="warning-footer" id="warning-footer"></p>
+        <button id="warning-ok" class="btn-primary">I understand</button>
+    </div>
+</div>
+
+<div id="log-viewer">
+    <div class="panel log-card">
+        <div class="log-head">
+            <span class="section-label">Debug Logs</span>
+            <div class="log-actions">
+                <button id="log-refresh" class="settings-btn" title="Refresh">⟳</button>
+                <button id="log-close" class="settings-btn" title="Close">✕</button>
+            </div>
+        </div>
+        <pre id="log-content" class="log-content">Loading…</pre>
+    </div>
+</div>
+
+<div id="potg-intro">
+    <div class="intro-inner">
+        <div class="intro-flourish">✦</div>
+        <div class="intro-text" id="potg-intro-text"></div>
+        <button id="potg-intro-btn" class="potg-btn potg-btn-primary">Take me there</button>
+    </div>
+</div>
+
+<div id="potg-viewer">
+    <div class="potg-media">
+        <canvas id="potg-canvas" class="potg-canvas"></canvas>
+        <video id="potg-video" class="potg-canvas" style="display: none;" muted playsinline></video>
+    </div>
+    <div class="potg-chrome">
+        <div class="potg-top">
+            <div class="potg-headline" id="potg-headline"></div>
+        </div>
+        <div class="potg-bottom">
+            <div id="potg-save-status"></div>
+            <div id="potg-highlights" class="potg-highlights"></div>
+            <div class="potg-actions">
+                <div class="potg-actions-left">
+                    <button id="potg-replay" class="potg-icon-btn" title="Replay">⟳</button>
+                    <div class="potg-volume" title="Clip volume">
+                        <span class="potg-vol-icon" id="potg-vol-icon">🔊</span>
+                        <input id="potg-vol" class="potg-slider" type="range" min="0" max="100" step="1" value="100">
+                    </div>
+                </div>
+                <div class="potg-actions-center">
+                    <button id="potg-save" class="potg-btn">Save Highlight</button>
+                    <button id="potg-more" class="potg-btn">Show More Highlights</button>
+                </div>
+                <div class="potg-actions-right">
+                    <button id="potg-continue" class="potg-btn potg-btn-primary">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="endgame-screen">
+    <div class="eg-wrap" id="eg-wrap"></div>
+</div>
+
+<div id="hidden-audio-container" style="display: none;"></div>
+
+<script src="js/state.js"></script>
+<script src="js/champion-data.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/logs.js"></script>
+<script src="js/potg-capture.js"></script>
+<script src="js/potg-viewer.js"></script>
+<script src="js/endgame.js"></script>
+<script src="js/session.js"></script>
+<script src="js/roster.js"></script>
+<script src="js/spatial-audio.js"></script>
+<script src="js/warnings.js"></script>
+<script src="js/voice-controls.js"></script>
+<script src="js/tracker-socket.js"></script>
+<script src="js/livekit-room.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -71,6 +71,16 @@
               <goal>shade</goal>
             </goals>
             <configuration>
+              <filters>
+                <filter>
+                  <artifact>org.openpnp:opencv</artifact>
+                  <excludes>
+                    <exclude>nu/pattern/opencv/linux/**</exclude>
+                    <exclude>nu/pattern/opencv/osx/**</exclude>
+                    <exclude>nu/pattern/opencv/windows/x86_32/**</exclude>
+                  </excludes>
+                </filter>
+              </filters>
               <transformers>
                 <transformer>
                   <mainClass>me.bedwarshurts.leagueproximitychat.LeagueProximityChat</mainClass>

@@ -1,14 +1,11 @@
 package me.bedwarshurts.leagueproximitychat;
 
-import com.sun.net.httpserver.HttpServer;
-import lombok.Getter;
-import lombok.Setter;
+import me.bedwarshurts.leagueproximitychat.app.AppConstants;
+import me.bedwarshurts.leagueproximitychat.app.AppInfo;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
 import me.bedwarshurts.leagueproximitychat.discord.DiscordRPCManager;
 import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
-import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
-import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
 import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.managers.LogManager;
@@ -16,31 +13,22 @@ import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
-import me.bedwarshurts.leagueproximitychat.app.AppInfo;
+import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
+import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
+import me.bedwarshurts.leagueproximitychat.web.LocalWebServer;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
 import nu.pattern.OpenCV;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.opencv.core.Mat;
 
-import java.awt.*;
+import java.awt.Desktop;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.security.NoSuchAlgorithmException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -52,22 +40,18 @@ public class LeagueProximityChat {
 
     private static boolean wasPaused = false;
     private static boolean isAwaitingBrowser = true;
-    @Getter @Setter private static boolean hasConnectedToLiveKit = false;
     private static boolean isTrackerReady = false;
 
-    @Getter @Setter private static LivekitRoom activeRoom = null;
+    private static final SessionState session = new SessionState();
     private static volatile boolean hasSentRoster = false;
     private static final AtomicBoolean rosterBuildInFlight = new AtomicBoolean(false);
     private static final AtomicInteger rosterGeneration = new AtomicInteger(0);
     private static final AtomicBoolean gameOverFlag = new AtomicBoolean(false);
 
-    @Getter private static String roomLeaderRiotId = null;
-
-    @Setter private static String detectedChampion = null;
+    private static String roomLeaderRiotId = null;
+    private static String detectedChampion = null;
 
     private static ScreenPositionTracker tracker = null;
-    private static volatile LeagueConfigReader.Warning configWarning = null;
-    private static final String CONFIG_WARNING_ID = "league-settings";
     private static CoordinateServer server = null;
     private static OverlayManager overlay = null;
     private static UiWindowManager uiWindow = null;
@@ -78,33 +62,6 @@ public class LeagueProximityChat {
     private static final int GAME_END_FAILURE_THRESHOLD = 3;
 
     private static final double GAME_START_MIN_TIME = 1.0;
-
-    public static void sendConfigWarning() {
-        LeagueConfigReader.Warning warning = configWarning;
-        if (server != null && warning != null) {
-            server.sendToActive(new JSONObject()
-                    .put("type", "WARNING")
-                    .put("id", CONFIG_WARNING_ID)
-                    .put("title", "League Settings")
-                    .put("message", warning.message())
-                    .put("items", new JSONArray(warning.settingsToChange()))
-                    .put("footer", warning.footer() == null ? JSONObject.NULL : warning.footer())
-                    .toString());
-        }
-    }
-
-    public static void acknowledgeWarning(String id) {
-        if (CONFIG_WARNING_ID.equals(id)) configWarning = null;
-    }
-
-    public static LeaguePlayer findLocalPlayer(LeagueGame gameData, String localSummonerName) {
-        for (LeaguePlayer p : gameData.players()) {
-            if ((p.getRiotId() != null && p.getRiotId().equalsIgnoreCase(localSummonerName))) {
-                return p;
-            }
-        }
-        return null;
-    }
 
     private static void pollGameEnd() {
         if (!hasSentRoster) {
@@ -190,16 +147,16 @@ public class LeagueProximityChat {
             server.setUserRequestedConnection(false);
         }
 
-        activeRoom = null;
+        session.setActiveRoom(null);
         if (tracker != null) {
             tracker.release();
             tracker = null;
         }
 
         hasSentRoster = false;
-        hasConnectedToLiveKit = false;
+        session.setConnectedToLiveKit(false);
         isTrackerReady = false;
-        configWarning = null;
+        session.setConfigWarning(null);
         wasPaused = false;
         detectedChampion = null;
         roomLeaderRiotId = null;
@@ -210,18 +167,18 @@ public class LeagueProximityChat {
         rosterGeneration.incrementAndGet();
     }
 
-    public static void trackingLoop() throws InterruptedException, NoSuchAlgorithmException {
+    public static void trackingLoop() throws InterruptedException {
         if (!server.hasActiveConnection()) {
             if (!isAwaitingBrowser) {
                 System.out.println("Browser disconnected.");
                 isAwaitingBrowser = true;
 
-                hasConnectedToLiveKit = false;
+                session.setConnectedToLiveKit(false);
                 hasSentRoster = false;
                 rosterGeneration.incrementAndGet();
                 isTrackerReady = false;
                 server.setUserRequestedConnection(false);
-                activeRoom = null;
+                session.setActiveRoom(null);
             }
             Thread.sleep(1000);
             return;
@@ -243,7 +200,7 @@ public class LeagueProximityChat {
         String localSummonerName = null;
         boolean isInGame = false;
 
-        if (!hasSentRoster || (server.isUserRequestedConnection() && !hasConnectedToLiveKit)) {
+        if (!hasSentRoster || (server.isUserRequestedConnection() && !session.isConnectedToLiveKit())) {
 
             String currentLeader = RitoApiUtils.getLobbyLeader();
             if (currentLeader != null && !currentLeader.equals(roomLeaderRiotId)) {
@@ -256,7 +213,7 @@ public class LeagueProximityChat {
         }
 
         if (isInGame && !hasSentRoster) {
-            LeaguePlayer localPlayer = findLocalPlayer(gameData, localSummonerName);
+            LeaguePlayer localPlayer = gameData.findPlayer(localSummonerName);
 
             if (localPlayer != null && rosterBuildInFlight.compareAndSet(false, true)) {
                 LeagueGame rosterGame = gameData;
@@ -279,50 +236,51 @@ public class LeagueProximityChat {
         }
 
         if (!server.isUserRequestedConnection()) {
-            CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
+            DiscordRPCManager.requestIdleUpdate();
             Thread.sleep(1000);
             return;
         }
 
-        if (isInGame && !hasConnectedToLiveKit && !hasGameStarted()) {
-            CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
+        if (isInGame && !session.isConnectedToLiveKit() && !hasGameStarted()) {
+            DiscordRPCManager.requestIdleUpdate();
             Thread.sleep(1000);
             return;
         }
 
-        if (isInGame && !hasConnectedToLiveKit) {
+        if (isInGame && !session.isConnectedToLiveKit()) {
             if (!ConfigManager.isConfigured()) {
                 Thread.sleep(1000);
                 return;
             }
 
-            LeaguePlayer localPlayer = findLocalPlayer(gameData, localSummonerName);
+            LeaguePlayer localPlayer = gameData.findPlayer(localSummonerName);
 
             if (localPlayer != null) {
                 String roomName = gameData.createRoomHash();
                 String identity = localPlayer.getRiotId();
                 String name = localPlayer.getRiotId() + " (" + localPlayer.getChampionName() + ")";
 
-                activeRoom = new LivekitRoom(roomName, roomLeaderRiotId);
+                LivekitRoom room = new LivekitRoom(roomName, roomLeaderRiotId);
+                session.setActiveRoom(room);
 
-                String token = activeRoom.generateRoomToken(name, identity);
+                String token = room.generateRoomToken(name, identity);
                 String payload = new JSONObject()
                         .put("type", "CONNECT_LIVEKIT")
                         .put("token", token)
                         .toString();
                 server.sendToActive(payload);
 
-                hasConnectedToLiveKit = true;
+                session.setConnectedToLiveKit(true);
             }
-        } else if (!isInGame && !hasConnectedToLiveKit) {
-            CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
+        } else if (!isInGame && !session.isConnectedToLiveKit()) {
+            DiscordRPCManager.requestIdleUpdate();
             Thread.sleep(1000);
             return;
         }
 
         if (!isTrackerReady) {
             System.out.println("Loading champion template.");
-            Mat championTemplate = TemplateLoader.autoLoadChampionTemplate();
+            TemplateLoader.ChampionTemplate championTemplate = TemplateLoader.autoLoadChampionTemplate();
 
             if (championTemplate == null) {
                 System.err.println("Failed to load champion template. Retrying in 2 seconds!");
@@ -330,17 +288,19 @@ public class LeagueProximityChat {
                 return;
             }
 
-            tracker = new ScreenPositionTracker(championTemplate);
+            detectedChampion = championTemplate.championName();
+            tracker = new ScreenPositionTracker(championTemplate.icon());
             isTrackerReady = true;
-            configWarning = tracker.getConfigWarning();
+            LeagueConfigReader.Warning configWarning = tracker.getConfigWarning();
+            session.setConfigWarning(configWarning);
             if (configWarning != null) {
                 System.err.println("[Config] " + configWarning.toLogLine());
-                sendConfigWarning();
+                server.sendConfigWarning();
             }
             System.out.println("Starting position tracking.");
         }
 
-        if (!WindowUtils.isWindowFocused("League of Legends (TM) Client")) {
+        if (!WindowUtils.isWindowFocused(AppConstants.GAME_WINDOW_TITLE)) {
             if (!wasPaused) System.out.println("League of Legends lost focus. Pausing tracking.");
             wasPaused = true;
             Thread.sleep(1000);
@@ -360,7 +320,7 @@ public class LeagueProximityChat {
         long startTime = System.currentTimeMillis();
 
         ScreenPositionTracker.TrackResult pos = tracker.trackPlayerPosition();
-        CompletableFuture.runAsync(() -> DiscordRPCManager.updatePresenceActive(pos, detectedChampion));
+        DiscordRPCManager.requestActiveUpdate(pos, detectedChampion);
         server.broadcastCoordinates(pos.x(), pos.y(), pos.isDead(), pos.detected(), pos.deadView());
 
         long elapsedTime = System.currentTimeMillis() - startTime;
@@ -369,253 +329,17 @@ public class LeagueProximityChat {
         Thread.sleep(sleepTime);
     }
 
-    public static void startHttpServer() throws IOException {
-        HttpServer httpServer = HttpServer.create(new InetSocketAddress(8000), 0);
-
-        httpServer.createContext("/", exchange -> {
-            try (InputStream is = LeagueProximityChat.class.getResourceAsStream("/index.html")) {
-                if (is == null) {
-                    throw new Exception("Could not find index.html.");
-                }
-
-                byte[] htmlBytes = is.readAllBytes();
-
-                exchange.getResponseHeaders().set("Content-Type", "text/html");
-                exchange.sendResponseHeaders(200, htmlBytes.length);
-
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(htmlBytes);
-                }
-            } catch (Exception e) {
-                String error = "Error: " + e.getMessage();
-                exchange.sendResponseHeaders(404, error.length());
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(error.getBytes());
-                }
-            }
-        });
-
-        httpServer.createContext("/settings", exchange -> {
-            try {
-                if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                    byte[] body = new JSONObject()
-                            .put("configured", ConfigManager.isConfigured())
-                            .put("url", ConfigManager.getLivekitUrl())
-                            .put("apiKey", ConfigManager.getApiKey())
-                            .put("apiSecret", ConfigManager.getApiSecret())
-                            .put("lowPerformanceMode", ConfigManager.isLowPerformanceMode())
-                            .put("debugMode", ConfigManager.isDebugMode())
-                            .put("version", AppInfo.version())
-                            .put("build", AppInfo.buildLabel())
-                            .toString().getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.getResponseHeaders().set("Cache-Control", "no-store");
-                    exchange.sendResponseHeaders(200, body.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(body);
-                    }
-                    return;
-                }
-
-                if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                    String raw;
-                    try (InputStream is = exchange.getRequestBody()) {
-                        raw = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                    }
-                    JSONObject json = new JSONObject(raw);
-                    boolean ok = ConfigManager.save(
-                            json.optString("url", ""),
-                            json.optString("apiKey", ""),
-                            json.optString("apiSecret", ""),
-                            json.optBoolean("lowPerformanceMode", false),
-                            json.optBoolean("debugMode", false));
-
-                    byte[] body = new JSONObject().put("ok", ok).toString().getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.sendResponseHeaders(ok ? 200 : 400, body.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(body);
-                    }
-                    return;
-                }
-
-                exchange.sendResponseHeaders(405, -1);
-            } catch (Exception e) {
-                try {
-                    exchange.sendResponseHeaders(500, -1);
-                } catch (IOException ignored) {
-                }
-            }
-        });
-
-        httpServer.createContext("/logs", exchange -> {
-            byte[] body = LogManager.snapshot().getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-            exchange.getResponseHeaders().set("Cache-Control", "no-store");
-            if (body.length == 0) {
-                exchange.sendResponseHeaders(200, -1);
-                return;
-            }
-            exchange.sendResponseHeaders(200, body.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(body);
-            }
-        });
-
-        httpServer.createContext("/potg/", exchange -> {
-            String path = exchange.getRequestURI().getPath();
-
-            if (path.equals("/potg/meta")) {
-                byte[] body = PlayOfGameManager.metaJson().getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                exchange.getResponseHeaders().set("Cache-Control", "no-store");
-                exchange.sendResponseHeaders(200, body.length);
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(body);
-                }
-                return;
-            }
-
-            if (path.equals("/potg/stats")) {
-                byte[] body = PlayOfGameManager.statsJson().getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                exchange.getResponseHeaders().set("Cache-Control", "no-store");
-                exchange.sendResponseHeaders(200, body.length);
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(body);
-                }
-                return;
-            }
-
-            if (path.equals("/potg/save") && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                JSONObject result = new JSONObject();
-                int status = 200;
-                try {
-                    byte[] webm = exchange.getRequestBody().readAllBytes();
-                    if (webm.length < 1024) throw new IOException("empty recording");
-
-                    String name = "Play of the Game";
-                    String query = exchange.getRequestURI().getQuery();
-                    if (query != null) {
-                        for (String kv : query.split("&")) {
-                            if (kv.startsWith("name=")) {
-                                name = URLDecoder.decode(kv.substring(5), StandardCharsets.UTF_8);
-                            }
-                        }
-                    }
-                    name = name.replaceAll("[^A-Za-z0-9 _.-]", "").trim();
-                    if (name.isEmpty()) name = "Play of the Game";
-
-                    Path dir = Paths.get(System.getProperty("user.home"), "Videos", "LeagueProximityChat");
-                    Files.createDirectories(dir);
-                    String stamp = new SimpleDateFormat("yyyy-MM-dd HH.mm.ss").format(new Date());
-                    Path file = dir.resolve(name + " " + stamp + ".webm");
-                    Files.write(file, webm);
-
-                    result.put("path", file.toString());
-                    System.out.println("[PotG] Highlight saved to " + file);
-                } catch (Exception ex) {
-                    status = 500;
-                    result.put("error", String.valueOf(ex.getMessage()));
-                    System.out.println("[PotG] Highlight save failed: " + ex.getMessage());
-                }
-                byte[] body = result.toString().getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                exchange.sendResponseHeaders(status, body.length);
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(body);
-                }
-                return;
-            }
-
-            if (path.startsWith("/potg/frame/")) {
-                byte[] img = null;
-                try {
-                    String rest = path.substring("/potg/frame/".length());
-                    int slash = rest.indexOf('/');
-                    img = PlayOfGameManager.frameBytes(
-                            Integer.parseInt(rest.substring(0, slash)),
-                            Integer.parseInt(rest.substring(slash + 1)));
-                } catch (Exception ignored) {
-                }
-                if (img == null) {
-                    exchange.sendResponseHeaders(404, -1);
-                    return;
-                }
-                exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
-                exchange.sendResponseHeaders(200, img.length);
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(img);
-                }
-                return;
-            }
-
-            exchange.sendResponseHeaders(404, -1);
-        });
-
-        httpServer.createContext("/livekit-client.umd.min.js", exchange -> {
-            try (InputStream is = LeagueProximityChat.class.getResourceAsStream("/livekit-client.umd.min.js")) {
-                if (is == null) {
-                    exchange.sendResponseHeaders(404, -1);
-                    return;
-                }
-
-                byte[] bytes = is.readAllBytes();
-                exchange.getResponseHeaders().set("Content-Type", "application/javascript; charset=utf-8");
-                exchange.getResponseHeaders().set("Cache-Control", "max-age=86400");
-                exchange.sendResponseHeaders(200, bytes.length);
-
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(bytes);
-                }
-            } catch (Exception e) {
-                exchange.sendResponseHeaders(404, -1);
-            }
-        });
-
-        httpServer.createContext("/profile-icon/", exchange -> {
-            byte[] image = null;
-            try {
-                String idPart = exchange.getRequestURI().getPath()
-                        .substring("/profile-icon/".length()).replaceAll("[^0-9]", "");
-                if (!idPart.isEmpty()) {
-                    image = RitoApiUtils.getProfileIconImage(Integer.parseInt(idPart));
-                }
-            } catch (Exception ignored) {
-            }
-
-            if (image == null || image.length == 0) {
-                exchange.sendResponseHeaders(404, -1);
-                return;
-            }
-
-            exchange.getResponseHeaders().set("Content-Type", "image/jpeg");
-            exchange.getResponseHeaders().set("Cache-Control", "max-age=86400");
-            exchange.sendResponseHeaders(200, image.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(image);
-            }
-        });
-
-        httpServer.setExecutor(Executors.newFixedThreadPool(4, r -> {
-            Thread t = new Thread(r, "http-server");
-            t.setDaemon(true);
-            return t;
-        }));
-
-        httpServer.start();
-        System.out.println("Local Web Server running on port 8000!");
-
+    private static void launchUi() {
         try {
             overlay = new OverlayManager(
                     () -> {
-                        if (LeagueProximityChat.server != null) {
-                            LeagueProximityChat.server.sendToActive("{\"type\":\"TOGGLE_MUTE\"}");
+                        if (server != null) {
+                            server.sendToActive("{\"type\":\"TOGGLE_MUTE\"}");
                         }
                     },
                     () -> {
-                        if (LeagueProximityChat.server != null) {
-                            LeagueProximityChat.server.sendToActive("{\"type\":\"TOGGLE_DEAFEN\"}");
+                        if (server != null) {
+                            server.sendToActive("{\"type\":\"TOGGLE_DEAFEN\"}");
                         }
                     });
 
@@ -626,15 +350,15 @@ public class LeagueProximityChat {
                 uiWindow = null;
                 if (!overlay.launch()) {
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                        Desktop.getDesktop().browse(new URI("http://localhost:8000"));
+                        Desktop.getDesktop().browse(new URI(AppConstants.APP_URL));
                     } else {
-                        System.out.println("Please manually go to: http://localhost:8000");
+                        System.out.println("Please manually go to: " + AppConstants.APP_URL);
                     }
                 }
             }
         } catch (Exception e) {
             System.err.println("Failed to open browser: " + e.getMessage());
-            System.out.println("Please manually go to: http://localhost:8000");
+            System.out.println("Please manually go to: " + AppConstants.APP_URL);
         }
     }
 
@@ -650,7 +374,8 @@ public class LeagueProximityChat {
         }
 
         try {
-            startHttpServer();
+            LocalWebServer.start(AppConstants.WEB_PORT);
+            launchUi();
         } catch (BindException e) {
             System.err.println("The application is already running!");
             System.exit(0);
@@ -658,7 +383,7 @@ public class LeagueProximityChat {
             System.err.println("Failed to start local web server: " + e.getMessage());
         }
 
-        server = new CoordinateServer(new InetSocketAddress("127.0.0.1", 8887));
+        server = new CoordinateServer(new InetSocketAddress("127.0.0.1", AppConstants.WEBSOCKET_PORT), session);
         server.start();
 
         ScheduledExecutorService gameEndPoller = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -677,7 +402,8 @@ public class LeagueProximityChat {
         pausePoller.scheduleWithFixedDelay(() -> {
             try {
                 PauseDetector.poll(server);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                DebugManager.logFailure("[Pause] Pause check failed", e);
             }
         }, PAUSE_CHECK_INTERVAL_MS, PAUSE_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
@@ -705,7 +431,7 @@ public class LeagueProximityChat {
         while (true) {
             try {
                 trackingLoop();
-            } catch (InterruptedException | NoSuchAlgorithmException e) {
+            } catch (InterruptedException e) {
                 System.err.println("Tracking loop interrupted: " + e.getMessage());
             }
         }

@@ -10,6 +10,8 @@ import java.util.regex.Pattern;
 @Getter
 public class LeaguePlayer {
 
+    private static final Pattern TRAILING_NUMBER = Pattern.compile("(\\d+)$");
+
     private final String championName;
     private final boolean isBot;
     private final boolean isDead;
@@ -55,12 +57,7 @@ public class LeaguePlayer {
         this.runes = runes;
         this.score = score;
         this.summonerSpells = summonerSpells;
-
-        if (rawChampionName != null && rawChampionName.startsWith("game_character_displayname_")) {
-            this.championName = RitoApiUtils.sanitizeChampionName(rawChampionName.replace("game_character_displayname_", ""));
-        } else {
-            this.championName = RitoApiUtils.sanitizeChampionName(rawChampionName);
-        }
+        this.championName = RitoApiUtils.sanitizeChampionName(rawChampionName);
     }
 
     public int getEffectiveSkinId() {
@@ -69,7 +66,7 @@ public class LeaguePlayer {
         }
         String source = (rawSkinName != null && !rawSkinName.isEmpty()) ? rawSkinName : skinName;
         if (source != null) {
-            Matcher m = Pattern.compile("(\\d+)$").matcher(source.trim());
+            Matcher m = TRAILING_NUMBER.matcher(source.trim());
             if (m.find()) {
                 try {
                     return Integer.parseInt(m.group(1));

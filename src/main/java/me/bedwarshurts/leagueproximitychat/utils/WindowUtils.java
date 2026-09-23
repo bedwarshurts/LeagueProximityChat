@@ -7,7 +7,9 @@ import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinDef.RECT;
 import com.sun.jna.platform.win32.WinDef.POINT;
 import com.sun.jna.win32.W32APIOptions;
+import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
 
 public final class WindowUtils {
 
@@ -36,6 +38,24 @@ public final class WindowUtils {
         if (hwnd != null) {
             User32.INSTANCE.SetForegroundWindow(hwnd);
         }
+    }
+
+    public static Rectangle overlayBounds(String gameWindowTitle) {
+        Rectangle bounds = getGameWindowBounds(gameWindowTitle);
+        int w, h, x, y;
+        if (bounds != null && bounds.width > 0) {
+            w = Math.clamp((int) (bounds.width * 0.62), 900, bounds.width);
+            h = Math.clamp((int) (bounds.height * 0.70), 560, bounds.height);
+            x = bounds.x + (bounds.width - w) / 2;
+            y = bounds.y + (bounds.height - h) / 2;
+        } else {
+            Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
+            w = 1180;
+            h = 760;
+            x = (screen.width - w) / 2;
+            y = (screen.height - h) / 2;
+        }
+        return new Rectangle(x, y, w, h);
     }
 
     public static Rectangle getGameWindowBounds(String exactWindowTitle) {

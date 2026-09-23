@@ -116,6 +116,10 @@ public class MinimapLocator {
         return locked;
     }
 
+    public void release() {
+        referenceGray.release();
+    }
+
     public static MinimapRect probe(Mat screen, Mat referenceGray, int estimatedSize) {
         if (referenceGray == null || estimatedSize <= 0) return null;
 
@@ -198,7 +202,8 @@ public class MinimapLocator {
                     new Point(rect.x() - x0 + rect.size(), rect.y() - y0 + rect.size()),
                     new Scalar(0, 255, 0), 2);
             Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_minimap_lock.png", ctx);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[Debug] Could not write debug_minimap_lock.png", e);
         } finally {
             if (ctx != null) ctx.release();
         }

@@ -20,13 +20,14 @@ public final class ClipRecorder {
     public record Frame(long epochMs, byte[] jpeg) {
     }
 
-    private static final long KEEP_MS = 90_000;
+    private static final long KEEP_MS = 45_000;
     private static final int TARGET_WIDTH = 960;
     private static final int JPEG_QUALITY = 70;
+    private static final int ENCODER_THREADS = 3;
 
     private static final ArrayDeque<Frame> frames = new ArrayDeque<>();
     private static final ThreadPoolExecutor worker = new ThreadPoolExecutor(
-            9, 9, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(60), r -> {
+            ENCODER_THREADS, ENCODER_THREADS, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(60), r -> {
         Thread t = new Thread(r, "clip-recorder");
         t.setDaemon(true);
         return t;
@@ -36,7 +37,7 @@ public final class ClipRecorder {
     }
 
     public static void record(Mat screenBgr) {
-        if (ConfigManager.isLowPerformanceMode()) return; // clip recording disabled by the user
+        if (ConfigManager.isLowPerformanceMode()) return;
         if (worker.getQueue().size() >= 60) return;
 
         Mat copy = screenBgr.clone();
@@ -66,7 +67,8 @@ public final class ClipRecorder {
                 long cutoff = System.currentTimeMillis() - KEEP_MS;
                 frames.removeIf(f -> f.epochMs() < cutoff);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[Clips] Could not encode a frame", e);
         } finally {
             src.release();
             small.release();

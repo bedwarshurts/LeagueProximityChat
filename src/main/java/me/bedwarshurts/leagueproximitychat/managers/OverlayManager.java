@@ -5,21 +5,16 @@ import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinUser;
+import me.bedwarshurts.leagueproximitychat.app.AppConstants;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 
-import java.awt.Dimension;
 import java.awt.Rectangle;
-import java.awt.Toolkit;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class OverlayManager {
-
-    private static final String OVERLAY_TITLE = "League of Legends Proximity Chat";
-    private static final String GAME_WINDOW_TITLE = "League of Legends (TM) Client";
-    private static final String APP_URL = "http://localhost:8000";
 
     private static final int MOD_SHIFT = 0x0004;
     private static final int VK_F8 = 0x77;
@@ -94,7 +89,7 @@ public class OverlayManager {
     private boolean spawnAppWindow() {
         try {
             new ProcessBuilder(browserPath.toString(),
-                    "--app=" + APP_URL,
+                    "--app=" + AppConstants.APP_URL,
                     "--window-size=1180,760",
                     "--disable-background-timer-throttling").start();
             return true;
@@ -155,26 +150,13 @@ public class OverlayManager {
 
         if (User32.INSTANCE.IsWindowVisible(overlay)) {
             User32.INSTANCE.ShowWindow(overlay, WinUser.SW_HIDE);
-            WindowUtils.focusWindow(GAME_WINDOW_TITLE);
+            WindowUtils.focusWindow(AppConstants.GAME_WINDOW_TITLE);
             return;
         }
 
-        Rectangle bounds = WindowUtils.getGameWindowBounds(GAME_WINDOW_TITLE);
-        int w, h, x, y;
-        if (bounds != null && bounds.width > 0) {
-            w = Math.clamp((int) (bounds.width * 0.62), 900, bounds.width);
-            h = Math.clamp((int) (bounds.height * 0.70), 560, bounds.height);
-            x = bounds.x + (bounds.width - w) / 2;
-            y = bounds.y + (bounds.height - h) / 2;
-        } else {
-            Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
-            w = 1180;
-            h = 760;
-            x = (screen.width - w) / 2;
-            y = (screen.height - h) / 2;
-        }
-
-        User32.INSTANCE.SetWindowPos(overlay, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        Rectangle bounds = WindowUtils.overlayBounds(AppConstants.GAME_WINDOW_TITLE);
+        User32.INSTANCE.SetWindowPos(overlay, HWND_TOPMOST, bounds.x, bounds.y, bounds.width, bounds.height,
+                SWP_SHOWWINDOW | SWP_NOACTIVATE);
     }
 
     private HWND findOverlayWindow() {
@@ -182,7 +164,7 @@ public class OverlayManager {
         User32.INSTANCE.EnumWindows((hwnd, data) -> {
             char[] buffer = new char[256];
             User32.INSTANCE.GetWindowText(hwnd, buffer, 256);
-            if (OVERLAY_TITLE.equals(Native.toString(buffer).trim())) {
+            if (AppConstants.APP_WINDOW_TITLE.equals(Native.toString(buffer).trim())) {
                 found[0] = hwnd;
                 return false;
             }

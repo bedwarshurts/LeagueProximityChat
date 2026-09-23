@@ -151,6 +151,17 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <filters>
+                                <!-- The app is Windows x64 only; OpenCV's other native libraries are ~86 MB of dead weight. -->
+                                <filter>
+                                    <artifact>org.openpnp:opencv</artifact>
+                                    <excludes>
+                                        <exclude>nu/pattern/opencv/linux/**</exclude>
+                                        <exclude>nu/pattern/opencv/osx/**</exclude>
+                                        <exclude>nu/pattern/opencv/windows/x86_32/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                             <transformers>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">

@@ -2,25 +2,30 @@ package me.bedwarshurts.leagueproximitychat.websocket;
 
 import lombok.Getter;
 import lombok.Setter;
-import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
+import me.bedwarshurts.leagueproximitychat.SessionState;
 import me.bedwarshurts.leagueproximitychat.livekit.LiveKitUser;
+import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
+import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
+import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.InetSocketAddress;
-import java.util.Locale;
 
 public class CoordinateServer extends WebSocketServer {
 
+    private final SessionState session;
     private volatile WebSocket activeConnection = null;
     @Getter @Setter private volatile boolean userRequestedConnection = false;
 
-    public CoordinateServer(InetSocketAddress address) {
+    public CoordinateServer(InetSocketAddress address, SessionState session) {
         super(address);
+        this.session = session;
     }
 
     @Override
@@ -30,7 +35,7 @@ public class CoordinateServer extends WebSocketServer {
             activeConnection.close(1000, "Replaced by a newer tab.");
         }
         activeConnection = conn;
-        LeagueProximityChat.sendConfigWarning();
+        sendConfigWarning();
     }
 
     @Override
@@ -38,10 +43,7 @@ public class CoordinateServer extends WebSocketServer {
         if (activeConnection == conn) {
             activeConnection = null;
             userRequestedConnection = false;
-
-            if (LeagueProximityChat.getActiveRoom() != null) {
-                LeagueProximityChat.setActiveRoom(null);
-            }
+            session.setActiveRoom(null);
 
             System.out.println("Active browser tab closed.");
         }
@@ -52,71 +54,71 @@ public class CoordinateServer extends WebSocketServer {
         if ("REQUEST_JOIN".equals(message)) {
             userRequestedConnection = true;
             return;
-        } else if ("CANCEL_JOIN".equals(message)) {
+        }
+        if ("CANCEL_JOIN".equals(message)) {
             userRequestedConnection = false;
+            session.setConnectedToLiveKit(false);
+            session.setActiveRoom(null);
+            return;
+        }
+        if (!message.startsWith("{")) return;
 
-            LeagueProximityChat.setHasConnectedToLiveKit(false);
-            if (LeagueProximityChat.getActiveRoom() != null) {
-                LeagueProximityChat.setActiveRoom(null);
-            }
+        try {
+            handleJsonMessage(new JSONObject(message));
+        } catch (Exception e) {
+            DebugManager.logFailure("[WebSocket] Could not handle a message from the UI", e);
+        }
+    }
 
+    private void handleJsonMessage(JSONObject json) {
+        String type = json.optString("type");
+
+        if ("CLIENT_LOG".equals(type)) {
+            System.out.println("[Client] " + json.optString("msg", ""));
+            return;
+        }
+        if ("WARNING_ACK".equals(type)) {
+            session.acknowledgeWarning(json.optString("id"));
             return;
         }
 
-        if (message.startsWith("{")) {
-            try {
-                JSONObject json = new JSONObject(message);
-                String type = json.optString("type");
-                String identity = json.optString("identity");
-                String name = json.optString("name", "Unknown");
+        LivekitRoom room = session.getActiveRoom();
+        String identity = json.optString("identity");
+        if (room == null || identity.isEmpty()) return;
 
-                if ("CLIENT_LOG".equals(type)) {
-                    System.out.println("[Client] " + json.optString("msg", ""));
-                    return;
+        LiveKitUser targetUser = new LiveKitUser(identity, json.optString("name", "Unknown"));
+        switch (type) {
+            case "PLAYER_JOINED" -> {
+                if (room.isBanned(targetUser)) {
+                    System.out.println("Banned user " + identity + " tried to rejoin. Auto-kicking...");
+                    kick(room, targetUser);
+                } else {
+                    room.addParticipant(targetUser);
                 }
-
-                if ("WARNING_ACK".equals(type)) {
-                    LeagueProximityChat.acknowledgeWarning(json.optString("id"));
-                    return;
+            }
+            case "PLAYER_LEFT" -> room.removeParticipant(targetUser);
+            case "KICK_USER" -> kick(room, targetUser);
+            case "REVOKE_BAN" -> {
+                LiveKitUser moderator = localModerator();
+                if (moderator != null && room.revokeBan(targetUser, moderator)) {
+                    sendToActive(new JSONObject().put("type", "PLAYER_UNBANNED").put("identity", identity).toString());
                 }
-
-                if (LeagueProximityChat.getActiveRoom() != null) {
-
-                    LiveKitUser targetUser = new LiveKitUser(identity, name);
-
-                    String localIdentity = RitoApiUtils.getLocalSummonerName();
-                    LiveKitUser localModerator = (localIdentity != null && !localIdentity.isEmpty())
-                            ? new LiveKitUser(localIdentity, "") : null;
-
-                    if ("PLAYER_JOINED".equals(type) && !identity.isEmpty()) {
-                        if (LeagueProximityChat.getActiveRoom().isBanned(targetUser)) {
-                            System.out.println("Banned user " + identity + " tried to rejoin. Auto-kicking...");
-                            if (localModerator != null
-                                    && LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator)) {
-                                sendToActive(new JSONObject().put("type", "PLAYER_BANNED").put("identity", identity).toString());
-                            }
-                        } else {
-                            LeagueProximityChat.getActiveRoom().addParticipant(targetUser);
-                        }
-                    }
-                    else if ("PLAYER_LEFT".equals(type) && !identity.isEmpty()) {
-                        LeagueProximityChat.getActiveRoom().removeParticipant(targetUser);
-                    }
-                    else if ("KICK_USER".equals(type) && !identity.isEmpty()) {
-                        if (localModerator != null
-                                && LeagueProximityChat.getActiveRoom().kickUser(targetUser, localModerator)) {
-                            sendToActive(new JSONObject().put("type", "PLAYER_BANNED").put("identity", identity).toString());
-                        }
-                    }
-                    else if ("REVOKE_BAN".equals(type) && !identity.isEmpty()) {
-                        if (localModerator != null
-                                && LeagueProximityChat.getActiveRoom().revokeBan(targetUser, localModerator)) {
-                            sendToActive(new JSONObject().put("type", "PLAYER_UNBANNED").put("identity", identity).toString());
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
+            }
+            default -> {
+            }
         }
+    }
+
+    private void kick(LivekitRoom room, LiveKitUser targetUser) {
+        LiveKitUser moderator = localModerator();
+        if (moderator != null && room.kickUser(targetUser, moderator)) {
+            sendToActive(new JSONObject().put("type", "PLAYER_BANNED").put("identity", targetUser.identity()).toString());
+        }
+    }
+
+    private static LiveKitUser localModerator() {
+        String localIdentity = RitoApiUtils.getLocalSummonerName();
+        return (localIdentity != null && !localIdentity.isEmpty()) ? new LiveKitUser(localIdentity, "") : null;
     }
 
     @Override
@@ -139,22 +141,40 @@ public class CoordinateServer extends WebSocketServer {
         }
     }
 
-    public void broadcastCoordinates(double x, double y, boolean isDead, boolean detected, ScreenPositionTracker.DeadView deadView) {
-        if (hasActiveConnection()) {
-            StringBuilder payload = new StringBuilder(String.format(Locale.US,
-                    "{\"x\":%f, \"y\":%f, \"isDead\":%b, \"detected\":%b", x, y, isDead, detected));
-            if (deadView != null) {
-                payload.append(String.format(Locale.US, ", \"listenX\":%f, \"listenY\":%f, \"visibleEnemies\":[",
-                        deadView.listenX(), deadView.listenY()));
-                for (int i = 0; i < deadView.visibleEnemies().size(); i++) {
-                    float[] enemy = deadView.visibleEnemies().get(i);
-                    if (i > 0) payload.append(',');
-                    payload.append(String.format(Locale.US, "[%f,%f]", enemy[0], enemy[1]));
-                }
-                payload.append(']');
+    public void sendConfigWarning() {
+        LeagueConfigReader.Warning warning = session.getConfigWarning();
+        if (warning == null) return;
+        sendToActive(new JSONObject()
+                .put("type", "WARNING")
+                .put("id", SessionState.CONFIG_WARNING_ID)
+                .put("title", "League Settings")
+                .put("message", warning.message())
+                .put("items", new JSONArray(warning.settingsToChange()))
+                .put("footer", warning.footer() == null ? JSONObject.NULL : warning.footer())
+                .toString());
+    }
+
+    public void broadcastCoordinates(float x, float y, boolean isDead, boolean detected, ScreenPositionTracker.DeadView deadView) {
+        if (!hasActiveConnection()) return;
+
+        if (!Float.isFinite(x) || !Float.isFinite(y)) return;
+
+        JSONObject payload = new JSONObject()
+                .put("x", x)
+                .put("y", y)
+                .put("isDead", isDead)
+                .put("detected", detected);
+        if (deadView != null) {
+            if (!Float.isFinite(deadView.listenX()) || !Float.isFinite(deadView.listenY())) return;
+            JSONArray enemies = new JSONArray();
+            for (float[] enemy : deadView.visibleEnemies()) {
+                if (!Float.isFinite(enemy[0]) || !Float.isFinite(enemy[1])) return;
+                enemies.put(new JSONArray().put(enemy[0]).put(enemy[1]));
             }
-            payload.append('}');
-            activeConnection.send(payload.toString());
+            payload.put("listenX", deadView.listenX())
+                    .put("listenY", deadView.listenY())
+                    .put("visibleEnemies", enemies);
         }
+        sendToActive(payload.toString());
     }
 }

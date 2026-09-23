@@ -5,7 +5,6 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.net.URI;
 
-import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
@@ -16,7 +15,10 @@ import org.opencv.imgcodecs.Imgcodecs;
 
 public class TemplateLoader {
 
-    public static Mat autoLoadChampionTemplate() {
+    public record ChampionTemplate(String championName, Mat icon) {
+    }
+
+    public static ChampionTemplate autoLoadChampionTemplate() {
         try {
             String mySummonerName = RitoApiUtils.getLocalSummonerName();
 
@@ -32,7 +34,7 @@ public class TemplateLoader {
                 return null;
             }
 
-            LeaguePlayer localPlayer = LeagueProximityChat.findLocalPlayer(gameData, mySummonerName);
+            LeaguePlayer localPlayer = gameData.findPlayer(mySummonerName);
             String championCodename = (localPlayer != null) ? localPlayer.getChampionName() : null;
             if (championCodename == null || championCodename.isEmpty()) {
                 System.err.println("Could not find " + mySummonerName + " in the parsed player list.");
@@ -41,7 +43,6 @@ public class TemplateLoader {
             championCodename = RitoApiUtils.sanitizeChampionName(championCodename);
 
             System.out.println("Detected Champion Codename: " + championCodename);
-            LeagueProximityChat.setDetectedChampion(championCodename);
 
             String latestPatch = RitoApiUtils.getLatestDataDragonVersion();
             String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestPatch + "/img/champion/" + championCodename + ".png";
@@ -53,7 +54,7 @@ public class TemplateLoader {
 
             System.out.println("Successfully generated Raw 120x120 OpenCV template for " + championCodename);
             if (DebugManager.isENABLED()) Imgcodecs.imwrite(DebugManager.getDebugDir() + "/debug_template.png", fullMat);
-            return fullMat;
+            return new ChampionTemplate(championCodename, fullMat);
         } catch (Exception e) {
             System.err.println("Failed to automate template loading. Ensure the game is actively running in a match.");
             System.err.println("Stacktrace: " + e.getMessage());

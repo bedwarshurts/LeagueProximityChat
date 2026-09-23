@@ -9,7 +9,16 @@ import java.util.stream.Collectors;
 
 public record LeagueGame(List<LeaguePlayer> players) {
 
-    public String createRoomHash() throws NoSuchAlgorithmException {
+    public LeaguePlayer findPlayer(String riotId) {
+        for (LeaguePlayer p : players) {
+            if (p.getRiotId() != null && p.getRiotId().equalsIgnoreCase(riotId)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    public String createRoomHash() {
         String sortedPlayerIds = players.stream()
                 .map(LeaguePlayer::getRiotId)
                 .filter(riotId -> riotId != null && !riotId.isBlank())
@@ -19,7 +28,12 @@ public record LeagueGame(List<LeaguePlayer> players) {
 
         byte[] bytes = sortedPlayerIds.getBytes(StandardCharsets.UTF_8);
 
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required by every Java runtime", e);
+        }
         byte[] hashedBytes = digest.digest(bytes);
 
         var result = HexFormat.of().formatHex(hashedBytes);

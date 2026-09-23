@@ -2,6 +2,7 @@ package me.bedwarshurts.leagueproximitychat.utils;
 
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
+import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -23,7 +24,6 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 
 public final class RitoApiUtils {
 
@@ -36,6 +36,10 @@ public final class RitoApiUtils {
     private static volatile String cachedPlayerListJson = null;
     private static volatile long cachedPlayerListAtMs = 0;
     private static final long PLAYER_LIST_CACHE_MS = 300;
+
+    private static volatile String cachedDataDragonVersion = null;
+    private static volatile long cachedDataDragonVersionAtMs = 0;
+    private static final long DATA_DRAGON_VERSION_CACHE_MS = 5 * 60 * 1000;
 
     private record LockfileAuth(String port, String password, String base64Auth) {}
 
@@ -136,7 +140,8 @@ public final class RitoApiUtils {
                     return candidate;
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[LCU] Could not read RiotClientInstalls.json", e);
         }
 
         return null;
@@ -165,7 +170,8 @@ public final class RitoApiUtils {
             if (response != null && !response.isEmpty()) {
                 iconId = new JSONObject(response).optInt("profileIconId", -1);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[ProfileIcon] Could not read the current summoner", e);
         }
         if (iconId <= 0) {
             System.err.println("[ProfileIcon] current-summoner lookup failed (is the League client running?)");
@@ -266,7 +272,8 @@ public final class RitoApiUtils {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[ProfileIcon] Summoner lookup failed", e);
         }
 
         if (iconId > 0) {
@@ -299,7 +306,8 @@ public final class RitoApiUtils {
                 cachedSummonerName = resolvedName;
                 return cachedSummonerName;
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[LiveClient] Could not read the active player", e);
         }
 
         return null;
@@ -326,7 +334,8 @@ public final class RitoApiUtils {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            DebugManager.logFailure("[LCU] Could not read the lobby", e);
         }
         return null;
     }
@@ -514,12 +523,12 @@ public final class RitoApiUtils {
             return "Unknown";
         }
 
-        if (rawName.startsWith("Character_") && rawName.endsWith("_Name")) {
-            rawName = rawName.replace("Character_", "").replace("_Name", "");
-        }
-
         if (rawName.startsWith("game_character_displayname_")) {
             rawName = rawName.replace("game_character_displayname_", "");
+        }
+
+        if (rawName.startsWith("Character_") && rawName.endsWith("_Name")) {
+            rawName = rawName.replace("Character_", "").replace("_Name", "");
         }
 
         rawName = rawName.replace(" ", "")
@@ -535,16 +544,26 @@ public final class RitoApiUtils {
 
 
     public static String getLatestDataDragonVersion() throws Exception {
+        String cached = cachedDataDragonVersion;
+        if (cached != null && System.currentTimeMillis() - cachedDataDragonVersionAtMs < DATA_DRAGON_VERSION_CACHE_MS) {
+            return cached;
+        }
+
         URL url = new URI("https://ddragon.leagueoflegends.com/api/versions.json").toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(3000);
         conn.setReadTimeout(3000);
 
-        Scanner scanner = new Scanner(new InputStreamReader(conn.getInputStream()));
-        String response = scanner.useDelimiter("\\A").next();
-        scanner.close();
+        String version;
+        try (InputStream in = conn.getInputStream()) {
+            version = new JSONArray(new String(in.readAllBytes(), StandardCharsets.UTF_8)).getString(0);
+        } finally {
+            conn.disconnect();
+        }
 
-        return response.split("\"")[1];
+        cachedDataDragonVersion = version;
+        cachedDataDragonVersionAtMs = System.currentTimeMillis();
+        return version;
     }
 }

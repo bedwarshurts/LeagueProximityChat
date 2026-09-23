@@ -1,5 +1,6 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
+import lombok.Getter;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import me.bedwarshurts.leagueproximitychat.websocket.CoordinateServer;
 import org.json.JSONObject;
@@ -12,13 +13,9 @@ public final class PauseDetector {
     private static double lastGameTime = -1;
     private static long lastChangeMs = 0;
     private static boolean seenAdvance = false;
-    private static volatile boolean paused = false;
+    @Getter private static volatile boolean paused = false;
 
     private PauseDetector() {
-    }
-
-    public static boolean isPaused() {
-        return paused;
     }
 
     public static synchronized void poll(CoordinateServer server) {

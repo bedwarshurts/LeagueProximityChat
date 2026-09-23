@@ -5,13 +5,13 @@ import com.jagrosh.discordipc.IPCListener;
 import com.jagrosh.discordipc.entities.Packet;
 import com.jagrosh.discordipc.entities.RichPresence;
 import com.jagrosh.discordipc.entities.User;
-import me.bedwarshurts.leagueproximitychat.LeagueProximityChat;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker.TrackResult;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import com.google.gson.JsonObject;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DiscordRPCManager {
@@ -84,7 +84,19 @@ public class DiscordRPCManager {
         }
     }
 
-    public static void updatePresenceActive(TrackResult result, String championName) {
+    public static void requestActiveUpdate(TrackResult result, String championName) {
+        if (!isRunning || client == null || activeUpdateInFlight.get()) return;
+        if (lastWasActive && System.currentTimeMillis() - lastUpdateMs < PRESENCE_REFRESH_MS) return;
+        CompletableFuture.runAsync(() -> updatePresenceActive(result, championName));
+    }
+
+    public static void requestIdleUpdate() {
+        if (!isRunning || client == null) return;
+        if (!lastWasActive && System.currentTimeMillis() - lastUpdateMs < PRESENCE_REFRESH_MS) return;
+        CompletableFuture.runAsync(DiscordRPCManager::updatePresenceIdle);
+    }
+
+    private static void updatePresenceActive(TrackResult result, String championName) {
         if (!isRunning || client == null) return;
 
         long now = System.currentTimeMillis();
@@ -95,7 +107,7 @@ public class DiscordRPCManager {
             String ddragonUrl = "https://ddragon.leagueoflegends.com/cdn/" + latestDDragonVersion + "/img/champion/" + championName + ".png";
             LeagueGame gameData = RitoApiUtils.getLivePlayerList();
             if (gameData == null) return;
-            LeaguePlayer player = LeagueProximityChat.findLocalPlayer(gameData, RitoApiUtils.getLocalSummonerName());
+            LeaguePlayer player = gameData.findPlayer(RitoApiUtils.getLocalSummonerName());
             if (player == null) return;
 
             if (!lastWasActive) startTime = now / 1000L;
@@ -118,7 +130,7 @@ public class DiscordRPCManager {
         }
     }
 
-    public static void updatePresenceIdle() {
+    private static void updatePresenceIdle() {
         if (!isRunning || client == null) return;
 
         long now = System.currentTimeMillis();
