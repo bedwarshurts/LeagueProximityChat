@@ -577,7 +577,7 @@ public final class PlayOfGameManager {
     }
 
     private static String gameClock(double t) {
-        int s = (int) t;
+        long s = (long) t;
         return String.format("%d:%02d", s / 60, s % 60);
     }
 }
