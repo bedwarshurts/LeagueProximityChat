@@ -66,6 +66,10 @@ public class LeaguePlayer {
         }
         String source = (rawSkinName != null && !rawSkinName.isEmpty()) ? rawSkinName : skinName;
         if (source != null) {
+            if (source.length() > 1000) {
+                throw new RuntimeException("Raw skin name is too long: " + source.length() + " characters. Value: " + source);
+            }
+
             Matcher m = TRAILING_NUMBER.matcher(source.trim());
             if (m.find()) {
                 try {
