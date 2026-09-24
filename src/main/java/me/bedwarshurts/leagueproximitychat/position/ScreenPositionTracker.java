@@ -138,7 +138,7 @@ public class ScreenPositionTracker {
         float anchorX = hasProjection ? rawHpX + calibration.offsetX() : lastKnownX;
         float anchorY = hasProjection ? rawHpY + calibration.offsetY() : lastKnownY;
 
-        IconMatcher.TemplateMatch champMatch = iconMatcher.locate(minimapMat, allyCircles, enemyCircles, anchorX, anchorY);
+        IconMatcher.TemplateMatch champMatch = iconMatcher.locate(minimapMat, allyCircles, enemyCircles, anchorX, anchorY, hasProjection);
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
