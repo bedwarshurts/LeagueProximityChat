@@ -191,6 +191,7 @@ body::before {
 .setup-actions { display: flex; gap: 10px; margin-top: 4px; }
 .setup-actions .btn-primary { flex: 1; }
 .setup-actions .btn-control { flex: 0 0 auto; padding: 0 26px; }
+.setup-toggle .setup-button { flex: 0 0 auto; height: var(--setup-control-height); padding: 0 18px; }
 
 #warning-popup { display: none; position: fixed; inset: 0; z-index: 90; background: rgba(2, 6, 12, 0.72); align-items: center; justify-content: center; padding: 30px; }
 .warning-card { width: min(520px, 94vw); display: flex; flex-direction: column; gap: 14px; padding: 24px 26px; }

@@ -2,6 +2,7 @@ package me.bedwarshurts.leagueproximitychat.web;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import me.bedwarshurts.leagueproximitychat.app.AppConstants;
 import me.bedwarshurts.leagueproximitychat.app.AppInfo;
 import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
@@ -10,10 +11,12 @@ import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.json.JSONObject;
 
+import java.awt.Desktop;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,6 +48,7 @@ public final class LocalWebServer {
         httpServer.createContext("/", LocalWebServer::handleStatic);
         httpServer.createContext("/settings", LocalWebServer::handleSettings);
         httpServer.createContext("/logs", LocalWebServer::handleLogs);
+        httpServer.createContext("/open-log-viewer", LocalWebServer::handleOpenLogViewer);
         httpServer.createContext("/potg/", LocalWebServer::handlePlayOfTheGame);
         httpServer.createContext("/profile-icon/", LocalWebServer::handleProfileIcon);
 
@@ -137,6 +141,23 @@ public final class LocalWebServer {
     private static void handleLogs(HttpExchange exchange) throws IOException {
         byte[] body = LogManager.snapshot().getBytes(StandardCharsets.UTF_8);
         send(exchange, 200, "text/plain; charset=utf-8", NO_STORE, body);
+    }
+
+    private static void handleOpenLogViewer(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            return;
+        }
+        boolean opened = false;
+        try {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(new URI(AppConstants.APP_URL + "/logs"));
+                opened = true;
+            }
+        } catch (Exception e) {
+            DebugManager.logFailure("[Logs] Could not open the log viewer", e);
+        }
+        exchange.sendResponseHeaders(opened ? 204 : 500, -1);
     }
 
     private static void handlePlayOfTheGame(HttpExchange exchange) throws IOException {

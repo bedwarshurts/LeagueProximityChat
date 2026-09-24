@@ -23,6 +23,14 @@ document.getElementById('debug-btn').addEventListener('click', async () => {
 
 document.getElementById('log-refresh').addEventListener('click', refreshLogs);
 
+document.getElementById('setup-open-logs').addEventListener('click', async () => {
+    try {
+        const resp = await fetch('/open-log-viewer', {method: 'POST'});
+        if (resp.ok) return;
+    } catch (e) {}
+    window.open('/logs', '_blank');
+});
+
 document.getElementById('log-close').addEventListener('click', () => {
     document.getElementById('log-viewer').style.display = 'none';
     if (logRefreshTimer) {
