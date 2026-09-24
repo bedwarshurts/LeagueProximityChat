@@ -10,6 +10,8 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 
@@ -153,6 +155,43 @@ final class DebugImages {
 
         write("debug_template_top10_match.png", top10Map);
         top10Map.release();
+    }
+
+    private static final double[] COMPARED_TINT = {144, 238, 144};  // light green (BGR)
+    private static final double[] COVERED_TINT = {128, 128, 128};   // gray
+    private static final double COMPARED_ALPHA = 0.45;
+    private static final double COVERED_ALPHA = 0.75;
+
+    static void comparedPixels(Mat minimap, List<IconMatcher.ComparedWindow> windows, Point picked, int width, int height) {
+        if (!enabled() || windows == null || windows.isEmpty()) return;
+
+        Mat image = minimap.clone();
+        int channels = image.channels();
+        byte[] original = new byte[(int) image.total() * channels];
+        image.get(0, 0, original);
+        byte[] tinted = original.clone();
+
+        List<IconMatcher.ComparedWindow> ordered = new ArrayList<>(windows);
+        ordered.sort(Comparator.comparing(w -> w.center().equals(picked)));
+        for (IconMatcher.ComparedWindow window : ordered) {
+            int x0 = (int) Math.round(window.center().x - width / 2.0);
+            int y0 = (int) Math.round(window.center().y - height / 2.0);
+            for (int y = Math.max(0, y0); y < Math.min(image.rows(), y0 + height); y++) {
+                for (int x = Math.max(0, x0); x < Math.min(image.cols(), x0 + width); x++) {
+                    boolean covered = IconMatcher.isCovered(x + 0.5, y + 0.5, window.coveringIcons());
+                    double[] tint = covered ? COVERED_TINT : COMPARED_TINT;
+                    double alpha = covered ? COVERED_ALPHA : COMPARED_ALPHA;
+                    int i = (y * image.cols() + x) * channels;
+                    for (int c = 0; c < 3; c++) {
+                        tinted[i + c] = (byte) Math.round((original[i + c] & 0xFF) * (1 - alpha) + tint[c] * alpha);
+                    }
+                }
+            }
+        }
+
+        image.put(0, 0, tinted);
+        write("debug_template_covered.png", image);
+        image.release();
     }
 
     static void matchBox(Mat minimap, double centerX, double centerY, int width, int height, Scalar color) {

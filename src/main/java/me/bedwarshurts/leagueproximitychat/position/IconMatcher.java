@@ -28,6 +28,14 @@ final class IconMatcher {
     private record EvalResult(Point center, double score) {
     }
 
+    record ComparedWindow(Point center, List<IconCircle> coveringIcons) {
+    }
+
+    private record ScoredRing(IconCircle ring, boolean uncovered, EvalResult eval) {
+    }
+
+    private enum PickHealth { UNKNOWN, HEALTHY, WEAK_ALONE }
+
     private record ScaledTemplate(int size, Mat resized, Mat core, Mat enhancedCore) {
         void release() {
             core.release();
@@ -46,17 +54,21 @@ final class IconMatcher {
 
     private static final int MAX_LOCKED_MATCH_FAILURES = 25;
     private static final int MAX_WRONG_LOCK_STREAK = 60;
+    private static final double TEMPLATE_HEALTHY_MIN_SCORE = 0.70;
+    private static final int MAX_WEAK_TEMPLATE_STREAK = 60;
 
     private static final int MATCH_BLUR_KERNEL = 3;
 
     private static final double PROXIMITY_BOOST_MAX = 0.50;
+    private static final double LAST_KNOWN_BOOST_MAX = 0.25;
     private static final double PROXIMITY_BOOST_RADIUS = 25.0;
     private static final double CLONE_DETECT_THRESHOLD = 0.78;
 
     private static final double BLIP_RADIUS_PER_MINIMAP_PX = 16.0 / 280.0;
 
     private static final double OCCLUSION_MIN_VISIBLE_FRACTION = 0.25;
-    private static final int OCCLUSION_JITTER_PX = 3;
+    private static final int ICON_CENTER_JITTER_PX = 3;
+    private static final int COVERING_ICON_BORDER_PX = 1;
 
     private static final double ICON_CORE_CROP = 0.65;
     private static final double ICON_CORE_MARGIN = (1.0 - ICON_CORE_CROP) / 2.0;
@@ -77,6 +89,9 @@ final class IconMatcher {
     private Point bootstrapLastPick = null;
     private int lockedMatchFailures = 0;
     private int wrongLockStreak = 0;
+    private int weakTemplateStreak = 0;
+    private PickHealth lastPickHealth = PickHealth.UNKNOWN;
+    private double lastPickRawScore = 0.0;
     private int lastStrongMatchCount = 0;
 
     IconMatcher(Mat championTemplate) {
@@ -97,10 +112,11 @@ final class IconMatcher {
 
     @Nullable
     TemplateMatch locate(Mat minimap, List<IconCircle> allyCircles, List<IconCircle> enemyCircles,
-                         double anchorX, double anchorY) {
+                         double anchorX, double anchorY, boolean anchorFromHealthBar) {
         int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
         lastStrongMatchCount = 0;
+        lastPickHealth = PickHealth.UNKNOWN;
 
         if (allyCircles.isEmpty()) {
             if (DebugManager.isENABLED()) System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
@@ -111,36 +127,43 @@ final class IconMatcher {
             double bestScore = -1.0;
             Point bestCenter = null;
             double rawScoreLog = 0.0;
+            ScoredRing bestRing = null;
             int cw = lockedCoreTemplate.width();
             int ch = lockedCoreTemplate.height();
+            List<ScoredRing> scoredRings = new ArrayList<>();
             List<CandidateMatch> candidates = new ArrayList<>();
+            List<ComparedWindow> comparedWindows = DebugManager.isENABLED() ? new ArrayList<>() : null;
 
             int strongMatches = 0;
             for (IconCircle ally : allyCircles) {
-                int searchPad = (int) Math.clamp(ally.radius() - lockedCoreTemplate.width() / 2.0,
-                        2.0, lockedCoreTemplate.width() * 3.0);
-                EvalResult eval = evaluateTemplateAtAlly(minimap, ally.center(), lockedCoreTemplate, lockedCoreTemplateEnhanced, searchPad);
+                List<IconCircle> coveringIcons = overlappingNeighbors(ally, allyCircles, enemyCircles);
+                EvalResult eval = coveringIcons.isEmpty() ? null
+                        : evaluateUncoveredPart(minimap, ally, coveringIcons, lockedCoreTemplate);
+                boolean comparedUncoveredPart = eval != null;
+                if (eval == null) {
+                    eval = evaluateTemplateAtAlly(minimap, ally.center(), lockedCoreTemplate, lockedCoreTemplateEnhanced, ICON_CENTER_JITTER_PX);
+                }
                 if (eval == null) continue;
 
-                double rawScore = eval.score();
-                Point candidateCenter = eval.center();
-
-                List<IconCircle> occluders = overlappingNeighbors(ally, allyCircles, enemyCircles);
-                if (!occluders.isEmpty()) {
-                    EvalResult occluded = evaluateOccludedAlly(minimap, ally, occluders, lockedCoreTemplate);
-                    if (occluded != null && occluded.score() > rawScore) {
-                        rawScore = occluded.score();
-                        candidateCenter = occluded.center();
-                    }
+                if (comparedWindows != null) {
+                    comparedWindows.add(new ComparedWindow(eval.center(), comparedUncoveredPart ? coveringIcons : List.of()));
                 }
 
-                if (rawScore > CLONE_DETECT_THRESHOLD) strongMatches++;
+                if (eval.score() > CLONE_DETECT_THRESHOLD) strongMatches++;
+                scoredRings.add(new ScoredRing(ally, coveringIcons.isEmpty(), eval));
+            }
+
+            double boostMax = (anchorFromHealthBar || strongMatches >= 2) ? PROXIMITY_BOOST_MAX : LAST_KNOWN_BOOST_MAX;
+
+            for (ScoredRing scored : scoredRings) {
+                double rawScore = scored.eval().score();
+                Point candidateCenter = scored.eval().center();
 
                 double candidateX = MapCoordinates.percentXPrecise(candidateCenter.x, minimap.width());
                 double candidateY = MapCoordinates.percentYPrecise(candidateCenter.y, minimap.height());
 
                 double dist = Math.hypot(candidateX - anchorX, candidateY - anchorY);
-                double boost = PROXIMITY_BOOST_MAX * Math.max(0.0, 1.0 - (dist / PROXIMITY_BOOST_RADIUS));
+                double boost = boostMax * Math.max(0.0, 1.0 - (dist / PROXIMITY_BOOST_RADIUS));
                 double score = rawScore + boost;
 
                 candidates.add(new CandidateMatch(candidateCenter, cw, ch, score, rawScore));
@@ -149,10 +172,12 @@ final class IconMatcher {
                     bestScore = score;
                     bestCenter = candidateCenter;
                     rawScoreLog = rawScore;
+                    bestRing = scored;
                 }
             }
 
             lastStrongMatchCount = strongMatches;
+            if (isBootstrapped && bestRing != null) lastPickHealth = pickHealth(minimap, bestRing);
 
             if (DebugManager.isENABLED() && strongMatches >= 2) {
                 System.out.printf("[locateChampionViaTemplate] %d strong icon matches - clone likely present; anchoring to (%.1f, %.1f).%n",
@@ -160,6 +185,7 @@ final class IconMatcher {
             }
 
             DebugImages.top10(minimap, candidates);
+            DebugImages.comparedPixels(minimap, comparedWindows, bestCenter, cw, ch);
 
             if (bestScore > 0.45 && bestCenter.x > borderMarginX && bestCenter.x < minimap.width() - borderMarginX && bestCenter.y > borderMarginY && bestCenter.y < minimap.height() - borderMarginY) {
 
@@ -326,7 +352,7 @@ final class IconMatcher {
             return;
         }
 
-        if (!isAllyCircleIsolated(nearest, allies)) {
+        if (!isAllyCircleIsolated(nearest, allies) || MinimapRingDetector.overlappedByAllyRing(minimap, nearest)) {
             if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Target overlapped by another ally icon - waiting for a clean frame.%n");
             bootstrapConfidence = 0;
             bootstrapLastPick = null;
@@ -400,6 +426,27 @@ final class IconMatcher {
             }
         } else {
             wrongLockStreak = 0;
+            if (isBootstrapped && matchToHpDist <= HealthBarCalibration.MAX_HEALTHBAR_MATCH_DIST) trackTemplateHealth();
+        }
+    }
+
+    private PickHealth pickHealth(Mat minimap, ScoredRing pick) {
+        lastPickRawScore = pick.eval().score();
+        if (lastPickRawScore >= TEMPLATE_HEALTHY_MIN_SCORE) return PickHealth.HEALTHY;
+        if (!pick.uncovered() || MinimapRingDetector.overlappedByAllyRing(minimap, pick.ring())) return PickHealth.UNKNOWN;
+        return PickHealth.WEAK_ALONE;
+    }
+
+    private void trackTemplateHealth() {
+        if (lastPickHealth == PickHealth.HEALTHY) {
+            weakTemplateStreak = 0;
+        } else if (lastPickHealth == PickHealth.WEAK_ALONE && ++weakTemplateStreak >= MAX_WEAK_TEMPLATE_STREAK) {
+            if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Learned icon only scores %.2f on the player's uncovered icon - learning it again.%n",
+                    lastPickRawScore);
+            weakTemplateStreak = 0;
+            isBootstrapped = false;
+            bootstrapConfidence = 0;
+            bootstrapLastPick = null;
         }
     }
 
@@ -517,6 +564,7 @@ final class IconMatcher {
         isBootstrapped = false;
         lockedMatchFailures = 0;
         wrongLockStreak = 0;
+        weakTemplateStreak = 0;
         lockedBlipRadius = 0;
         bootstrapConfidence = 0;
         bootstrapLastPick = null;
@@ -613,15 +661,35 @@ final class IconMatcher {
         return sep < a.radius() + b.radius();
     }
 
-    private EvalResult evaluateOccludedAlly(Mat minimap, IconCircle self, List<IconCircle> occluders, Mat template) {
+    private EvalResult evaluateUncoveredPart(Mat minimap, IconCircle self, List<IconCircle> coveringIcons, Mat template) {
+        int searchPad = ICON_CENTER_JITTER_PX;
         int cw = template.width();
         int ch = template.height();
         int channels = template.channels();
         if (channels != minimap.channels()) return null;
 
+        int baseX = (int) Math.round(self.center().x - cw / 2.0);
+        int baseY = (int) Math.round(self.center().y - ch / 2.0);
+        int regionX = Math.max(0, baseX - searchPad);
+        int regionY = Math.max(0, baseY - searchPad);
+        int regionW = Math.min(minimap.width(), baseX + searchPad + cw) - regionX;
+        int regionH = Math.min(minimap.height(), baseY + searchPad + ch) - regionY;
+        if (regionW < cw || regionH < ch) return null;
+
+        byte[] region = new byte[regionW * regionH * channels];
+        Mat regionMat = new Mat(minimap, new Rect(regionX, regionY, regionW, regionH)).clone();
+        regionMat.get(0, 0, region);
+        regionMat.release();
+
+        boolean[] regionUncovered = new boolean[regionW * regionH];
+        for (int y = 0; y < regionH; y++) {
+            for (int x = 0; x < regionW; x++) {
+                regionUncovered[y * regionW + x] = !isCovered(regionX + x + 0.5, regionY + y + 0.5, coveringIcons);
+            }
+        }
+
         byte[] tpl = new byte[cw * ch * channels];
         template.get(0, 0, tpl);
-
         byte[] patch = new byte[cw * ch * channels];
         boolean[] visible = new boolean[cw * ch];
         int minVisible = (int) (cw * ch * OCCLUSION_MIN_VISIBLE_FRACTION);
@@ -629,35 +697,25 @@ final class IconMatcher {
         double bestScore = -1.0;
         Point bestCenter = null;
 
-        for (int dy = -OCCLUSION_JITTER_PX; dy <= OCCLUSION_JITTER_PX; dy++) {
-            for (int dx = -OCCLUSION_JITTER_PX; dx <= OCCLUSION_JITTER_PX; dx++) {
-                int x0 = (int) Math.round(self.center().x + dx - cw / 2.0);
-                int y0 = (int) Math.round(self.center().y + dy - ch / 2.0);
+        for (int dy = -searchPad; dy <= searchPad; dy++) {
+            for (int dx = -searchPad; dx <= searchPad; dx++) {
+                int x0 = baseX + dx;
+                int y0 = baseY + dy;
                 if (x0 < 0 || y0 < 0 || x0 + cw > minimap.width() || y0 + ch > minimap.height()) continue;
 
+                int localX = x0 - regionX;
+                int localY = y0 - regionY;
                 int visibleCount = 0;
                 for (int y = 0; y < ch; y++) {
+                    int regionRow = (localY + y) * regionW + localX;
+                    System.arraycopy(region, regionRow * channels, patch, y * cw * channels, cw * channels);
                     for (int x = 0; x < cw; x++) {
-                        double gx = x0 + x + 0.5;
-                        double gy = y0 + y + 0.5;
-                        double dSelf = Math.hypot(gx - self.center().x, gy - self.center().y);
-                        boolean v = true;
-                        for (IconCircle occ : occluders) {
-                            double dOcc = Math.hypot(gx - occ.center().x, gy - occ.center().y);
-                            if (dOcc < occ.radius() && dOcc < dSelf) {
-                                v = false;
-                                break;
-                            }
-                        }
+                        boolean v = regionUncovered[regionRow + x];
                         visible[y * cw + x] = v;
                         if (v) visibleCount++;
                     }
                 }
                 if (visibleCount < minVisible) continue;
-
-                Mat patchMat = new Mat(minimap, new Rect(x0, y0, cw, ch)).clone();
-                patchMat.get(0, 0, patch);
-                patchMat.release();
 
                 double score = MathUtils.maskedZncc(tpl, patch, visible, channels);
                 if (score > bestScore) {
@@ -667,8 +725,17 @@ final class IconMatcher {
             }
         }
 
-        if (bestCenter == null || bestScore <= 0) return null;
-        return new EvalResult(bestCenter, bestScore);
+        return bestCenter == null ? null : new EvalResult(bestCenter, bestScore);
+    }
+
+    static boolean isCovered(double px, double py, List<IconCircle> coveringIcons) {
+        for (IconCircle other : coveringIcons) {
+            double reach = other.radius() + COVERING_ICON_BORDER_PX;
+            double dx = px - other.center().x;
+            double dy = py - other.center().y;
+            if (dx * dx + dy * dy < reach * reach) return true;
+        }
+        return false;
     }
 
     void release() {
