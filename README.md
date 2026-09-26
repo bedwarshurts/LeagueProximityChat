@@ -25,6 +25,7 @@ your position by looking at the screen and routes voice through LiveKit.
 - **Krisp noise cancellation** - free via LiveKit, toggleable in the UI.
 - **Discord Rich Presence** - shows your champion, score and match state.
 - **Mostly Local** - Except the livekit audio, all the math and image analysis are done on your machine, there is no server for this project.
+- **Dead can global hear** - Dead players can move their camera to listen to champions in any location as long as they have vision there.
   
 ---
 
