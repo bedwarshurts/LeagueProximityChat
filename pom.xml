@@ -152,7 +152,6 @@
                         </goals>
                         <configuration>
                             <filters>
-                                <!-- The app is Windows x64 only; OpenCV's other native libraries are ~86 MB of dead weight. -->
                                 <filter>
                                     <artifact>org.openpnp:opencv</artifact>
                                     <excludes>

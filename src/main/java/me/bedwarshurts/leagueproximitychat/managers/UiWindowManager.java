@@ -3,8 +3,10 @@ package me.bedwarshurts.leagueproximitychat.managers;
 import me.bedwarshurts.leagueproximitychat.app.AppConstants;
 import me.bedwarshurts.leagueproximitychat.app.AppIcon;
 import me.bedwarshurts.leagueproximitychat.app.AppInfo;
+import me.bedwarshurts.leagueproximitychat.app.LoadingWindow;
 import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import me.friwi.jcefmaven.CefAppBuilder;
+import me.friwi.jcefmaven.EnumProgress;
 import org.cef.CefApp;
 import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
@@ -12,6 +14,7 @@ import org.cef.browser.CefFrame;
 import org.cef.callback.CefContextMenuParams;
 import org.cef.callback.CefMenuModel;
 import org.cef.handler.CefContextMenuHandlerAdapter;
+import org.cef.handler.CefLoadHandlerAdapter;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
@@ -35,6 +38,10 @@ import java.nio.file.Paths;
 public class UiWindowManager {
 
     private static final long EXIT_TIMEOUT_MS = 5000;
+    private static final int PAGE_LOAD_TIMEOUT_MS = 20000;
+    private static final String CREDIT = "Made for Yowaimo by FateSealed(bedwarshurts)";
+
+    private static EnumProgress lastSetupState;
 
     private CefApp cefApp;
     private CefBrowser browser;
@@ -63,6 +70,8 @@ public class UiWindowManager {
                     "--enable-usermedia-screen-capturing",
                     "--disable-features=AllowWgcScreenCapturer,AllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer");
 
+            builder.setProgressHandler(UiWindowManager::showSetupProgress);
+
             cefApp = builder.build();
             CefClient client = cefApp.createClient();
             client.addContextMenuHandler(new CefContextMenuHandlerAdapter() {
@@ -70,6 +79,18 @@ public class UiWindowManager {
                 public void onBeforeContextMenu(CefBrowser browser, CefFrame frame,
                                                 CefContextMenuParams params, CefMenuModel model) {
                     model.clear();
+                }
+            });
+            client.addLoadHandler(new CefLoadHandlerAdapter() {
+                @Override
+                public void onLoadEnd(CefBrowser browser, CefFrame frame, int httpStatusCode) {
+                    if (frame.isMain()) LoadingWindow.close();
+                }
+
+                @Override
+                public void onLoadError(CefBrowser browser, CefFrame frame, ErrorCode errorCode,
+                                        String errorText, String failedUrl) {
+                    if (frame.isMain()) LoadingWindow.close();
                 }
             });
             browser = client.createBrowser(AppConstants.APP_URL, false, false);
@@ -96,6 +117,7 @@ public class UiWindowManager {
                 });
                 frame.setVisible(true);
             });
+            LoadingWindow.closeAfter(PAGE_LOAD_TIMEOUT_MS);
 
             installTrayIcon();
             System.out.println("[UiWindow] Standalone UI window started (embedded Chromium).");
@@ -104,6 +126,27 @@ public class UiWindowManager {
             System.err.println("[UiWindow] Could not start the embedded UI window: " + t.getMessage());
             shutdown();
             return false;
+        }
+    }
+
+    private static void showSetupProgress(EnumProgress state, float percent) {
+        if (state != lastSetupState) {
+            lastSetupState = state;
+            System.out.println("[UiWindow] Browser components: " + state);
+        }
+        switch (state) {
+            case LOCATING -> LoadingWindow.status("Checking components…", EnumProgress.NO_ESTIMATION);
+            case DOWNLOADING -> {
+                LoadingWindow.hint(CREDIT);
+                LoadingWindow.status("Downloading components…", percent);
+            }
+            case EXTRACTING -> {
+                LoadingWindow.hint(CREDIT);
+                LoadingWindow.status("Unpacking components…", EnumProgress.NO_ESTIMATION);
+            }
+            case INSTALL -> LoadingWindow.status("Installing components…", EnumProgress.NO_ESTIMATION);
+            case INITIALIZING -> LoadingWindow.status("Starting up…", EnumProgress.NO_ESTIMATION);
+            case INITIALIZED -> LoadingWindow.status("Opening…", EnumProgress.NO_ESTIMATION);
         }
     }
 

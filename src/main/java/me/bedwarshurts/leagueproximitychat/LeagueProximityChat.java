@@ -2,6 +2,7 @@ package me.bedwarshurts.leagueproximitychat;
 
 import me.bedwarshurts.leagueproximitychat.app.AppConstants;
 import me.bedwarshurts.leagueproximitychat.app.AppInfo;
+import me.bedwarshurts.leagueproximitychat.app.LoadingWindow;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
 import me.bedwarshurts.leagueproximitychat.discord.DiscordRPCManager;
@@ -347,6 +348,7 @@ public class LeagueProximityChat {
             if (uiWindow.launch()) {
                 overlay.launchWithNativeWindow(uiWindow);
             } else {
+                LoadingWindow.close();
                 uiWindow = null;
                 if (!overlay.launch()) {
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
@@ -357,6 +359,7 @@ public class LeagueProximityChat {
                 }
             }
         } catch (Exception e) {
+            LoadingWindow.close();
             System.err.println("Failed to open browser: " + e.getMessage());
             System.out.println("Please manually go to: " + AppConstants.APP_URL);
         }
@@ -365,6 +368,7 @@ public class LeagueProximityChat {
     public static void main(String[] args) {
         LogManager.install();
         System.out.println("LeagueProximityChat " + AppInfo.fullVersion());
+        LoadingWindow.open();
 
         OpenCV.loadLocally();
         System.out.println("OpenCV loaded successfully.");
@@ -381,6 +385,7 @@ public class LeagueProximityChat {
             System.exit(0);
         } catch (IOException e) {
             System.err.println("Failed to start local web server: " + e.getMessage());
+            LoadingWindow.close();
         }
 
         server = new CoordinateServer(new InetSocketAddress("127.0.0.1", AppConstants.WEBSOCKET_PORT), session);
