@@ -10,6 +10,7 @@ import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
 import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.managers.LogManager;
+import me.bedwarshurts.leagueproximitychat.managers.MatchHistoryManager;
 import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
@@ -143,8 +144,13 @@ public class LeagueProximityChat {
     }
 
     private static void resetForNextGame() {
+        if (server != null) PlayOfGameManager.flushPending(server);
+        String matchId = MatchHistoryManager.finishMatch();
         if (server != null) {
-            server.sendToActive("{\"type\":\"GAME_ENDED\"}");
+            server.sendToActive(new JSONObject()
+                    .put("type", "GAME_ENDED")
+                    .put("matchId", matchId == null ? JSONObject.NULL : matchId)
+                    .toString());
             server.setUserRequestedConnection(false);
         }
 
@@ -228,6 +234,7 @@ public class LeagueProximityChat {
                             server.sendToActive(payload);
                             hasSentRoster = true;
                             System.out.println("Match detected!");
+                            MatchHistoryManager.beginMatch();
                         }
                     } finally {
                         rosterBuildInFlight.set(false);

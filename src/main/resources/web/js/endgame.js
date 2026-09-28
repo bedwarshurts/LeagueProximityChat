@@ -6,26 +6,40 @@ function returnToLobby() {
     fadeOutOverlay(document.getElementById('endgame-screen'));
 }
 
-async function showEndgameScreen() {
+async function showEndgameScreen(history = null) {
     const scr = document.getElementById('endgame-screen');
     const wrap = document.getElementById('eg-wrap');
     wrap.innerHTML = '<div class="eg-sub" style="margin-top: 40vh">Loading match stats…</div>';
 
     fadeInOverlay(scr, 'block');
+    scr.scrollTop = 0;
     haltPotgPlayback();
     fadeOutOverlay(document.getElementById('potg-viewer'));
 
     try {
-        const s = await (await fetch('/potg/stats', {cache: 'no-store'})).json();
-        if (!s.available) throw new Error('unavailable');
-        await renderEndgame(s);
+        const s = history ? history.stats : await (await fetch('/potg/stats', {cache: 'no-store'})).json();
+        if (!s || !s.available) throw new Error('unavailable');
+        await renderEndgame(s, history);
     } catch (e) {
         wrap.innerHTML = `
             <div class="eg-result">Game Complete</div>
             <div class="eg-sub">Match stats are unavailable for this game</div>
-            <div class="eg-footer"><button id="eg-return" class="potg-btn potg-btn-primary">Return to Lobby</button></div>`;
-        document.getElementById('eg-return').addEventListener('click', returnToLobby);
+            ${endgameFooterHtml(history)}`;
+        bindEndgameFooter(history);
     }
+}
+
+function endgameFooterHtml(history) {
+    if (history) return historyFooterHtml(history);
+    return '<div class="eg-footer"><button id="eg-return" class="potg-btn potg-btn-primary">Return to Lobby</button></div>';
+}
+
+function bindEndgameFooter(history) {
+    if (history) {
+        bindHistoryFooter(history);
+        return;
+    }
+    document.getElementById('eg-return').addEventListener('click', returnToLobby);
 }
 
 const EG_MAP_NAMES = {8: 'Crystal Scar', 10: 'Twisted Treeline', 11: 'Summoner’s Rift', 12: 'Howling Abyss', 21: 'Nexus Blitz', 22: 'Convergence', 30: 'Rings of Wrath', 33: 'The Bandlewood', 35: 'Swarm'};
@@ -33,7 +47,7 @@ const EG_MODE_NAMES = {CLASSIC: 'Summoner’s Rift', ARAM: 'Howling Abyss', TUTO
 const DOT = '<span class="eg-dot">◆</span>';
 const fmtBigNum = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
 
-async function renderEndgame(s) {
+async function renderEndgame(s, history = null) {
     const wrap = document.getElementById('eg-wrap');
     const ver = await ddragonVersionPromise;
     const players = s.players || [];
@@ -102,10 +116,10 @@ async function renderEndgame(s) {
 
     wrap.innerHTML = `
         <div class="eg-result ${resultClass}">${resultText}</div>
-        <div class="eg-sub">${escHtml(mapName)}${DOT}${escHtml(s.gameClock || '')}</div>
+        <div class="eg-sub">${escHtml(mapName)}${DOT}${escHtml(s.gameClock || '')}${history ? DOT + escHtml(formatMatchDate(history.startedAt)) : ''}</div>
         ${teamHtml('Allies', 'allies', allies)}
         ${teamHtml('Enemies', 'enemies', enemies)}
-        <div class="eg-footer"><button id="eg-return" class="potg-btn potg-btn-primary">Return to Lobby</button></div>`;
+        ${endgameFooterHtml(history)}`;
 
     wrap.querySelectorAll('.eg-row').forEach((row, idx) => {
         row.style.animationDelay = `${0.14 + idx * 0.05}s`;
@@ -114,20 +128,23 @@ async function renderEndgame(s) {
         if (fill) requestAnimationFrame(() => { fill.style.width = `${fill.dataset.fill}%`; });
 
         const champ = row.dataset.champ;
-        if (!champ) return;
-        const splash = row.querySelector('.eg-splash');
-        const trySplash = (skin) => {
-            const url = SPLASH_URL(champ, skin);
-            const probe = new Image();
-            probe.onload = () => {
-                splash.style.backgroundImage = `url("${url}")`;
-                row.classList.add('has-splash');
-            };
-            probe.onerror = () => { if (skin !== 0) trySplash(0); };
-            probe.src = url;
-        };
-        resolveSkinNum(champ, Number(row.dataset.skin) || 0).then(trySplash);
+        if (champ) loadChampionSplash(row, champ, Number(row.dataset.skin) || 0);
     });
 
-    document.getElementById('eg-return').addEventListener('click', returnToLobby);
+    bindEndgameFooter(history);
+}
+
+function loadChampionSplash(row, champ, skinId) {
+    const splash = row.querySelector('.eg-splash');
+    const trySplash = (skin) => {
+        const url = SPLASH_URL(champ, skin);
+        const probe = new Image();
+        probe.onload = () => {
+            splash.style.backgroundImage = `url("${url}")`;
+            row.classList.add('has-splash');
+        };
+        probe.onerror = () => { if (skin !== 0) trySplash(0); };
+        probe.src = url;
+    };
+    resolveSkinNum(champ, skinId).then(trySplash);
 }

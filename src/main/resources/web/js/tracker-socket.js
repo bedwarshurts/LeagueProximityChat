@@ -11,8 +11,8 @@ function reportPlayerStateToJava(type, participant) {
 const trackerMessageHandlers = {
     REPLACED: () => { isReplaced = true; },
     SHUTDOWN: () => closeApplicationTab(),
-    GAME_ENDED: () => {
-        maybeShowPlayOfGame();
+    GAME_ENDED: data => {
+        maybeShowPlayOfGame(data.matchId || null);
         resetToIdleState();
     },
     WARNING: data => showWarning(data),
@@ -109,6 +109,7 @@ function connectToLocalJavaTracker() {
     trackerSocket.onopen = () => {
         document.getElementById('ws-status').className = 'status success';
         document.getElementById('ws-status').innerText = 'Position Tracker: Connected';
+        if (potgVideo.active) reportScreenRecording(true);
     };
 
     trackerSocket.onmessage = (event) => {

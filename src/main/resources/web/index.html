@@ -92,6 +92,7 @@
         <div class="setup-body">
         <nav class="setup-tabs">
             <button class="setup-tab" data-cat="general">General</button>
+            <button class="setup-tab" data-cat="history">Match History</button>
             <button class="setup-tab" data-cat="voice">Voice Server</button>
             <button class="setup-tab" data-cat="dev">Development</button>
             <span class="setup-version" id="setup-version"></span>
@@ -111,6 +112,16 @@
             </div>
             <div class="setup-toggle">
                 <span class="s-title">
+                    Save All Highlights Automatically
+                    <span class="setting-hint">Keeps every highlight in Match History, not just the ones you export</span>
+                </span>
+                <label class="switch">
+                    <input type="checkbox" id="setup-autosave">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+            <div class="setup-toggle">
+                <span class="s-title">
                     Microphone
                     <span class="setting-hint">The input your voice is sent from</span>
                 </span>
@@ -123,6 +134,10 @@
                 </span>
                 <select id="setup-speaker" class="setup-input setup-select"></select>
             </div>
+        </div>
+
+        <div class="setup-cat" id="setup-cat-history">
+            <div id="mh-list" class="mh-list"></div>
         </div>
 
         <div class="setup-cat" id="setup-cat-voice">
@@ -185,6 +200,14 @@
     </div>
 </div>
 
+<div id="replay-api-popup">
+    <div class="panel replay-api-card" role="alertdialog" aria-modal="true" aria-describedby="replay-api-text">
+        <button id="replay-api-close" class="replay-api-close" title="Close" aria-label="Close">✕</button>
+        <p class="replay-api-text" id="replay-api-text"></p>
+        <button id="replay-api-agree" class="btn-primary">I Understand</button>
+    </div>
+</div>
+
 <div id="log-viewer">
     <div class="panel log-card">
         <div class="log-head">
@@ -210,6 +233,7 @@
     <div class="potg-media">
         <canvas id="potg-canvas" class="potg-canvas"></canvas>
         <video id="potg-video" class="potg-canvas" style="display: none;" muted playsinline></video>
+        <video id="potg-video-b" class="potg-canvas" style="display: none;" muted playsinline></video>
     </div>
     <div class="potg-chrome">
         <div class="potg-top">
@@ -227,7 +251,7 @@
                     </div>
                 </div>
                 <div class="potg-actions-center">
-                    <button id="potg-save" class="potg-btn">Save Highlight</button>
+                    <button id="potg-save" class="potg-btn">Export to Videos</button>
                     <button id="potg-more" class="potg-btn">Show More Highlights</button>
                 </div>
                 <div class="potg-actions-right">
@@ -251,6 +275,7 @@
 <script src="js/potg-capture.js"></script>
 <script src="js/potg-viewer.js"></script>
 <script src="js/endgame.js"></script>
+<script src="js/match-history.js"></script>
 <script src="js/session.js"></script>
 <script src="js/roster.js"></script>
 <script src="js/spatial-audio.js"></script>

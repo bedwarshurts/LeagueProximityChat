@@ -7,7 +7,9 @@ import me.bedwarshurts.leagueproximitychat.app.AppInfo;
 import me.bedwarshurts.leagueproximitychat.managers.ConfigManager;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.managers.LogManager;
+import me.bedwarshurts.leagueproximitychat.managers.MatchHistoryManager;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
+import me.bedwarshurts.leagueproximitychat.utils.ReplayApiConfig;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.json.JSONObject;
 
@@ -24,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
@@ -51,6 +54,8 @@ public final class LocalWebServer {
         httpServer.createContext("/open-log-viewer", LocalWebServer::handleOpenLogViewer);
         httpServer.createContext("/potg/", LocalWebServer::handlePlayOfTheGame);
         httpServer.createContext("/profile-icon/", LocalWebServer::handleProfileIcon);
+        httpServer.createContext("/matches", LocalWebServer::handleMatches);
+        httpServer.createContext("/replay-api/enable", LocalWebServer::handleEnableReplayApi);
 
         httpServer.setExecutor(Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "http-server");
@@ -103,6 +108,7 @@ public final class LocalWebServer {
                         .put("apiSecret", ConfigManager.getApiSecret())
                         .put("lowPerformanceMode", ConfigManager.isLowPerformanceMode())
                         .put("debugMode", ConfigManager.isDebugMode())
+                        .put("saveAllHighlights", ConfigManager.isSaveAllHighlights())
                         .put("version", AppInfo.version())
                         .put("build", AppInfo.buildLabel())
                         .toString().getBytes(StandardCharsets.UTF_8);
@@ -121,7 +127,8 @@ public final class LocalWebServer {
                         json.optString("apiKey", ""),
                         json.optString("apiSecret", ""),
                         json.optBoolean("lowPerformanceMode", false),
-                        json.optBoolean("debugMode", false));
+                        json.optBoolean("debugMode", false),
+                        json.optBoolean("saveAllHighlights", false));
 
                 byte[] body = new JSONObject().put("ok", ok).toString().getBytes(StandardCharsets.UTF_8);
                 send(exchange, ok ? 200 : 400, JSON, null, body);
@@ -207,15 +214,8 @@ public final class LocalWebServer {
             byte[] webm = exchange.getRequestBody().readAllBytes();
             if (webm.length < 1024) throw new IOException("empty recording");
 
-            String name = "Play of the Game";
-            String query = exchange.getRequestURI().getQuery();
-            if (query != null) {
-                for (String kv : query.split("&")) {
-                    if (kv.startsWith("name=")) {
-                        name = URLDecoder.decode(kv.substring(5), StandardCharsets.UTF_8);
-                    }
-                }
-            }
+            Map<String, String> query = queryParams(exchange);
+            String name = query.getOrDefault("name", "Play of the Game");
             name = name.replaceAll("[^A-Za-z0-9 _.-]", "").trim();
             if (name.isEmpty()) name = "Play of the Game";
 
@@ -227,12 +227,124 @@ public final class LocalWebServer {
 
             result.put("path", file.toString());
             System.out.println("[PotG] Highlight saved to " + file);
+            MatchHistoryManager.linkSavedHighlight(query.get("hid"), query.get("headline"), query.get("clock"), file);
         } catch (Exception ex) {
             status = 500;
             result.put("error", String.valueOf(ex.getMessage()));
             System.out.println("[PotG] Highlight save failed: " + ex.getMessage());
         }
         send(exchange, status, JSON, null, result.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void handleMatches(HttpExchange exchange) throws IOException {
+        String[] parts = exchange.getRequestURI().getPath().split("/");
+        String method = exchange.getRequestMethod().toUpperCase();
+        try {
+            if (parts.length == 2 && method.equals("GET")) {
+                send(exchange, 200, JSON, NO_STORE, MatchHistoryManager.listJson().getBytes(StandardCharsets.UTF_8));
+                return;
+            }
+            String id = parts.length > 2 ? parts[2] : null;
+            if (!MatchHistoryManager.isValidId(id)) {
+                exchange.sendResponseHeaders(404, -1);
+                return;
+            }
+            String action = parts.length > 3 ? parts[3] : "";
+
+            if (action.isEmpty() && method.equals("GET")) {
+                String match = MatchHistoryManager.matchJson(id);
+                if (match == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+                send(exchange, 200, JSON, NO_STORE, match.getBytes(StandardCharsets.UTF_8));
+                return;
+            }
+
+            if (action.equals("highlights") && parts.length == 4 && method.equals("POST")) {
+                Map<String, String> query = queryParams(exchange);
+                byte[] webm = exchange.getRequestBody().readAllBytes();
+                if (webm.length < 1024) {
+                    exchange.sendResponseHeaders(400, -1);
+                    return;
+                }
+                int score = 0;
+                try {
+                    score = Integer.parseInt(query.getOrDefault("score", "0"));
+                } catch (NumberFormatException ignored) {
+                }
+                MatchHistoryManager.addHighlight(id, query.get("hid"), query.get("headline"), query.get("clock"), score, webm);
+                exchange.sendResponseHeaders(204, -1);
+                return;
+            }
+
+            if (action.equals("highlights") && parts.length == 5 && method.equals("GET")) {
+                Path file = MatchHistoryManager.highlightFile(id, Integer.parseInt(parts[4]));
+                if (file == null || !Files.exists(file)) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+                send(exchange, 200, "video/webm", NO_STORE, Files.readAllBytes(file));
+                return;
+            }
+
+            if (action.equals("replay") && parts.length == 4 && method.equals("GET")) {
+                String replay = MatchHistoryManager.replayJson(id);
+                if (replay == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+                send(exchange, 200, JSON, NO_STORE, replay.getBytes(StandardCharsets.UTF_8));
+                return;
+            }
+
+            if (action.equals("replay") && parts.length == 5 && method.equals("POST")) {
+                boolean ok = switch (parts[4]) {
+                    case "download" -> MatchHistoryManager.downloadReplay(id);
+                    case "watch" -> ReplayApiConfig.isEnabled() && MatchHistoryManager.watchReplay(id);
+                    default -> false;
+                };
+                send(exchange, ok ? 200 : 409, JSON, null, new JSONObject().put("ok", ok).toString().getBytes(StandardCharsets.UTF_8));
+                return;
+            }
+
+            exchange.sendResponseHeaders(404, -1);
+        } catch (Exception e) {
+            DebugManager.logFailure("[History] Request failed: " + exchange.getRequestURI(), e);
+            try {
+                exchange.sendResponseHeaders(500, -1);
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    private static void handleEnableReplayApi(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            return;
+        }
+        JSONObject result = new JSONObject().put("path", ReplayApiConfig.gameCfgPath().toString());
+        try {
+            ReplayApiConfig.enable();
+            result.put("ok", true);
+        } catch (Exception e) {
+            System.err.println("[Replay] Could not enable the Replay API: " + e.getMessage());
+            result.put("ok", false).put("error", String.valueOf(e.getMessage()));
+        }
+        send(exchange, result.getBoolean("ok") ? 200 : 500, JSON, null, result.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static Map<String, String> queryParams(HttpExchange exchange) {
+        Map<String, String> params = new HashMap<>();
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query == null) return params;
+        for (String kv : query.split("&")) {
+            int eq = kv.indexOf('=');
+            if (eq <= 0) continue;
+            params.put(URLDecoder.decode(kv.substring(0, eq), StandardCharsets.UTF_8),
+                    URLDecoder.decode(kv.substring(eq + 1), StandardCharsets.UTF_8));
+        }
+        return params;
     }
 
     private static void handleProfileIcon(HttpExchange exchange) throws IOException {

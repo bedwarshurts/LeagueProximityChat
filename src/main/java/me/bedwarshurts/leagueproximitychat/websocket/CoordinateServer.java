@@ -5,6 +5,7 @@ import lombok.Setter;
 import me.bedwarshurts.leagueproximitychat.SessionState;
 import me.bedwarshurts.leagueproximitychat.livekit.LiveKitUser;
 import me.bedwarshurts.leagueproximitychat.livekit.LivekitRoom;
+import me.bedwarshurts.leagueproximitychat.managers.ClipRecorder;
 import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.utils.LeagueConfigReader;
@@ -44,6 +45,7 @@ public class CoordinateServer extends WebSocketServer {
             activeConnection = null;
             userRequestedConnection = false;
             session.setActiveRoom(null);
+            ClipRecorder.setScreenRecordingActive(false);
 
             System.out.println("Active browser tab closed.");
         }
@@ -79,6 +81,10 @@ public class CoordinateServer extends WebSocketServer {
         }
         if ("WARNING_ACK".equals(type)) {
             session.acknowledgeWarning(json.optString("id"));
+            return;
+        }
+        if ("SCREEN_RECORDING".equals(type)) {
+            ClipRecorder.setScreenRecordingActive(json.optBoolean("active", false));
             return;
         }
 

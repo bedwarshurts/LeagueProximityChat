@@ -8,6 +8,8 @@ async function fetchLivekitSettings() {
     document.getElementById('setup-secret').value = s.apiSecret || '';
     lowPerformanceMode = Boolean(s.lowPerformanceMode);
     document.getElementById('setup-lowperf').checked = lowPerformanceMode;
+    saveAllHighlights = Boolean(s.saveAllHighlights);
+    document.getElementById('setup-autosave').checked = saveAllHighlights;
     document.getElementById('setup-debug').checked = Boolean(s.debugMode);
     const versionEl = document.getElementById('setup-version');
     versionEl.replaceChildren();
@@ -171,6 +173,7 @@ if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
 function selectSettingsCategory(cat) {
     document.querySelectorAll('.setup-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
     document.querySelectorAll('.setup-cat').forEach(p => p.classList.toggle('active', p.id === `setup-cat-${cat}`));
+    if (cat === 'history') loadMatchHistory();
 }
 
 document.querySelectorAll('.setup-tab').forEach(tab => {
@@ -215,6 +218,7 @@ document.getElementById('setup-save').addEventListener('click', async () => {
     const apiKey = document.getElementById('setup-key').value.trim();
     const apiSecret = document.getElementById('setup-secret').value.trim();
     const lowPerf = document.getElementById('setup-lowperf').checked;
+    const autoSave = document.getElementById('setup-autosave').checked;
     const debugOn = document.getElementById('setup-debug').checked;
     const errorEl = document.getElementById('setup-error');
 
@@ -229,7 +233,7 @@ document.getElementById('setup-save').addEventListener('click', async () => {
         const resp = await fetch('/settings', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url, apiKey, apiSecret, lowPerformanceMode: lowPerf, debugMode: debugOn})
+            body: JSON.stringify({url, apiKey, apiSecret, lowPerformanceMode: lowPerf, debugMode: debugOn, saveAllHighlights: autoSave})
         });
         const out = await resp.json();
         if (!out.ok) throw new Error('rejected');

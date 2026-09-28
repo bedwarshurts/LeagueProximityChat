@@ -4,6 +4,7 @@ let potgAudioEl = null;
 let potgHighlights = [];
 let potgCurrent = null;
 let potgSaving = false;
+let potgHistoryMatch = null;
 
 let potgClipVolume = 1;
 try { const v = parseFloat(localStorage.getItem('potgClipVolume')); if (v >= 0 && v <= 1) potgClipVolume = v; } catch (e) {}
@@ -24,7 +25,7 @@ async function loadFramesFor(h) {
     return frames;
 }
 
-async function maybeShowPlayOfGame() {
+async function maybeShowPlayOfGame(matchId = null) {
     try {
         await finalizePotgVideoCapture();
 
@@ -42,19 +43,22 @@ async function maybeShowPlayOfGame() {
                 audio: potgAudio.clips.get(id) || null
             };
         });
+        if (saveAllHighlights && matchId) autoSaveHighlights(matchId, potgHighlights.slice());
 
         const best = potgHighlights[0];
         await loadFramesFor(best);
         if (!best.video && best.frames.length === 0) return;
 
         potgLog(`showing ${potgHighlights.length} highlight(s), best via `
-            + `${best.video ? 'video (60fps)' : 'frame-flip fallback'} path${best.audio ? ' with voice' : ''}`);
+            + `${best.video ? `video (${best.video.parts.length} piece${best.video.parts.length > 1 ? 's' : ''})` : 'frame-flip fallback'} path`
+            + `${best.audio ? ' with voice' : ''}`);
 
         showPotgIntro();
     } catch (e) {}
 }
 
-function openHighlightViewer() {
+function openHighlightViewer(history = null) {
+    potgHistoryMatch = history;
     const best = potgHighlights[0];
     if (!best) return;
     buildHighlightsStrip();
@@ -62,6 +66,7 @@ function openHighlightViewer() {
     const moreBtn = document.getElementById('potg-more');
     moreBtn.style.display = potgHighlights.length > 1 ? '' : 'none';
     moreBtn.innerText = 'Show More Highlights';
+    document.getElementById('potg-save').style.display = history ? 'none' : '';
     document.getElementById('potg-save-status').innerText = '';
     const viewer = document.getElementById('potg-viewer');
     viewer.classList.remove('controls-hidden');
@@ -136,37 +141,51 @@ async function showHighlight(h) {
     document.getElementById('potg-save-status').innerText = '';
     document.getElementById('potg-headline').innerText = `${h.headline}  ·  ${h.gameClock}`;
     await loadFramesFor(h);
-    potgReplayData = {video: h.video, frames: h.frames, audio: h.audio};
+    potgReplayData = {video: h.video, frames: h.frames, audio: h.audio, file: h.file};
     playPotg();
 }
 
+function potgPlayers() {
+    return [document.getElementById('potg-video'), document.getElementById('potg-video-b')];
+}
+
+let potgPlayToken = 0;
+
 function playPotg() {
     if (!potgReplayData) return;
-    const {video, frames, audio} = potgReplayData;
-    if (!video && (!frames || frames.length === 0)) return;
+    const {video, frames, audio, file} = potgReplayData;
+    if (!file && !video && (!frames || frames.length === 0)) return;
     const canvas = document.getElementById('potg-canvas');
-    const videoEl = document.getElementById('potg-video');
+    const players = potgPlayers();
 
     potgPlaybackEnded = false;
     showPotgControls();
 
+    potgPlayToken++;
     if (potgAnimHandle) cancelAnimationFrame(potgAnimHandle);
     if (potgAudioEl) { try { potgAudioEl.pause(); } catch (e) {} }
-    try { videoEl.pause(); } catch (e) {}
+    players.forEach(p => { try { p.pause(); } catch (e) {} });
     potgAudioEl = audio ? new Audio(URL.createObjectURL(audio)) : null;
     if (potgAudioEl) {
         potgAudioEl.volume = potgClipVolume;
         routeToSpeaker(potgAudioEl);
     }
 
-    if (video) {
+    if (file) {
         canvas.style.display = 'none';
-        videoEl.style.display = '';
-        playPotgVideo(videoEl, video);
+        players[1].style.display = 'none';
+        players[0].style.display = '';
+        playPotgFile(players[0], file);
         return;
     }
 
-    videoEl.style.display = 'none';
+    if (video) {
+        canvas.style.display = 'none';
+        playPotgVideo(video.parts);
+        return;
+    }
+
+    players.forEach(p => { p.style.display = 'none'; });
     canvas.style.display = '';
     const ctx2d = canvas.getContext('2d');
     canvas.width = frames[0].im.naturalWidth;
@@ -191,7 +210,8 @@ function playPotg() {
 }
 
 function fallbackToFrames() {
-    try { document.getElementById('potg-video').pause(); } catch (e) {}
+    potgPlayToken++;
+    potgPlayers().forEach(p => { try { p.pause(); } catch (e) {} });
     if (potgCurrent) potgCurrent.video = null;
     if (potgReplayData && potgReplayData.video
         && potgReplayData.frames && potgReplayData.frames.length > 0) {
@@ -200,11 +220,15 @@ function fallbackToFrames() {
     }
 }
 
-async function preparePotgVideoSrc(videoEl, clip) {
-    if (videoEl.dataset.clipUrlFor === String(clip.startMs)) return;
-    if (videoEl.src) { try { URL.revokeObjectURL(videoEl.src); } catch (e) {} }
-    videoEl.src = URL.createObjectURL(clip.blob);
-    videoEl.dataset.clipUrlFor = String(clip.startMs);
+const partFrom = part => Math.max(0, (part.startMs - part.segStartMs) / 1000);
+const partTo = part => Math.max(partFrom(part) + 0.2, (part.endMs - part.segStartMs) / 1000);
+
+async function preparePotgVideoSrc(videoEl, part) {
+    const key = String(part.segStartMs);
+    if (videoEl.dataset.segmentFor === key) return;
+    if (videoEl.src && videoEl.src.startsWith('blob:')) { try { URL.revokeObjectURL(videoEl.src); } catch (e) {} }
+    videoEl.src = URL.createObjectURL(part.blob);
+    videoEl.dataset.segmentFor = key;
     await new Promise(res => { videoEl.onloadedmetadata = res; setTimeout(res, 2000); });
     if (!isFinite(videoEl.duration)) {
         await new Promise(res => {
@@ -215,60 +239,105 @@ async function preparePotgVideoSrc(videoEl, clip) {
     }
 }
 
-async function playPotgVideo(videoEl, clip) {
-    try {
-        videoEl.onerror = () => {
-            const err = videoEl.error;
-            potgLog(`video playback error (code ${err ? err.code : '?'}) - falling back to frames`);
-            fallbackToFrames();
-        };
+async function cuePart(videoEl, part) {
+    videoEl.muted = true;
+    videoEl.ontimeupdate = null;
+    videoEl.onended = null;
+    await preparePotgVideoSrc(videoEl, part);
+    let seekTo = partFrom(part);
+    if (isFinite(videoEl.duration) && seekTo >= videoEl.duration - 0.3) seekTo = 0;
+    videoEl.currentTime = seekTo;
+    await new Promise(res => { videoEl.onseeked = res; setTimeout(res, 1500); });
+}
 
-        await preparePotgVideoSrc(videoEl, clip);
-
-        let seekTo = Math.max(0, (clip.startMs - clip.segStartMs) / 1000);
-        const endOffset = Math.max(seekTo + 0.5, (clip.endMs - clip.segStartMs) / 1000);
-
-        if (isFinite(videoEl.duration) && seekTo >= videoEl.duration - 0.3) seekTo = 0;
-
-        videoEl.currentTime = seekTo;
-        await new Promise(res => { videoEl.onseeked = res; setTimeout(res, 1500); });
-
-        const from = seekTo;
-        videoEl.ontimeupdate = () => {
-            if (videoEl.currentTime >= endOffset && videoEl.currentTime > from + 0.2) {
+function playPartToEnd(videoEl, part, {nextTick, onFrame = () => {}, isCurrent = () => true}) {
+    const end = partTo(part);
+    return new Promise((resolve, reject) => {
+        let lastTime = -1;
+        let lastMove = performance.now();
+        const step = () => {
+            if (!isCurrent()) { videoEl.pause(); resolve(false); return; }
+            onFrame(videoEl);
+            if (videoEl.currentTime >= end || videoEl.ended) { videoEl.pause(); resolve(true); return; }
+            if (videoEl.currentTime !== lastTime) {
+                lastTime = videoEl.currentTime;
+                lastMove = performance.now();
+            } else if (performance.now() - lastMove > 4000) {
                 videoEl.pause();
-                onPotgPlaybackEnded();
+                reject(new Error('video stalled'));
+                return;
             }
+            nextTick(step, videoEl);
         };
-        videoEl.onended = onPotgPlaybackEnded;
         videoEl.play().catch(() => {});
-        if (potgAudioEl) potgAudioEl.play().catch(() => {});
+        step();
+    });
+}
 
-        const probeStart = videoEl.currentTime;
-        setTimeout(() => {
-            if (!potgReplayData || !potgReplayData.video) return;
-            const advanced = videoEl.currentTime > probeStart + 0.2;
-            if (!advanced || videoEl.readyState < 2) {
-                potgLog('video not advancing - retrying from segment start');
-                try { videoEl.currentTime = 0; videoEl.play().catch(() => {}); } catch (e) {}
-                setTimeout(() => {
-                    if (!potgReplayData || !potgReplayData.video) return;
-                    if (videoEl.currentTime < 0.2 || videoEl.readyState < 2) {
-                        potgLog('video still not playing - falling back to frames');
-                        fallbackToFrames();
-                    }
-                }, 1500);
+function onNextVideoFrame(frameMs) {
+    return (step, videoEl) => {
+        let ran = false;
+        const run = () => {
+            if (ran) return;
+            ran = true;
+            step();
+        };
+        if (videoEl.requestVideoFrameCallback) videoEl.requestVideoFrameCallback(run);
+        setTimeout(run, frameMs * 2.5);
+    };
+}
+
+async function playPieces(parts, players, options) {
+    await cuePart(players[0], parts[0]);
+    const secondCued = parts.length > 1 ? cuePart(players[1], parts[1]) : null;
+    for (let i = 0; i < parts.length; i++) {
+        const player = players[i % 2];
+        if (i > 0) await secondCued;
+        if (options.onStart) options.onStart(player, i);
+        if (!(await playPartToEnd(player, parts[i], options))) return false;
+    }
+    return true;
+}
+
+function playPotgFile(videoEl, url) {
+    videoEl.ontimeupdate = null;
+    videoEl.onerror = () => potgLog(`saved highlight could not be played (${url})`);
+    videoEl.onended = onPotgPlaybackEnded;
+    delete videoEl.dataset.segmentFor;
+    videoEl.muted = false;
+    videoEl.volume = potgClipVolume;
+    routeToSpeaker(videoEl);
+    videoEl.src = url;
+    videoEl.play().catch(() => {});
+}
+
+async function playPotgVideo(parts) {
+    const token = ++potgPlayToken;
+    const isCurrent = () => token === potgPlayToken;
+    const players = potgPlayers();
+    players.forEach(p => { p.onerror = null; });
+    try {
+        const finished = await playPieces(parts, players, {
+            isCurrent,
+            nextTick: step => requestAnimationFrame(step),
+            onStart: (player, index) => {
+                players.forEach(p => { p.style.display = p === player ? '' : 'none'; });
+                if (index === 0 && potgAudioEl) potgAudioEl.play().catch(() => {});
             }
-        }, 1500);
+        });
+        if (finished && isCurrent()) onPotgPlaybackEnded();
     } catch (e) {
+        if (!isCurrent()) return;
+        potgLog(`video playback failed (${e && e.message ? e.message : e}) - falling back to frames`);
         fallbackToFrames();
     }
 }
 
 function haltPotgPlayback() {
+    potgPlayToken++;
     if (potgAnimHandle) cancelAnimationFrame(potgAnimHandle);
     if (potgAudioEl) { try { potgAudioEl.pause(); } catch (e) {} }
-    try { document.getElementById('potg-video').pause(); } catch (e) {}
+    potgPlayers().forEach(p => { try { p.pause(); } catch (e) {} });
 }
 
 function fadeInOverlay(el, display) {
@@ -318,11 +387,23 @@ function onPotgPlaybackEnded() {
     document.getElementById('potg-viewer').classList.remove('controls-hidden');
 }
 
-function buildSaveRecorder(stream) {
-    const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', ''];
+function exportClipBitrate() {
+    return Math.max(12000000, Math.round((potgPlan ? potgPlan.bitrate : 10000000) * 1.25));
+}
+
+function historyClipBitrate(fps) {
+    return fps >= 60 ? 10000000 : 6000000;
+}
+
+const HISTORY_CLIP_MAX_WIDTH = 1920;
+
+function buildSaveRecorder(stream, bitrate) {
+    const live = potgVideo.workingMime;
+    const recorded = live ? [live.includes('codecs=') ? `${live},opus` : live] : [];
+    const candidates = [...recorded, 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm', ''];
     for (const m of candidates) {
         try {
-            const opts = {videoBitsPerSecond: 8000000};
+            const opts = {videoBitsPerSecond: bitrate};
             if (m) opts.mimeType = m;
             return new MediaRecorder(stream, opts);
         } catch (e) {}
@@ -330,39 +411,33 @@ function buildSaveRecorder(stream) {
     return null;
 }
 
-async function recordHighlight(h, useVideo) {
-    const canvas = document.getElementById('potg-canvas');
-    const videoEl = document.getElementById('potg-video');
+async function recordHighlight(h, useVideo, background = false) {
+    const canvas = background ? document.createElement('canvas') : document.getElementById('potg-canvas');
+    const players = background ? [document.createElement('video'), document.createElement('video')] : potgPlayers();
     const ctx2d = canvas.getContext('2d');
-    videoEl.style.display = 'none';
-    canvas.style.display = '';
+    const fps = useVideo && potgPlan ? potgPlan.frameRate : 30;
+    const nextFrame = background
+        ? step => setTimeout(step, 1000 / fps)
+        : step => { potgAnimHandle = requestAnimationFrame(step); };
+    let warmUpFrame = null;
+    players.forEach(p => { p.muted = true; });
+    if (!background) {
+        players.forEach(p => { p.style.display = 'none'; });
+        canvas.style.display = '';
+    }
 
     let drawLoop;
     if (useVideo) {
-        const clip = h.video;
-        videoEl.ontimeupdate = null;
-        videoEl.onerror = null;
-        await preparePotgVideoSrc(videoEl, clip);
-        let seekTo = Math.max(0, (clip.startMs - clip.segStartMs) / 1000);
-        if (isFinite(videoEl.duration) && seekTo >= videoEl.duration - 0.3) seekTo = 0;
-        const endOffset = Math.max(seekTo + 0.5, (clip.endMs - clip.segStartMs) / 1000);
-        videoEl.currentTime = seekTo;
-        await new Promise(res => { videoEl.onseeked = res; setTimeout(res, 1500); });
-        canvas.width = videoEl.videoWidth || 1280;
-        canvas.height = videoEl.videoHeight || 720;
-        drawLoop = () => new Promise((res, rej) => {
-            let lastT = -1;
-            let stalledSince = performance.now();
-            const step = () => {
-                try { ctx2d.drawImage(videoEl, 0, 0, canvas.width, canvas.height); } catch (e) {}
-                if (videoEl.currentTime !== lastT) { lastT = videoEl.currentTime; stalledSince = performance.now(); }
-                if (videoEl.currentTime >= endOffset || videoEl.ended) { videoEl.pause(); res(); return; }
-                if (performance.now() - stalledSince > 4000) { videoEl.pause(); rej(new Error('video stalled')); return; }
-                potgAnimHandle = requestAnimationFrame(step);
-            };
-            videoEl.play().catch(() => {});
-            step();
-        });
+        const parts = h.video.parts;
+        await cuePart(players[0], parts[0]);
+        const sourceW = players[0].videoWidth || 1280;
+        const sourceH = players[0].videoHeight || 720;
+        const scale = background ? Math.min(1, HISTORY_CLIP_MAX_WIDTH / sourceW) : 1;
+        canvas.width = Math.round(sourceW * scale);
+        canvas.height = Math.round(sourceH * scale);
+        const drawFrom = player => { try { ctx2d.drawImage(player, 0, 0, canvas.width, canvas.height); } catch (e) {} };
+        warmUpFrame = () => drawFrom(players[0]);
+        drawLoop = () => playPieces(parts, players, {nextTick: onNextVideoFrame(1000 / fps), onFrame: drawFrom});
     } else {
         const frames = h.frames;
         canvas.width = frames[0].im.naturalWidth;
@@ -376,14 +451,14 @@ async function recordHighlight(h, useVideo) {
                     if (f.t <= elapsed) frame = f; else break;
                 }
                 ctx2d.drawImage(frame.im, 0, 0);
-                if (elapsed < frames[frames.length - 1].t + 400) potgAnimHandle = requestAnimationFrame(step);
+                if (elapsed < frames[frames.length - 1].t + 400) nextFrame(step);
                 else res();
             };
             step();
         });
     }
 
-    const stream = canvas.captureStream(30);
+    const stream = canvas.captureStream(fps);
     let voiceSrc = null;
     if (h.audio && audioCtx) {
         try {
@@ -393,22 +468,29 @@ async function recordHighlight(h, useVideo) {
             voiceSrc.buffer = buf;
 
             const vol = audioCtx.createGain();
-            vol.gain.value = potgClipVolume;
+            vol.gain.value = background ? 1 : potgClipVolume;
             voiceSrc.connect(vol);
             vol.connect(dest);
-            vol.connect(audioCtx.destination);
+            if (!background) vol.connect(audioCtx.destination);
             stream.addTrack(dest.stream.getAudioTracks()[0]);
         } catch (e) {
             voiceSrc = null;
         }
     }
 
-    const rec = buildSaveRecorder(stream);
+    const bitrate = background ? historyClipBitrate(fps) : exportClipBitrate();
+    const rec = buildSaveRecorder(stream, bitrate);
     if (!rec) throw new Error('no recorder available');
     const parts = [];
     rec.ondataavailable = ev => { if (ev.data && ev.data.size > 0) parts.push(ev.data); };
     const stopped = new Promise(res => { rec.onstop = res; });
     rec.start(250);
+    if (warmUpFrame) {
+        const hold = setInterval(warmUpFrame, 1000 / fps);
+        warmUpFrame();
+        await new Promise(res => setTimeout(res, 300));
+        clearInterval(hold);
+    }
     if (voiceSrc) { try { voiceSrc.start(); } catch (e) {} }
 
     let err = null;
@@ -421,6 +503,13 @@ async function recordHighlight(h, useVideo) {
     try { rec.stop(); } catch (e) {}
     await stopped;
     stream.getTracks().forEach(t => t.stop());
+    if (background) {
+        players.forEach(p => {
+            if (!p.src) return;
+            try { URL.revokeObjectURL(p.src); } catch (e) {}
+            p.removeAttribute('src');
+        });
+    }
     if (err) throw err;
     return new Blob(parts, {type: rec.mimeType || 'video/webm'});
 }
@@ -432,7 +521,7 @@ async function savePotgHighlight() {
     const status = document.getElementById('potg-save-status');
     potgSaving = true;
     btn.disabled = true;
-    status.innerText = '● Recording highlight…';
+    status.innerText = '● Exporting highlight…';
     haltPotgPlayback();
     onPotgPlaybackEnded();
 
@@ -452,19 +541,50 @@ async function savePotgHighlight() {
         if (!blob || blob.size < 1024) throw new Error('empty recording');
 
         status.innerText = 'Writing to disk…';
-        const name = `${h.headline} ${h.gameClock.replace(':', '.')}`;
-        const resp = await fetch(`/potg/save?name=${encodeURIComponent(name)}`, {method: 'POST', body: blob});
+        const query = new URLSearchParams({
+            name: `${h.headline} ${h.gameClock.replace(':', '.')}`,
+            hid: h.id, headline: h.headline, clock: h.gameClock
+        });
+        const resp = await fetch(`/potg/save?${query}`, {method: 'POST', body: blob});
         const j = await resp.json().catch(() => ({}));
         if (!resp.ok || !j.path) throw new Error(j.error || `HTTP ${resp.status}`);
-        status.innerText = `Saved to ${j.path}`;
+        status.innerText = `Exported to ${j.path}`;
         potgLog(`highlight saved to ${j.path}`);
     } catch (e) {
-        status.innerText = `Save failed (${e && e.message ? e.message : e})`;
+        status.innerText = `Export failed (${e && e.message ? e.message : e})`;
         potgLog(`highlight save failed (${e && e.message ? e.message : e})`);
     } finally {
         potgSaving = false;
         btn.disabled = false;
     }
+}
+
+let potgAutoSaveChain = Promise.resolve();
+
+function autoSaveHighlights(matchId, highlights) {
+    potgAutoSaveChain = potgAutoSaveChain.then(async () => {
+        for (const h of highlights) {
+            try {
+                await loadFramesFor(h);
+                if (!h.video && h.frames.length === 0) continue;
+                let blob;
+                try {
+                    blob = await recordHighlight(h, !!h.video, true);
+                } catch (e) {
+                    if (!h.video || h.frames.length === 0) throw e;
+                    blob = await recordHighlight(h, false, true);
+                }
+                if (!blob || blob.size < 1024) throw new Error('empty recording');
+
+                const query = new URLSearchParams({hid: h.id, headline: h.headline, clock: h.gameClock, score: String(h.score || 0)});
+                const resp = await fetch(`/matches/${encodeURIComponent(matchId)}/highlights?${query}`, {method: 'POST', body: blob});
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                potgLog(`kept ${h.headline} in match history (${Math.round(blob.size / 1024)}KB)`);
+            } catch (e) {
+                potgLog(`could not keep ${h.headline} in match history (${e && e.message ? e.message : e})`);
+            }
+        }
+    });
 }
 
 document.getElementById('potg-replay').addEventListener('click', () => { if (!potgSaving) playPotg(); });
@@ -476,7 +596,7 @@ document.getElementById('potg-more').addEventListener('click', () => {
     strip.style.display = hidden ? 'flex' : 'none';
     document.getElementById('potg-more').innerText = hidden ? 'Hide Highlights' : 'Show More Highlights';
 });
-document.getElementById('potg-continue').addEventListener('click', () => { if (!potgSaving) showEndgameScreen(); });
+document.getElementById('potg-continue').addEventListener('click', () => { if (!potgSaving) showEndgameScreen(potgHistoryMatch); });
 document.getElementById('potg-intro-btn').addEventListener('click', enterHighlightsFromIntro);
 
 const potgVolSlider = document.getElementById('potg-vol');
@@ -489,6 +609,7 @@ function refreshPotgVolumeUI() {
 potgVolSlider.addEventListener('input', () => {
     potgClipVolume = potgVolSlider.value / 100;
     if (potgAudioEl) potgAudioEl.volume = potgClipVolume;
+    if (potgReplayData && potgReplayData.file) document.getElementById('potg-video').volume = potgClipVolume;
     try { localStorage.setItem('potgClipVolume', String(potgClipVolume)); } catch (e) {}
     refreshPotgVolumeUI();
 });

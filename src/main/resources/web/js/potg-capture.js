@@ -107,7 +107,52 @@ function sliceVoiceClip(startMs, endMs) {
 
 const potgVideo = { stream: null, recorders: [], segments: [], lockedClips: new Map(), pendingMarks: [], active: false, onSegmentFinalized: null };
 
-const POTG_SEG_MS = 50000;
+const POTG_SEG_MS = 40000;
+const POTG_SEG_OVERLAP_MS = 1500;
+const POTG_EDGE_SLACK_MS = 300;
+
+const POTG_GPU_CHECK_WIDTH = 1920;
+const POTG_GPU_CHECK_HEIGHT = 1080;
+const POTG_GPU_CODECS = [
+    ['vp09.00.40.08', 'video/webm;codecs=vp9'],
+    ['avc1.640028', 'video/webm;codecs=h264'],
+    ['av01.0.08M.08', 'video/webm;codecs=av1']
+];
+let potgPlan = null;
+
+async function planPotgRecording() {
+    if (potgPlan) return potgPlan;
+    const gpu = [];
+    if (window.VideoEncoder) {
+        for (const [codec, mime] of POTG_GPU_CODECS) {
+            if (!MediaRecorder.isTypeSupported(mime)) continue;
+            try {
+                const check = await VideoEncoder.isConfigSupported({
+                    codec, width: POTG_GPU_CHECK_WIDTH, height: POTG_GPU_CHECK_HEIGHT, bitrate: 14000000, framerate: 60,
+                    hardwareAcceleration: 'prefer-hardware'
+                });
+                if (check.supported) gpu.push(mime);
+            } catch (e) {}
+        }
+    }
+    const bigScreen = screen.width * devicePixelRatio > 1920 || screen.height * devicePixelRatio > 1080;
+    potgPlan = gpu.length > 0
+        ? {codecs: [...gpu, 'video/webm;codecs=vp8', ''], gpu: true, frameRate: 60,
+            maxWidth: bigScreen ? 2560 : 1920, maxHeight: bigScreen ? 1440 : 1080, bitrate: bigScreen ? 20000000 : 14000000}
+        : {codecs: ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', ''], gpu: false, frameRate: 30,
+            maxWidth: 1920, maxHeight: 1080, bitrate: 8000000};
+    potgLog(`recording plan: ${potgPlan.gpu ? `GPU encoder (${gpu.join(', ')})` : 'software encoder'}, `
+        + `up to ${potgPlan.maxWidth}x${potgPlan.maxHeight}@${potgPlan.frameRate}fps, ${potgPlan.bitrate / 1e6} Mbps`);
+    return potgPlan;
+}
+
+function reportScreenRecording(active) {
+    try {
+        if (trackerSocket && trackerSocket.readyState === WebSocket.OPEN) {
+            trackerSocket.send(JSON.stringify({type: 'SCREEN_RECORDING', active}));
+        }
+    } catch (e) {}
+}
 
 function potgLog(msg) {
     console.log('[PotG] ' + msg);
@@ -140,27 +185,27 @@ function requestStreamWithTimeout(factory, ms) {
 }
 
 const CAPTURE_METHODS = [
-    ['getDisplayMedia', () => navigator.mediaDevices.getDisplayMedia({
-        video: {frameRate: {ideal: 60, max: 60}},
+    ['getDisplayMedia', plan => navigator.mediaDevices.getDisplayMedia({
+        video: {width: {max: plan.maxWidth}, height: {max: plan.maxHeight}, frameRate: {ideal: plan.frameRate, max: plan.frameRate}},
         audio: false
     })],
-    ['legacy screen capture', () => navigator.mediaDevices.getUserMedia({
+    ['legacy screen capture', plan => navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: {mandatory: {chromeMediaSource: 'screen', maxWidth: 4096, maxHeight: 2304, maxFrameRate: 60}}
+        video: {mandatory: {chromeMediaSource: 'screen', maxWidth: plan.maxWidth, maxHeight: plan.maxHeight, maxFrameRate: plan.frameRate}}
     })],
-    ['legacy desktop capture', () => navigator.mediaDevices.getUserMedia({
+    ['legacy desktop capture', plan => navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: {mandatory: {chromeMediaSource: 'desktop', maxWidth: 4096, maxHeight: 2304, maxFrameRate: 60}}
+        video: {mandatory: {chromeMediaSource: 'desktop', maxWidth: plan.maxWidth, maxHeight: plan.maxHeight, maxFrameRate: plan.frameRate}}
     })]
 ];
 
-async function acquireScreenStream(startIndex) {
+async function acquireScreenStream(startIndex, plan) {
     let lastError = null;
     for (let i = 0; i < CAPTURE_METHODS.length; i++) {
         const idx = (startIndex + i) % CAPTURE_METHODS.length;
         const [label, factory] = CAPTURE_METHODS[idx];
         try {
-            const stream = await requestStreamWithTimeout(factory, 4000);
+            const stream = await requestStreamWithTimeout(() => factory(plan), 4000);
             potgLog(`capture method: ${label}`);
             return {stream, methodIndex: idx};
         } catch (e) {
@@ -191,7 +236,8 @@ async function startPotgVideoCapture() {
     if (potgVideo.active || potgVideo.stream) return;
 
     try {
-        let acq = await acquireScreenStream(savedCaptureMethodIndex());
+        const plan = await planPotgRecording();
+        let acq = await acquireScreenStream(savedCaptureMethodIndex(), plan);
         potgVideo.stream = acq.stream;
         potgVideo.active = true;
         acq.stream.getVideoTracks()[0].addEventListener('ended', stopPotgVideoCapture);
@@ -214,7 +260,7 @@ async function startPotgVideoCapture() {
                 potgLog('capture still producing nothing - switching capture method');
                 try { potgVideo.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
                 try {
-                    acq = await acquireScreenStream((acq.methodIndex + 1) % CAPTURE_METHODS.length);
+                    acq = await acquireScreenStream((acq.methodIndex + 1) % CAPTURE_METHODS.length, plan);
                     potgVideo.stream = acq.stream;
                     acq.stream.getVideoTracks()[0].addEventListener('ended', stopPotgVideoCapture);
                 } catch (e) {
@@ -229,8 +275,8 @@ async function startPotgVideoCapture() {
 
         try { localStorage.setItem(POTG_METHOD_KEY, String(acq.methodIndex)); } catch (e) {}
 
-        spawnPotgSegment(0);
-        setTimeout(() => spawnPotgSegment(1), POTG_SEG_MS / 2);
+        spawnPotgSegment();
+        reportScreenRecording(true);
     } catch (e) {
         potgLog(`screen capture unavailable (${e && e.name ? e.name : e}) - clips will use the backend frame buffer instead`);
     }
@@ -286,7 +332,7 @@ function validateCodecPlayback(mime) {
 
 async function selectValidatedCodec(verbose) {
     if (potgVideo.workingMime !== undefined) return;
-    const candidates = ['video/x-matroska;codecs=avc1', 'video/webm;codecs=h264', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', ''];
+    const candidates = potgPlan ? potgPlan.codecs : ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', ''];
     for (const mime of candidates) {
         const res = await validateCodecPlayback(mime);
         if (res.ok) {
@@ -299,14 +345,14 @@ async function selectValidatedCodec(verbose) {
     }
 }
 
-function spawnPotgSegment(lane) {
+function spawnPotgSegment() {
     if (!potgVideo.active || !potgVideo.stream || potgVideo.workingMime === undefined) return;
 
     const startMs = Date.now();
     const parts = [];
     let rec;
     try {
-        const opts = {videoBitsPerSecond: 16000000};
+        const opts = {videoBitsPerSecond: potgPlan ? potgPlan.bitrate : 8000000};
         if (potgVideo.workingMime) opts.mimeType = potgVideo.workingMime;
         rec = new MediaRecorder(potgVideo.stream, opts);
     } catch (e) {
@@ -317,11 +363,11 @@ function spawnPotgSegment(lane) {
 
     rec.ondataavailable = ev => { if (ev.data && ev.data.size > 0) parts.push(ev.data); };
     rec.onstop = () => {
+        potgVideo.recorders = potgVideo.recorders.filter(r => r !== rec);
         potgVideo.segments.push({startMs, endMs: Date.now(), blob: new Blob(parts, {type: rec.mimeType || 'video/webm'})});
         const cutoff = Date.now() - 60000;
         potgVideo.segments = potgVideo.segments.filter(s => s.endMs >= cutoff);
         tryResolvePotgMarks();
-        spawnPotgSegment(lane);
         if (potgVideo.onSegmentFinalized) potgVideo.onSegmentFinalized();
     };
 
@@ -332,7 +378,8 @@ function spawnPotgSegment(lane) {
         stopPotgVideoCapture();
         return;
     }
-    potgVideo.recorders[lane] = rec;
+    potgVideo.recorders.push(rec);
+    setTimeout(() => { if (potgVideo.active && rec.state === 'recording') spawnPotgSegment(); }, POTG_SEG_MS - POTG_SEG_OVERLAP_MS);
     setTimeout(() => { try { if (rec.state === 'recording' && potgVideo.active) rec.stop(); } catch (e) {} }, POTG_SEG_MS);
 }
 
@@ -342,6 +389,7 @@ async function finalizePotgVideoCapture() {
         return;
     }
     potgVideo.active = false;
+    reportScreenRecording(false);
 
     const running = potgVideo.recorders.filter(r => r && r.state === 'recording');
     if (running.length > 0) {
@@ -366,45 +414,57 @@ async function finalizePotgVideoCapture() {
 
 function stopPotgVideoCapture() {
     potgVideo.active = false;
+    reportScreenRecording(false);
     potgVideo.recorders.forEach(r => { try { if (r && r.state === 'recording') r.stop(); } catch (e) {} });
     potgVideo.recorders = [];
     try { if (potgVideo.stream) potgVideo.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
     potgVideo.stream = null;
 }
 
+const clipPart = (seg, startMs, endMs) => ({blob: seg.blob, segStartMs: seg.startMs, startMs, endMs});
+
+function coverMark(m) {
+    const segs = potgVideo.segments;
+    const whole = segs.find(s => s.startMs <= m.startMs + POTG_EDGE_SLACK_MS && s.endMs >= m.endMs - POTG_EDGE_SLACK_MS);
+    if (whole) return [clipPart(whole, m.startMs, m.endMs)];
+
+    for (const a of segs) {
+        if (a.startMs > m.startMs + POTG_EDGE_SLACK_MS) continue;
+        for (const b of segs) {
+            if (b.startMs <= a.startMs || b.startMs > a.endMs || b.endMs < m.endMs - POTG_EDGE_SLACK_MS) continue;
+            const cut = Math.min(Math.max((b.startMs + a.endMs) / 2, m.startMs), m.endMs);
+            return [clipPart(a, m.startMs, cut), clipPart(b, cut, m.endMs)];
+        }
+    }
+    return null;
+}
+
 function tryResolvePotgMarks() {
     for (let i = potgVideo.pendingMarks.length - 1; i >= 0; i--) {
         const m = potgVideo.pendingMarks[i];
+        let parts = coverMark(m);
+        let partial = false;
 
-        let bestSeg = null;
-        let bestCover = -1;
-        for (const s of potgVideo.segments) {
-            const overlap = Math.min(s.endMs, m.endMs) - Math.max(s.startMs, m.startMs);
-            if (overlap <= 0) continue;
-            const fullyContains = s.startMs <= m.startMs + 300 && s.endMs >= m.endMs - 300;
-            const cover = (fullyContains ? 1e9 : 0) + overlap;
-            if (cover > bestCover) {
-                bestCover = cover;
-                bestSeg = s;
+        if (!parts && !potgVideo.active) {
+            let best = null;
+            let bestOverlap = 0;
+            for (const s of potgVideo.segments) {
+                const overlap = Math.min(s.endMs, m.endMs) - Math.max(s.startMs, m.startMs);
+                if (overlap > bestOverlap) {
+                    bestOverlap = overlap;
+                    best = s;
+                }
             }
+            if (best) parts = [clipPart(best, Math.max(m.startMs, best.startMs), Math.min(m.endMs, best.endMs))];
+            partial = true;
         }
-        if (!bestSeg) continue;
+        if (!parts) continue;
 
-        const fullyContains = bestSeg.startMs <= m.startMs + 300 && bestSeg.endMs >= m.endMs - 300;
-        if (fullyContains) {
-            potgVideo.lockedClips.set(m.id, {blob: bestSeg.blob, segStartMs: bestSeg.startMs, startMs: m.startMs, endMs: m.endMs});
-            potgVideo.pendingMarks.splice(i, 1);
-            potgLog(`video clip locked: ${Math.round((m.endMs - m.startMs) / 100) / 10}s, ${Math.round(bestSeg.blob.size / 1024)}KB segment`);
-        } else if (!potgVideo.active) {
-            potgVideo.lockedClips.set(m.id, {
-                blob: bestSeg.blob,
-                segStartMs: bestSeg.startMs,
-                startMs: Math.max(m.startMs, bestSeg.startMs),
-                endMs: Math.min(m.endMs, bestSeg.endMs)
-            });
-            potgVideo.pendingMarks.splice(i, 1);
-            potgLog('video clip locked with partial coverage (capture ended mid-window)');
-        }
+        potgVideo.lockedClips.set(m.id, {parts});
+        potgVideo.pendingMarks.splice(i, 1);
+        const seconds = parts.reduce((sum, p) => sum + p.endMs - p.startMs, 0) / 1000;
+        potgLog(`video clip locked: ${seconds.toFixed(1)}s from ${parts.length} chunk${parts.length > 1 ? 's' : ''}`
+            + `${partial ? ' (partial coverage, capture ended mid-window)' : ''}`);
     }
 }
 

@@ -2,6 +2,7 @@ let LIVEKIT_URL = '';
 let livekitConfigured = false;
 
 let lowPerformanceMode = false;
+let saveAllHighlights = true;
 
 let room = null;
 let audioCtx;

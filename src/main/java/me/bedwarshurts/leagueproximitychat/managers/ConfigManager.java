@@ -20,6 +20,7 @@ public final class ConfigManager {
 
     @Getter private static volatile boolean lowPerformanceMode = false;
     @Getter private static volatile boolean debugMode = false;
+    @Getter private static volatile boolean saveAllHighlights = true;
 
     static {
         load();
@@ -48,13 +49,14 @@ public final class ConfigManager {
             apiSecret = props.getProperty("livekit.apiSecret", "").trim();
             lowPerformanceMode = Boolean.parseBoolean(props.getProperty("app.lowPerformanceMode", "false"));
             debugMode = Boolean.parseBoolean(props.getProperty("app.debugMode", "false"));
+            saveAllHighlights = Boolean.parseBoolean(props.getProperty("app.saveAllHighlights", "true"));
         } catch (IOException e) {
             System.err.println("[Config] Failed to read " + CONFIG_FILE + ": " + e.getMessage());
         }
     }
 
     public static synchronized boolean save(String url, String key, String secret,
-                                            boolean lowPerformance, boolean debug) {
+                                            boolean lowPerformance, boolean debug, boolean saveHighlights) {
         String normalizedUrl = normalizeUrl(url);
         if (normalizedUrl.isBlank() || key.isBlank() || secret.isBlank()) {
             return false;
@@ -68,6 +70,7 @@ public final class ConfigManager {
             props.setProperty("livekit.apiSecret", secret.trim());
             props.setProperty("app.lowPerformanceMode", String.valueOf(lowPerformance));
             props.setProperty("app.debugMode", String.valueOf(debug));
+            props.setProperty("app.saveAllHighlights", String.valueOf(saveHighlights));
             try (OutputStream out = Files.newOutputStream(CONFIG_FILE)) {
                 props.store(out, "League Proximity Chat - Settings");
             }
@@ -77,6 +80,7 @@ public final class ConfigManager {
             apiSecret = secret.trim();
             lowPerformanceMode = lowPerformance;
             debugMode = debug;
+            saveAllHighlights = saveHighlights;
             System.out.println("[Config] Settings saved to " + CONFIG_FILE
                     + (lowPerformance ? " (low performance mode ON - clip recording disabled)" : ""));
             return true;

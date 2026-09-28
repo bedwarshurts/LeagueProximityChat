@@ -37,12 +37,13 @@ public final class PlayOfGameManager {
     }
 
     private record Clip(List<ClipRecorder.Frame> frames, long startEpochMs, long endEpochMs,
-                        String headline, int score, double gameTime) {
+                        String headline, int score, double gameTime, double clipStartS, double clipEndS) {
     }
 
     private static final Object lock = new Object();
     private static int lastEventId = -1;
     private static double lastGameTime = -1;
+    private static long lastEpochOffset = 0;
     private static final List<Candidate> pendings = new ArrayList<>();
     private static final List<Clip> highlights = new ArrayList<>();
     private static boolean loggedFeedOnce = false;
@@ -104,6 +105,9 @@ public final class PlayOfGameManager {
         if (raw == null || raw.isEmpty()) return;
 
         long epochOffset = System.currentTimeMillis() - (long) (gameTime * 1000);
+        synchronized (lock) {
+            lastEpochOffset = epochOffset;
+        }
 
         try {
             JSONArray events = new JSONObject(raw).optJSONArray("Events");
@@ -156,31 +160,59 @@ public final class PlayOfGameManager {
                 }
             }
             for (Candidate p : ripe) {
-                long startMs = epochOffset + (long) (p.clipStartS() * 1000);
-                long endMs = epochOffset + (long) (p.clipEndS() * 1000);
-                List<ClipRecorder.Frame> frames = ClipRecorder.snapshot(startMs, endMs);
-
-                if (frames.size() < MIN_CLIP_FRAMES) {
-                    System.out.printf("[PotG] Discarding %s clip - only %d frames were captured in its window "
-                            + "(position tracking not running / game unfocused?).%n", p.headline(), frames.size());
-                    continue;
-                }
-                synchronized (lock) {
-                    insertHighlight(new Clip(frames, startMs, endMs, p.headline(), p.score(), p.eventTime()), server);
-                }
+                lockClip(p, p.clipEndS(), epochOffset, server);
             }
         } catch (Exception e) {
             DebugManager.logFailure("[PotG] Could not process the event feed", e);
         }
     }
 
+    public static void flushPending(CoordinateServer server) {
+        List<Candidate> left;
+        double endTime;
+        long epochOffset;
+        synchronized (lock) {
+            left = new ArrayList<>(pendings);
+            pendings.clear();
+            endTime = lastGameTime;
+            epochOffset = lastEpochOffset;
+        }
+        for (Candidate p : left) {
+            if (endTime <= p.eventTime()) continue;
+            lockClip(p, Math.min(p.clipEndS(), endTime), epochOffset, server);
+        }
+    }
+
+    private static void lockClip(Candidate p, double clipEndS, long epochOffset, CoordinateServer server) {
+        long startMs = epochOffset + (long) (p.clipStartS() * 1000);
+        long endMs = epochOffset + (long) (clipEndS * 1000);
+        List<ClipRecorder.Frame> frames = ClipRecorder.snapshot(startMs, endMs);
+
+        if (frames.size() < MIN_CLIP_FRAMES) {
+            System.out.printf("[PotG] Discarding %s clip - only %d frames were captured in its window "
+                    + "(position tracking not running / game unfocused?).%n", p.headline(), frames.size());
+            return;
+        }
+        synchronized (lock) {
+            insertHighlight(new Clip(frames, startMs, endMs, p.headline(), p.score(), p.eventTime(),
+                    p.clipStartS(), clipEndS), server);
+        }
+    }
+
+    private static boolean sameMoment(double eventA, double startA, double endA, double eventB, double startB, double endB) {
+        return (eventA >= startB && eventA <= endB) || (eventB >= startA && eventB <= endA);
+    }
+
     private static void offerPending(Candidate c) {
-        for (int i = 0; i < pendings.size(); i++) {
-            Candidate p = pendings.get(i);
-            if (c.clipStartS() < p.clipEndS() && c.clipEndS() > p.clipStartS()) {
-                if (c.score() > p.score()) pendings.set(i, c);
-                return;
+        List<Candidate> same = pendings.stream()
+                .filter(p -> sameMoment(c.eventTime(), c.clipStartS(), c.clipEndS(), p.eventTime(), p.clipStartS(), p.clipEndS()))
+                .toList();
+        if (!same.isEmpty()) {
+            if (same.stream().noneMatch(p -> p.score() >= c.score())) {
+                pendings.removeAll(same);
+                pendings.add(c);
             }
+            return;
         }
         if (highlights.size() >= MAX_HIGHLIGHTS
                 && c.score() <= highlights.getLast().score()) {
@@ -190,14 +222,20 @@ public final class PlayOfGameManager {
     }
 
     private static void insertHighlight(Clip clip, CoordinateServer server) {
-        for (int i = 0; i < highlights.size(); i++) {
-            Clip h = highlights.get(i);
-            if (clip.startEpochMs() < h.endEpochMs() && clip.endEpochMs() > h.startEpochMs()) {
-                if (clip.score() <= h.score()) return;
-                highlights.set(i, clip);
-                announceHighlight(clip, server);
+        List<Clip> same = highlights.stream()
+                .filter(h -> sameMoment(clip.gameTime(), clip.clipStartS(), clip.clipEndS(), h.gameTime(), h.clipStartS(), h.clipEndS()))
+                .toList();
+        if (!same.isEmpty()) {
+            Clip best = same.stream().max(Comparator.comparingInt(Clip::score)).get();
+            if (clip.score() <= best.score()) {
+                if (DebugManager.isENABLED()) System.out.printf("[PotG] %s at %s is the same moment as %s - keeping %s.%n",
+                        clip.headline(), gameClock(clip.gameTime()), best.headline(), best.headline());
                 return;
             }
+            highlights.removeAll(same);
+            highlights.add(clip);
+            announceHighlight(clip, server);
+            return;
         }
         if (highlights.size() >= MAX_HIGHLIGHTS
                 && clip.score() <= highlights.getLast().score()) {
@@ -408,7 +446,7 @@ public final class PlayOfGameManager {
             JSONArray clips = new JSONArray();
             for (Clip h : highlights) {
                 JSONArray rel = new JSONArray();
-                for (ClipRecorder.Frame f : h.frames()) {
+                for (ClipRecorder.Frame f : imageFrames(h)) {
                     rel.put(f.epochMs() - h.startEpochMs());
                 }
                 clips.put(new JSONObject()
@@ -429,10 +467,14 @@ public final class PlayOfGameManager {
     public static byte[] frameBytes(int clip, int index) {
         synchronized (lock) {
             if (clip < 0 || clip >= highlights.size()) return null;
-            List<ClipRecorder.Frame> frames = highlights.get(clip).frames();
+            List<ClipRecorder.Frame> frames = imageFrames(highlights.get(clip));
             if (index < 0 || index >= frames.size()) return null;
             return frames.get(index).jpeg();
         }
+    }
+
+    private static List<ClipRecorder.Frame> imageFrames(Clip clip) {
+        return clip.frames().stream().filter(ClipRecorder.Frame::hasImage).toList();
     }
 
     public static String statsJson() {
@@ -477,6 +519,8 @@ public final class PlayOfGameManager {
                     .put("available", true)
                     .put("result", result == null ? JSONObject.NULL : result)
                     .put("gameClock", gameClock(statsGameTime))
+                    .put("gameTime", statsGameTime)
+                    .put("endOfGameStats", eogStats != null)
                     .put("mapNumber", statsMapNumber)
                     .put("gameMode", statsGameMode == null ? "" : statsGameMode)
                     .put("localIdentity", statsLocalName == null ? "" : statsLocalName)

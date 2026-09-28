@@ -47,6 +47,8 @@ public final class RitoApiUtils {
     private static volatile long cachedDataDragonVersionAtMs = 0;
     private static final long DATA_DRAGON_VERSION_CACHE_MS = 5 * 60 * 1000;
 
+    private static final String REPLAY_CONTEXT = "{\"componentType\":\"replay-button_match-history\"}";
+
     private record LockfileAuth(String port, String password, String base64Auth) {}
 
     private static final class RiotTls {
@@ -398,6 +400,89 @@ public final class RitoApiUtils {
 
     public static String getEndOfGameStatsBlock() {
         return fetchClientAPI("/lol-end-of-game/v1/eog-stats-block");
+    }
+
+    public static JSONObject getGameflowSession() {
+        return parseObject(fetchClientAPI("/lol-gameflow/v1/session"));
+    }
+
+    public static JSONObject getReplaysConfiguration() {
+        return parseObject(fetchClientAPI("/lol-replays/v1/configuration"));
+    }
+
+    public static JSONObject getReplayMetadata(long gameId) {
+        return parseObject(fetchClientAPI("/lol-replays/v1/metadata/" + gameId));
+    }
+
+    public static boolean createReplayMetadata(long gameId, JSONObject details) {
+        return postClientAPI("/lol-replays/v2/metadata/" + gameId + "/create", details.toString());
+    }
+
+    public static boolean downloadReplay(long gameId) {
+        return postClientAPI("/lol-replays/v1/rofls/" + gameId + "/download", REPLAY_CONTEXT);
+    }
+
+    public static boolean watchReplay(long gameId) {
+        return postClientAPI("/lol-replays/v1/rofls/" + gameId + "/watch", REPLAY_CONTEXT);
+    }
+
+    public static Path getLeagueInstallDir() {
+        Path defaultDir = DEFAULT_LOCKFILE_PATH.getParent();
+        if (Files.isDirectory(defaultDir)) return defaultDir;
+
+        try {
+            String programData = System.getenv("ProgramData");
+            if (programData == null) return null;
+            Path installs = Paths.get(programData, "Riot Games", "RiotClientInstalls.json");
+            if (!Files.exists(installs)) return null;
+
+            JSONObject associated = new JSONObject(Files.readString(installs)).optJSONObject("associated_client");
+            if (associated == null) return null;
+            for (String installDir : associated.keySet()) {
+                Path dir = Paths.get(installDir);
+                if (installDir.toLowerCase().contains("league of legends") && Files.isDirectory(dir)) return dir;
+            }
+        } catch (Exception e) {
+            DebugManager.logFailure("[LCU] Could not read RiotClientInstalls.json", e);
+        }
+        return null;
+    }
+
+    private static JSONObject parseObject(String json) {
+        if (json == null || json.isEmpty()) return null;
+        try {
+            return new JSONObject(json);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean postClientAPI(String path, String body) {
+        try {
+            LockfileAuth auth = getLockfileAuth();
+            if (auth == null) return false;
+
+            HttpsURLConnection conn = openRiotConnection("https://127.0.0.1:" + auth.port() + path);
+            try {
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(2000);
+                conn.setReadTimeout(5000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Authorization", "Basic " + auth.base64Auth());
+                conn.setRequestProperty("Content-Type", "application/json");
+                try (var out = conn.getOutputStream()) {
+                    out.write(body.getBytes(StandardCharsets.UTF_8));
+                }
+                int status = conn.getResponseCode();
+                if (status / 100 != 2 && DebugManager.isENABLED()) System.err.println("[LCU] POST " + path + " returned " + status);
+                return status / 100 == 2;
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            DebugManager.logFailure("[LCU] POST " + path + " failed", e);
+            return false;
+        }
     }
 
     public static String fetchPlayerListRaw() {
