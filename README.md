@@ -26,6 +26,7 @@ your position by looking at the screen and routes voice through LiveKit.
 - **Discord Rich Presence** - shows your champion, score and match state.
 - **Mostly Local** - Except the livekit audio, all the math and image analysis are done on your machine, there is no server for this project.
 - **Dead can global hear** - Dead players can move their camera to listen to champions in any location as long as they have vision there.
+- **Replays** - Ability to hear what was said throughout the game, after the game has ended.
   
 ---
 
