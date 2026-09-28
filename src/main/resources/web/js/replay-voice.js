@@ -2,8 +2,10 @@ const RV_LOOKAHEAD_S = 1.5;
 const RV_PREFETCH_S = 8;
 const RV_MAX_UTTERANCE_S = 125;
 const RV_RESYNC_S = 0.35;
+const RV_SEEK_S = 1.0;
 const RV_REANCHOR_S = 0.08;
-const RV_START_DELAY_S = 0.05;
+const RV_MIN_SPEED = 0.25;
+const RV_MAX_SPEED = 2;
 const RV_MAX_CACHED = 80;
 const RV_POSITION_GAP_S = 3;
 const RV_POSITION_STALE_S = 10;
@@ -17,17 +19,16 @@ const replayVoice = {
     anchor: null, topYaw: null, listener: null
 };
 
+let replayStatus = null;
+
 function setReplayStatus(text, kind = 'success') {
-    const el = document.getElementById('replay-status');
-    if (!el) return;
-    el.style.display = text ? '' : 'none';
-    el.className = `status ${kind}`;
-    el.innerText = text || '';
+    replayStatus = text ? {text, kind} : null;
+    if (!connected) showIdleAudioStatus();
 }
 
 async function onReplayStarted(data) {
     if (!data.apiAvailable) {
-        setReplayStatus('Replay Voice: Turn on the Replay API from Match History to hear voices', 'error');
+        setReplayStatus('Replay API is off', 'error');
     }
     if (data.matchId === replayVoice.matchId) {
         if (data.apiAvailable && replayVoice.data) setReplayStatus(replayVoiceStatusText());
@@ -37,10 +38,10 @@ async function onReplayStarted(data) {
     replayVoice.matchId = data.matchId;
     const token = ++replayVoice.token;
     if (!data.hasVoice) {
-        setReplayStatus('Replay Voice: No voice was recorded in this match', 'loading');
+        setReplayStatus('Nothing recorded', 'error');
         return;
     }
-    if (data.apiAvailable) setReplayStatus('Replay Voice: Loading…', 'loading');
+    if (data.apiAvailable) setReplayStatus('Loading…', 'loading');
 
     try {
         const id = encodeURIComponent(data.matchId);
@@ -48,20 +49,20 @@ async function onReplayStarted(data) {
         const bytes = voice.available ? await (await fetch(`/matches/${id}/voice/data`, {cache: 'no-store'})).arrayBuffer() : null;
         if (token !== replayVoice.token) return;
         if (!voice.available || !bytes) {
-            setReplayStatus('Replay Voice: No voice was recorded in this match', 'loading');
+            setReplayStatus('Nothing recorded', 'error');
             return;
         }
         startReplayVoice(voice, bytes);
         if (data.apiAvailable) setReplayStatus(replayVoiceStatusText());
         potgLog(`replay voice ready: ${voice.utterances.length} clips from ${voice.speakers.length} players`);
     } catch (e) {
-        if (token === replayVoice.token) setReplayStatus('Replay Voice: Could not load the recorded voice', 'error');
+        if (token === replayVoice.token) setReplayStatus("Couldn't load voice", 'error');
     }
 }
 
 function replayVoiceStatusText() {
     const n = replayVoice.speakers.length;
-    return `Replay Voice: On (${n} player${n === 1 ? '' : 's'})`;
+    return `${n} Player${n === 1 ? '' : 's'}`;
 }
 
 function startReplayVoice(voice, bytes) {
@@ -107,6 +108,9 @@ function stopReplayVoice() {
     replayVoice.ctx = null;
     replayVoice.out = null;
     replayVoice.speakers = [];
+    for (const clip of replayVoice.buffers.values()) {
+        if (clip) URL.revokeObjectURL(clip.url);
+    }
     replayVoice.buffers.clear();
     replayVoice.decoding.clear();
     replayVoice.anchor = null;
@@ -120,11 +124,16 @@ function onReplayEnded() {
 }
 
 function stopReplayUtterances() {
-    for (const src of replayVoice.playing.values()) {
-        try { src.stop(); } catch (e) {}
-    }
+    for (const clip of replayVoice.playing.values()) releaseReplayClip(clip);
     replayVoice.playing.clear();
     replayVoice.played.clear();
+}
+
+function releaseReplayClip(clip) {
+    clearTimeout(clip.timer);
+    try { clip.el.pause(); } catch (e) {}
+    try { clip.source.disconnect(); } catch (e) {}
+    clip.el.removeAttribute('src');
 }
 
 function onReplayState(s) {
@@ -133,6 +142,7 @@ function onReplayState(s) {
     const ctx = rv.ctx;
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const now = ctx.currentTime;
+    const wall = performance.now() / 1000;
 
     const running = !s.paused && !s.seeking;
     const t = s.time + (running ? Math.max(0, (Date.now() - s.at) / 1000) * s.speed : 0);
@@ -146,22 +156,46 @@ function onReplayState(s) {
     }
     rv.speakers.forEach(sp => updateReplaySpeaker(sp, t, listener, now));
 
-    if (!running || Math.abs(s.speed - 1) > 0.01) {
+    const speed = s.speed;
+    if (!running || speed < RV_MIN_SPEED - 0.001 || speed > RV_MAX_SPEED + 0.001) {
         stopReplayUtterances();
         rv.anchor = null;
         return;
     }
     if (rv.anchor) {
-        const drift = t - (rv.anchor.game + (now - rv.anchor.ctx));
-        if (Math.abs(drift) > RV_RESYNC_S) {
+        const drift = t - replayTimeAt(wall);
+        const speedChanged = Math.abs(speed - rv.anchor.speed) > 0.001;
+        if (Math.abs(drift) > (speedChanged ? RV_SEEK_S : RV_RESYNC_S)) {
             stopReplayUtterances();
             rv.anchor = null;
+        } else if (speedChanged) {
+            rv.anchor = {wall, game: t, speed};
+            retimeReplayClips(speed);
         } else if (Math.abs(drift) > RV_REANCHOR_S) {
-            rv.anchor = {ctx: now, game: t};
+            rv.anchor = {wall, game: t, speed};
         }
     }
-    if (!rv.anchor) rv.anchor = {ctx: now, game: t};
-    scheduleReplayUtterances(t, now);
+    if (!rv.anchor) rv.anchor = {wall, game: t, speed};
+    scheduleReplayUtterances(t);
+}
+
+function replayTimeAt(wall) {
+    const a = replayVoice.anchor;
+    return a.game + (wall - a.wall) * a.speed;
+}
+
+function retimeReplayClips(speed) {
+    const rv = replayVoice;
+    for (const [i, clip] of [...rv.playing]) {
+        if (clip.started) {
+            clip.el.defaultPlaybackRate = speed;
+            clip.el.playbackRate = speed;
+        } else {
+            releaseReplayClip(clip);
+            rv.playing.delete(i);
+            rv.played.delete(i);
+        }
+    }
 }
 
 function updateReplaySpeaker(sp, t, listener, now) {
@@ -238,7 +272,7 @@ function cameraFocus(cam) {
     };
 }
 
-function scheduleReplayUtterances(t, now) {
+function scheduleReplayUtterances(t) {
     const rv = replayVoice;
     const list = rv.data.utterances;
     let lo = 0, hi = list.length;
@@ -254,25 +288,43 @@ function scheduleReplayUtterances(t, now) {
             decodeReplayUtterance(i);
             continue;
         }
-        const buffer = rv.buffers.get(i);
-        if (!buffer || u.g > t + RV_LOOKAHEAD_S) continue;
-
-        let when = rv.anchor.ctx + (u.g - rv.anchor.game);
-        let offset = 0;
-        if (when < now + RV_START_DELAY_S) {
-            offset = now + RV_START_DELAY_S - when;
-            when = now + RV_START_DELAY_S;
-        }
+        const clip = rv.buffers.get(i);
+        if (!clip || u.g > t + RV_LOOKAHEAD_S) continue;
         rv.played.add(i);
-        if (offset >= buffer.duration - 0.05) continue;
-
-        const src = rv.ctx.createBufferSource();
-        src.buffer = buffer;
-        src.connect(rv.speakers[u.s].panner);
-        src.onended = () => { if (rv.playing.get(i) === src) rv.playing.delete(i); };
-        src.start(when, offset);
-        rv.playing.set(i, src);
+        if (t - u.g >= clip.duration - 0.05) continue;
+        startReplayClip(i, u, clip);
     }
+}
+
+function startReplayClip(i, u, clip) {
+    const rv = replayVoice;
+    const speed = rv.anchor.speed;
+    const el = new Audio();
+    el.preservesPitch = true;
+    el.preload = 'auto';
+    el.src = clip.url;
+    el.defaultPlaybackRate = speed;
+    el.playbackRate = speed;
+    const source = rv.ctx.createMediaElementSource(el);
+    source.connect(rv.speakers[u.s].panner);
+
+    const entry = {el, source, timer: null, started: false};
+    rv.playing.set(i, entry);
+    el.onended = () => {
+        if (rv.playing.get(i) !== entry) return;
+        releaseReplayClip(entry);
+        rv.playing.delete(i);
+    };
+    const begin = () => {
+        if (rv.playing.get(i) !== entry || !rv.anchor) return;
+        const late = replayTimeAt(performance.now() / 1000) - u.g;
+        if (late > 0.03) el.currentTime = late;
+        entry.started = true;
+        el.play().catch(() => {});
+    };
+    const wait = (u.g - replayTimeAt(performance.now() / 1000)) / speed;
+    if (wait > 0.005) entry.timer = setTimeout(begin, wait * 1000);
+    else begin();
 }
 
 function decodeReplayUtterance(i) {
@@ -281,20 +333,52 @@ function decodeReplayUtterance(i) {
     rv.decoding.add(i);
     const token = rv.token;
     const u = rv.data.utterances[i];
-    decodeOpusUtterance(new Uint8Array(rv.bytes, u.o, u.n), u.sr, rv.ctx)
+    decodeOpusUtterance(new Uint8Array(rv.bytes, u.o, u.n), u.sr)
+        .then(pcm => pcm ? {url: URL.createObjectURL(monoWav(pcm.samples, pcm.rate)), duration: pcm.samples.length / pcm.rate} : null)
         .catch(() => null)
-        .then(buffer => {
-            if (token !== rv.token) return;
+        .then(clip => {
+            if (token !== rv.token) {
+                if (clip) URL.revokeObjectURL(clip.url);
+                return;
+            }
             rv.decoding.delete(i);
-            rv.buffers.set(i, buffer);
+            rv.buffers.set(i, clip);
             if (rv.buffers.size > RV_MAX_CACHED) {
                 const oldest = rv.buffers.keys().next().value;
-                if (!rv.playing.has(oldest)) rv.buffers.delete(oldest);
+                if (!rv.playing.has(oldest)) {
+                    const old = rv.buffers.get(oldest);
+                    if (old) URL.revokeObjectURL(old.url);
+                    rv.buffers.delete(oldest);
+                }
             }
         });
 }
 
-async function decodeOpusUtterance(bytes, sampleRate, ctx) {
+function monoWav(samples, rate) {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    const text = (o, str) => { for (let k = 0; k < str.length; k++) view.setUint8(o + k, str.charCodeAt(k)); };
+    text(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    text(8, 'WAVE');
+    text(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true);
+    view.setUint32(28, rate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    text(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+    for (let k = 0; k < samples.length; k++) {
+        const v = Math.max(-1, Math.min(1, samples[k]));
+        view.setInt16(44 + k * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return new Blob([buffer], {type: 'audio/wav'});
+}
+
+async function decodeOpusUtterance(bytes, sampleRate) {
     const packets = [];
     for (let o = 0; o + 2 <= bytes.length;) {
         const len = bytes[o] | (bytes[o + 1] << 8);
@@ -326,11 +410,11 @@ async function decodeOpusUtterance(bytes, sampleRate, ctx) {
 
     const total = chunks.reduce((sum, c) => sum + c.length, 0);
     if (total === 0) return null;
-    const buffer = ctx.createBuffer(1, total, rate);
+    const samples = new Float32Array(total);
     let o = 0;
     for (const c of chunks) {
-        buffer.copyToChannel(c, 0, o);
+        samples.set(c, o);
         o += c.length;
     }
-    return buffer;
+    return {samples, rate};
 }
