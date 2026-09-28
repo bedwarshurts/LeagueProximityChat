@@ -27,14 +27,11 @@ function initializeFreshRoom(micId) {
         });
     });
 
-    room.on(LivekitClient.RoomEvent.Disconnected, () => {
+    room.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
         if (window.voiceInterval) { clearInterval(window.voiceInterval); window.voiceInterval = null; }
 
         document.querySelectorAll('.player-item.speaking').forEach(row => row.classList.remove('speaking'));
         stopPotgRecording();
-
-        document.getElementById('lk-status').className = 'status error';
-        document.getElementById('lk-status').innerText = 'Audio Server: Disconnected - ready to retry.';
 
         const sb = document.getElementById('start-btn');
         sb.style.display = 'block';
@@ -46,6 +43,10 @@ function initializeFreshRoom(micId) {
         isWaitingForMatch = false;
         krispProcessor = null;
         setKrispStatus(krispEnabled ? '(applies on connect)' : '(off)');
+
+        const expected = reason === LivekitClient.DisconnectReason.CLIENT_INITIATED
+            || reason === LivekitClient.DisconnectReason.PARTICIPANT_REMOVED;
+        if (expected) showIdleAudioStatus(); else showConnectFailedStatus();
 
         if (localUserIdentity) {
             updatePlayerStatus(localUserIdentity, "Not Connected", "status-offline");
@@ -252,8 +253,7 @@ async function connectToLiveKit(token) {
         return true;
 
     } catch (error) {
-        document.getElementById('lk-status').className = 'status error';
-        document.getElementById('lk-status').innerText = 'Audio Server: Connection failed!';
+        showConnectFailedStatus();
 
         const sb = document.getElementById('start-btn');
         sb.style.display = 'block';

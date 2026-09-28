@@ -23,6 +23,7 @@ document.getElementById('start-btn').addEventListener('click', async () => {
         btn.innerText = 'Connect to Audio';
         trackerSocket.send("CANCEL_JOIN");
     }
+    showIdleAudioStatus();
 });
 
 function showVoiceControls(visible) {

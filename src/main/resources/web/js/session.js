@@ -21,6 +21,26 @@ function closeApplicationTab() {
     }, 100);
 }
 
+function showAudioStatus(text, kind) {
+    const el = document.getElementById('lk-status');
+    el.className = `status ${kind}`;
+    el.innerText = text;
+}
+
+function showIdleAudioStatus() {
+    if (replayStatus) {
+        showAudioStatus(`In Replay Voice: ${replayStatus.text}`, replayStatus.kind);
+    } else if (isWaitingForMatch) {
+        showAudioStatus('Audio Server: Waiting for match', 'loading');
+    } else {
+        showAudioStatus('Audio Server: Disconnected', 'error');
+    }
+}
+
+function showConnectFailedStatus() {
+    showAudioStatus("Audio Server: Couldn't connect to LiveKit", 'error');
+}
+
 function resetToIdleState() {
     if (window.voiceInterval) { clearInterval(window.voiceInterval); window.voiceInterval = null; }
     stopPotgRecording();
@@ -56,9 +76,7 @@ function resetToIdleState() {
     updateVoiceButtonsUI();
     setKrispStatus(krispEnabled ? '(applies on connect)' : '(off)');
 
-    const lkStatus = document.getElementById('lk-status');
-    lkStatus.className = 'status error';
-    lkStatus.innerText = 'Audio Server: Waiting for token...';
+    showIdleAudioStatus();
 
     localUserIdentity = null;
     matchLeaderIdentity = null;
