@@ -175,7 +175,7 @@ async function onReplayClicked(match) {
     btn.disabled = true;
     btn.textContent = 'Opening Replay…';
     const resp = await fetch(`/matches/${encodeURIComponent(match.id)}/replay/watch`, {method: 'POST'}).catch(() => null);
-    note.textContent = resp && resp.ok ? 'The replay is opening in League.' : 'League could not open this replay.';
+    note.textContent = resp && resp.ok ? 'Launching league replay.' : 'We could not get league to open this replay.';
     mhReplayTimer = setTimeout(() => refreshReplayState(match), 4000);
 }
 

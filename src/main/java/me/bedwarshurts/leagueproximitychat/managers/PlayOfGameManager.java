@@ -74,6 +74,7 @@ public final class PlayOfGameManager {
             }
             lastGameTime = gameTime;
         }
+        MatchHistoryManager.noteGameClock(gameTime);
 
         String localName = RitoApiUtils.getLocalSummonerName();
         if (localName == null || localName.isEmpty()) return;

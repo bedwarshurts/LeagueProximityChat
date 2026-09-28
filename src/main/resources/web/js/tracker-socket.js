@@ -12,6 +12,7 @@ const trackerMessageHandlers = {
     REPLACED: () => { isReplaced = true; },
     SHUTDOWN: () => closeApplicationTab(),
     GAME_ENDED: data => {
+        finishVoiceArchive();
         maybeShowPlayOfGame(data.matchId || null);
         resetToIdleState();
     },
@@ -20,7 +21,13 @@ const trackerMessageHandlers = {
     TOGGLE_MUTE: () => document.getElementById('mute-btn').click(),
     TOGGLE_DEAFEN: () => document.getElementById('deafen-btn').click(),
     POTG_MARKS: data => handlePotgMarks(data.marks || []),
-    MATCH_ROSTER: data => buildRosterUI(data.players, data.localIdentity, data.roomLeader, data.debug),
+    MATCH_ROSTER: data => {
+        beginVoiceArchive(data.matchId || null);
+        buildRosterUI(data.players, data.localIdentity, data.roomLeader, data.debug);
+    },
+    REPLAY_STARTED: data => onReplayStarted(data),
+    REPLAY_STATE: data => onReplayState(data),
+    REPLAY_ENDED: () => onReplayEnded(),
     CONNECT_LIVEKIT: data => connectToLiveKit(data.token),
     PLAYER_BANNED: data => setPlayerBanned(data.identity, true),
     PLAYER_UNBANNED: data => setPlayerBanned(data.identity, false)
@@ -78,6 +85,7 @@ function handlePositionUpdate(data) {
     }
 
     updateListenerPosition();
+    noteArchivePosition(localUserIdentity, localPosition);
 
     if (!hasReceivedPosition) {
         hasReceivedPosition = true;

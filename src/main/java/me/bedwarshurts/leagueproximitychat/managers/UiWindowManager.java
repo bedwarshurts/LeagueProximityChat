@@ -49,6 +49,7 @@ public class UiWindowManager {
     private TrayIcon trayIcon;
 
     public boolean launch() {
+        LoadingWindow.hint(CREDIT);
         try {
             CefAppBuilder builder = new CefAppBuilder();
             File installDir = resolveInstallDir();
@@ -136,14 +137,8 @@ public class UiWindowManager {
         }
         switch (state) {
             case LOCATING -> LoadingWindow.status("Checking components…", EnumProgress.NO_ESTIMATION);
-            case DOWNLOADING -> {
-                LoadingWindow.hint(CREDIT);
-                LoadingWindow.status("Downloading components…", percent);
-            }
-            case EXTRACTING -> {
-                LoadingWindow.hint(CREDIT);
-                LoadingWindow.status("Unpacking components…", EnumProgress.NO_ESTIMATION);
-            }
+            case DOWNLOADING -> LoadingWindow.status("Downloading components…", percent);
+            case EXTRACTING -> LoadingWindow.status("Unpacking components…", EnumProgress.NO_ESTIMATION);
             case INSTALL -> LoadingWindow.status("Installing components…", EnumProgress.NO_ESTIMATION);
             case INITIALIZING -> LoadingWindow.status("Starting up…", EnumProgress.NO_ESTIMATION);
             case INITIALIZED -> LoadingWindow.status("Opening…", EnumProgress.NO_ESTIMATION);

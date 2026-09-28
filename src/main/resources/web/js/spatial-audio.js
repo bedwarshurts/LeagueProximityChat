@@ -120,6 +120,7 @@ function setGamePaused(paused) {
 function cleanupRemoteAudio(identity) {
     const nodeData = remoteAudioNodes[identity];
     if (!nodeData) return;
+    untapVoice(identity);
     try {
         nodeData.source.disconnect();
         nodeData.panner.disconnect();

@@ -9,6 +9,7 @@ import me.bedwarshurts.leagueproximitychat.managers.DebugManager;
 import me.bedwarshurts.leagueproximitychat.managers.LogManager;
 import me.bedwarshurts.leagueproximitychat.managers.MatchHistoryManager;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
+import me.bedwarshurts.leagueproximitychat.managers.VoiceArchiveManager;
 import me.bedwarshurts.leagueproximitychat.utils.ReplayApiConfig;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.json.JSONObject;
@@ -36,6 +37,7 @@ public final class LocalWebServer {
     private static final String JSON = "application/json; charset=utf-8";
     private static final String NO_STORE = "no-store";
     private static final String ONE_DAY = "max-age=86400";
+    private static final int MAX_VOICE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
     private static final Map<String, String> STATIC_TYPES = Map.of(
             "html", "text/html",
@@ -288,6 +290,33 @@ public final class LocalWebServer {
                 return;
             }
 
+            if (action.equals("voice") && parts.length == 4 && method.equals("POST")) {
+                byte[] body = readLimited(exchange, MAX_VOICE_UPLOAD_BYTES);
+                boolean stored = body != null && VoiceArchiveManager.store(id, body);
+                exchange.sendResponseHeaders(body == null ? 413 : stored ? 204 : 409, -1);
+                return;
+            }
+
+            if (action.equals("voice") && parts.length == 4 && method.equals("GET")) {
+                String voice = VoiceArchiveManager.voiceJson(id);
+                if (voice == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+                send(exchange, 200, JSON, NO_STORE, voice.getBytes(StandardCharsets.UTF_8));
+                return;
+            }
+
+            if (action.equals("voice") && parts.length == 5 && parts[4].equals("data") && method.equals("GET")) {
+                Path file = VoiceArchiveManager.dataFile(id);
+                if (file == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                    return;
+                }
+                send(exchange, 200, "application/octet-stream", NO_STORE, Files.readAllBytes(file));
+                return;
+            }
+
             if (action.equals("replay") && parts.length == 4 && method.equals("GET")) {
                 String replay = MatchHistoryManager.replayJson(id);
                 if (replay == null) {
@@ -332,6 +361,13 @@ public final class LocalWebServer {
             result.put("ok", false).put("error", String.valueOf(e.getMessage()));
         }
         send(exchange, result.getBoolean("ok") ? 200 : 500, JSON, null, result.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static byte[] readLimited(HttpExchange exchange, int maxBytes) throws IOException {
+        try (InputStream in = exchange.getRequestBody()) {
+            byte[] body = in.readNBytes(maxBytes + 1);
+            return body.length > maxBytes ? null : body;
+        }
     }
 
     private static Map<String, String> queryParams(HttpExchange exchange) {

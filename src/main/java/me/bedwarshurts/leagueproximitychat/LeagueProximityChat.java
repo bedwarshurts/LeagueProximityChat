@@ -14,6 +14,7 @@ import me.bedwarshurts.leagueproximitychat.managers.MatchHistoryManager;
 import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
+import me.bedwarshurts.leagueproximitychat.managers.ReplayVoiceManager;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
@@ -102,7 +103,7 @@ public class LeagueProximityChat {
         return RitoApiUtils.getGameTime() > GAME_START_MIN_TIME;
     }
 
-    private static String buildRosterPayload(LeagueGame gameData, LeaguePlayer localPlayer, String roomLeader) {
+    private static JSONObject buildRosterPayload(LeagueGame gameData, LeaguePlayer localPlayer, String roomLeader) {
         JSONArray players = new JSONArray();
         int iconLookupFailStreak = 0;
         for (LeaguePlayer p : gameData.players()) {
@@ -139,8 +140,7 @@ public class LeagueProximityChat {
                 .put("players", players)
                 .put("localIdentity", localPlayer.getRiotId())
                 .put("roomLeader", roomLeader == null ? JSONObject.NULL : roomLeader)
-                .put("debug", DebugManager.isENABLED())
-                .toString();
+                .put("debug", DebugManager.isENABLED());
     }
 
     private static void resetForNextGame() {
@@ -196,6 +196,12 @@ public class LeagueProximityChat {
             isAwaitingBrowser = false;
         }
 
+        if (!hasSentRoster && ReplayVoiceManager.isReplayRunning()) {
+            DiscordRPCManager.requestIdleUpdate();
+            Thread.sleep(1000);
+            return;
+        }
+
         if (hasSentRoster && gameOverFlag.get()) {
             System.out.println("Game ended. Resetting to wait for the next match.");
             resetForNextGame();
@@ -229,12 +235,12 @@ public class LeagueProximityChat {
 
                 CompletableFuture.runAsync(() -> {
                     try {
-                        String payload = buildRosterPayload(rosterGame, localPlayer, leader);
+                        JSONObject payload = buildRosterPayload(rosterGame, localPlayer, leader);
                         if (rosterGeneration.get() == generation && server.hasActiveConnection()) {
-                            server.sendToActive(payload);
+                            String matchId = MatchHistoryManager.beginMatch();
+                            server.sendToActive(payload.put("matchId", matchId).toString());
                             hasSentRoster = true;
                             System.out.println("Match detected!");
-                            MatchHistoryManager.beginMatch();
                         }
                     } finally {
                         rosterBuildInFlight.set(false);
@@ -405,6 +411,8 @@ public class LeagueProximityChat {
         });
         gameEndPoller.scheduleWithFixedDelay(LeagueProximityChat::pollGameEnd,
                 GAME_END_CHECK_INTERVAL_MS, GAME_END_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
+
+        ReplayVoiceManager.start(server, () -> hasSentRoster);
 
         ScheduledExecutorService pausePoller = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "pause-poller");

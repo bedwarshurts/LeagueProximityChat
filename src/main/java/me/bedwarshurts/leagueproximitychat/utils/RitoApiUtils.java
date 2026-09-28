@@ -89,10 +89,14 @@ public final class RitoApiUtils {
     }
 
     private static String executeGetRequest(String endpoint, String authHeader) throws Exception {
+        return executeGetRequest(endpoint, authHeader, 2000, false);
+    }
+
+    private static String executeGetRequest(String endpoint, String authHeader, int timeoutMs, boolean keepAlive) throws Exception {
         HttpsURLConnection conn = openRiotConnection(endpoint);
         conn.setRequestMethod("GET");
-        conn.setConnectTimeout(2000);
-        conn.setReadTimeout(2000);
+        conn.setConnectTimeout(timeoutMs);
+        conn.setReadTimeout(timeoutMs);
 
         if (authHeader != null && !authHeader.isEmpty()) {
             conn.setRequestProperty("Authorization", "Basic " + authHeader);
@@ -100,6 +104,11 @@ public final class RitoApiUtils {
         }
 
         if (conn.getResponseCode() != 200) {
+            if (keepAlive) {
+                try (InputStream err = conn.getErrorStream()) {
+                    if (err != null) err.readAllBytes();
+                }
+            }
             return null;
         }
 
@@ -111,7 +120,7 @@ public final class RitoApiUtils {
             }
             return content.toString();
         } finally {
-            conn.disconnect();
+            if (!keepAlive) conn.disconnect();
         }
     }
 
@@ -424,6 +433,18 @@ public final class RitoApiUtils {
 
     public static boolean watchReplay(long gameId) {
         return postClientAPI("/lol-replays/v1/rofls/" + gameId + "/watch", REPLAY_CONTEXT);
+    }
+
+    public static JSONObject getReplayApi(String path) {
+        try {
+            return parseObject(executeGetRequest("https://127.0.0.1:2999" + path, null, 1000, true));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static boolean isSpectating() {
+        return getGameStats() != null && fetchAPI("https://127.0.0.1:2999/liveclientdata/activeplayer") == null;
     }
 
     public static Path getLeagueInstallDir() {

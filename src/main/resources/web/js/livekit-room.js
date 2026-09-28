@@ -90,6 +90,7 @@ function initializeFreshRoom(micId) {
         panner.connect(gain);
         gain.connect(getMasterLimiter() || audioCtx.destination);
         remoteAudioNodes[participant.identity] = {source, panner, gain, hiddenElement};
+        tapVoice(participant.identity, source, track.mediaStreamTrack);
         await ensurePlaybackUnlocked();
         updateRemoteAudio(participant.identity);
     });
@@ -108,6 +109,7 @@ function initializeFreshRoom(micId) {
                 isDead: Boolean(data.isDead)
             };
             updateRemoteAudio(participant.identity);
+            noteArchivePosition(participant.identity, remotePositions[participant.identity]);
         } catch (e) {}
     });
 
@@ -236,6 +238,7 @@ async function connectToLiveKit(token) {
 
         await applyKrispState();
         startPotgRecording();
+        tapLocalVoice();
 
         if (positionGateActive) {
             updatePositionGateStatus();

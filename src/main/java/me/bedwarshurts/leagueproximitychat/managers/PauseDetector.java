@@ -19,7 +19,7 @@ public final class PauseDetector {
     }
 
     public static synchronized void poll(CoordinateServer server) {
-        double gameTime = RitoApiUtils.getGameTime();
+        double gameTime = ReplayVoiceManager.isReplayRunning() ? -1 : RitoApiUtils.getGameTime();
         long now = System.currentTimeMillis();
 
         if (gameTime < 0) {

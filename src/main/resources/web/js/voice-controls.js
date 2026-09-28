@@ -156,6 +156,7 @@ async function applyKrispState() {
                 krispProcessor = KrispNoiseFilter();
                 await track.setProcessor(krispProcessor);
             }
+            tapLocalVoice();
             console.log('[Krisp] Noise cancellation active.');
             setKrispStatus('(active)');
         } else {
@@ -167,6 +168,7 @@ async function applyKrispState() {
                     krispProcessor = null;
                 }
             }
+            tapLocalVoice();
             console.log('[Krisp] Noise cancellation off.');
             setKrispStatus('(off)');
         }

@@ -13,6 +13,7 @@ function retapPotgMic() {
             potgAudio.micSrc.connect(potgAudio.tapBus);
         }
     } catch (e) {}
+    tapLocalVoice();
 }
 
 function startPotgRecording() {
@@ -331,7 +332,6 @@ function validateCodecPlayback(mime) {
 }
 
 async function selectValidatedCodec(verbose) {
-    if (potgVideo.workingMime !== undefined) return;
     const candidates = potgPlan ? potgPlan.codecs : ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', ''];
     for (const mime of candidates) {
         const res = await validateCodecPlayback(mime);

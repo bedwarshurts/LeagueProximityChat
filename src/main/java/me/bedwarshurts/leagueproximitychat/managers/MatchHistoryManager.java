@@ -1,5 +1,7 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
+import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
+import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
 import me.bedwarshurts.leagueproximitychat.utils.ReplayApiConfig;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
 import org.json.JSONArray;
@@ -25,11 +27,22 @@ public final class MatchHistoryManager {
     private static final String RECORD_FILE = "match.json";
     private static final Pattern SAFE_ID = Pattern.compile("[0-9A-Za-z_-]{1,64}");
 
+    private static final long CLOCK_JUMP_MS = 250;
+    private static final long CLOCK_REFRESH_MS = 60_000;
+    private static final long RECORDING_GRACE_MS = 5 * 60_000;
+    private static final long PENDING_WATCH_MS = 30 * 60_000;
+
     private static final Path ROOT = resolveRoot();
     private static final Object lock = new Object();
 
     private static JSONObject current;
     private static boolean currentFinished;
+    private static long[] lastClockSample;
+    private static boolean lastClockSampleKept;
+    private static boolean lastClockSlipped;
+
+    private static String pendingWatchId;
+    private static long pendingWatchAt;
 
     private MatchHistoryManager() {
     }
@@ -42,7 +55,7 @@ public final class MatchHistoryManager {
         return dir.resolve("matches");
     }
 
-    public static void beginMatch() {
+    public static String beginMatch() {
         JSONObject session = RitoApiUtils.getGameflowSession();
         JSONObject gameData = session != null ? session.optJSONObject("gameData") : null;
         long gameId = gameData != null ? gameData.optLong("gameId", -1) : -1;
@@ -50,7 +63,7 @@ public final class MatchHistoryManager {
         JSONObject replays = RitoApiUtils.getReplaysConfiguration();
 
         synchronized (lock) {
-            if (current != null && !currentFinished && current.optLong("gameId", -1) == gameId) return;
+            if (current != null && !currentFinished && current.optLong("gameId", -1) == gameId) return current.getString("id");
 
             long now = System.currentTimeMillis();
             current = new JSONObject()
@@ -60,9 +73,60 @@ public final class MatchHistoryManager {
                     .put("gameType", queue != null ? queue.optString("type", "") : "")
                     .put("gameVersion", replays != null ? replays.optString("gameVersion", "") : "")
                     .put("startedAt", now)
+                    .put("clock", new JSONArray())
                     .put("highlights", new JSONArray());
             currentFinished = false;
+            lastClockSample = null;
+            lastClockSlipped = false;
             System.out.println("[History] Recording match " + current.getString("id") + ".");
+            return current.getString("id");
+        }
+    }
+
+    public static void noteGameClock(double gameTime) {
+        long now = System.currentTimeMillis();
+        long offset = now - Math.round(gameTime * 1000);
+        synchronized (lock) {
+            if (current == null || currentFinished) return;
+            JSONArray clock = current.optJSONArray("clock");
+            if (clock == null) {
+                clock = new JSONArray();
+                current.put("clock", clock);
+            }
+
+            boolean slipped = false;
+            boolean keep = clock.isEmpty();
+            if (!keep) {
+                JSONArray last = clock.getJSONArray(clock.length() - 1);
+                long lastOffset = last.getLong(0) - Math.round(last.getDouble(1) * 1000);
+                slipped = Math.abs(offset - lastOffset) > CLOCK_JUMP_MS;
+                if (slipped && lastClockSample != null && !lastClockSampleKept) {
+                    clock.put(new JSONArray().put(lastClockSample[0]).put(lastClockSample[1] / 1000.0));
+                }
+                keep = slipped || lastClockSlipped || now - last.getLong(0) >= CLOCK_REFRESH_MS;
+            }
+            if (keep) clock.put(new JSONArray().put(now).put(gameTime));
+            lastClockSample = new long[]{now, Math.round(gameTime * 1000)};
+            lastClockSampleKept = keep;
+            lastClockSlipped = slipped;
+        }
+    }
+
+    static boolean acceptsRecording(String id) {
+        synchronized (lock) {
+            if (current == null || !id.equals(current.optString("id"))) return false;
+            return !currentFinished || System.currentTimeMillis() - current.optLong("endedAt") < RECORDING_GRACE_MS;
+        }
+    }
+
+    static Path matchDir(String id) {
+        return ROOT.resolve(id);
+    }
+
+    static JSONObject recordCopy(String id) {
+        synchronized (lock) {
+            JSONObject record = recordFor(id);
+            return record == null ? null : new JSONObject(record.toString());
         }
     }
 
@@ -232,6 +296,9 @@ public final class MatchHistoryManager {
             h.put("available", file != null && Files.exists(file));
             h.put("url", "/matches/" + id + "/highlights/" + i);
         }
+        record.remove("clock");
+        JSONObject voice = VoiceArchiveManager.summary(id);
+        if (voice != null) record.put("voice", voice);
         return record.toString();
     }
 
@@ -289,7 +356,53 @@ public final class MatchHistoryManager {
 
     public static boolean watchReplay(String id) {
         long gameId = gameIdOf(id);
-        return gameId > 0 && RitoApiUtils.watchReplay(gameId);
+        boolean ok = gameId > 0 && RitoApiUtils.watchReplay(gameId);
+        if (ok) {
+            synchronized (lock) {
+                pendingWatchId = id;
+                pendingWatchAt = System.currentTimeMillis();
+            }
+        }
+        return ok;
+    }
+
+    public static String launchedReplayMatch(LeagueGame replay, long replayGameId) {
+        String pending;
+        synchronized (lock) {
+            pending = pendingWatchId != null && System.currentTimeMillis() - pendingWatchAt < PENDING_WATCH_MS
+                    ? pendingWatchId : null;
+        }
+        JSONObject record = pending == null ? null : recordCopy(pending);
+        if (record == null) return null;
+
+        long gameId = record.optLong("gameId", -1);
+        if (replayGameId > 0 && gameId > 0) return replayGameId == gameId ? pending : null;
+        int players = replay == null ? 0 : replay.players().size();
+        return players == 0 || rosterMatches(record, replay) * 2 >= players ? pending : null;
+    }
+
+    public static void forgetLaunchedReplay() {
+        synchronized (lock) {
+            pendingWatchId = null;
+        }
+    }
+
+    private static int rosterMatches(JSONObject record, LeagueGame replay) {
+        if (replay == null) return 0;
+        JSONObject stats = record.optJSONObject("stats");
+        JSONArray saved = stats != null ? stats.optJSONArray("players") : null;
+        if (saved == null) return 0;
+        List<String> left = new ArrayList<>();
+        for (int i = 0; i < saved.length(); i++) {
+            JSONObject p = saved.getJSONObject(i);
+            left.add(p.optString("champion").toLowerCase() + "/" + p.optString("team").toLowerCase());
+        }
+        int matches = 0;
+        for (LeaguePlayer p : replay.players()) {
+            String key = String.valueOf(p.getChampionName()).toLowerCase() + "/" + String.valueOf(p.getTeam()).toLowerCase();
+            if (left.remove(key)) matches++;
+        }
+        return matches;
     }
 
     private static long gameIdOf(String id) {
