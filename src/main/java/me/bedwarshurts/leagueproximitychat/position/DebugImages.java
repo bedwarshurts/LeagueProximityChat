@@ -164,11 +164,15 @@ final class DebugImages {
     }
 
     static void saveTemplate(String fileName, Mat core, double score) {
+        saveTemplate(fileName, core, String.format("s=%.2f", score));
+    }
+
+    static void saveTemplate(String fileName, Mat core, String label) {
         if (!enabled() || core == null || core.empty()) return;
         Mat big = new Mat();
         try {
             Imgproc.resize(core, big, new Size(220, 220), 0, 0, Imgproc.INTER_NEAREST);
-            drawCaption(big, score);
+            drawCaption(big, label);
             write(fileName, big);
         } catch (Exception e) {
             DebugManager.logFailure("[Debug] Could not write " + fileName, e);
@@ -298,8 +302,11 @@ final class DebugImages {
     }
 
     private static void drawCaption(Mat img, double score) {
-        String caption = new SimpleDateFormat("HH:mm:ss").format(new Date())
-                + String.format("  s=%.2f", score);
+        drawCaption(img, String.format("s=%.2f", score));
+    }
+
+    private static void drawCaption(Mat img, String label) {
+        String caption = new SimpleDateFormat("HH:mm:ss").format(new Date()) + "  " + label;
         int[] baseline = new int[1];
         Size txt = Imgproc.getTextSize(caption, Imgproc.FONT_HERSHEY_SIMPLEX, 0.4, 1, baseline);
         Point org = new Point(Math.max(2, img.width() - txt.width - 4), img.height() - 6);

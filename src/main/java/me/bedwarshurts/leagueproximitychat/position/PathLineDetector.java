@@ -1,8 +1,10 @@
 package me.bedwarshurts.leagueproximitychat.position;
 
 import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
+import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
@@ -19,6 +21,7 @@ final class PathLineDetector {
     private static final double START_MIN_TOLERANCE_PX = 3.0;
     private static final double START_TOLERANCE_PER_RADIUS = 0.4;
     private static final double LEAVES_ICON_MARGIN_PX = 4.0;
+    private static final int LINE_WINDOW_MARGIN_PX = 8;
 
     record PathStart(Point point, IconCircle ring, double reach) {
     }
@@ -64,6 +67,69 @@ final class PathLineDetector {
             boxEdges.release();
             vertical.release();
             lines.release();
+        }
+    }
+
+    static boolean[] linePixels(Mat minimap, Point center, int radius, Rect crop) {
+        boolean[] result = new boolean[crop.width * crop.height];
+        int half = radius + LINE_WINDOW_MARGIN_PX;
+        int x0 = Math.max(0, (int) Math.round(center.x) - half);
+        int y0 = Math.max(0, (int) Math.round(center.y) - half);
+        int x1 = Math.min(minimap.width(), (int) Math.round(center.x) + half + 1);
+        int y1 = Math.min(minimap.height(), (int) Math.round(center.y) + half + 1);
+        if (x1 - x0 < 3 || y1 - y0 < 3) return result;
+
+        Mat window = new Mat(minimap, new Rect(x0, y0, x1 - x0, y1 - y0));
+        Mat white = new Mat();
+        Mat labels = new Mat();
+        Mat lines = new Mat();
+        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
+        try {
+            Core.inRange(window, WHITE_MIN, WHITE_MAX, white);
+            int count = Imgproc.connectedComponents(white, labels, 8, CvType.CV_32S);
+            if (count <= 1) return result;
+
+            int w = labels.cols();
+            int h = labels.rows();
+            int[] label = new int[w * h];
+            labels.get(0, 0, label);
+            boolean[] leavesIcon = new boolean[count];
+            double outside = radius + LEAVES_ICON_MARGIN_PX;
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int l = label[y * w + x];
+                    if (l > 0 && Math.hypot(x0 + x - center.x, y0 + y - center.y) > outside) leavesIcon[l] = true;
+                }
+            }
+
+            byte[] mask = new byte[w * h];
+            boolean any = false;
+            for (int i = 0; i < mask.length; i++) {
+                if (label[i] > 0 && leavesIcon[label[i]]) {
+                    mask[i] = (byte) 255;
+                    any = true;
+                }
+            }
+            if (!any) return result;
+
+            lines.create(h, w, CvType.CV_8UC1);
+            lines.put(0, 0, mask);
+            Imgproc.dilate(lines, lines, kernel);
+            lines.get(0, 0, mask);
+            for (int y = 0; y < crop.height; y++) {
+                for (int x = 0; x < crop.width; x++) {
+                    int wx = crop.x + x - x0;
+                    int wy = crop.y + y - y0;
+                    if (wx >= 0 && wy >= 0 && wx < w && wy < h && mask[wy * w + wx] != 0) result[y * crop.width + x] = true;
+                }
+            }
+            return result;
+        } finally {
+            window.release();
+            white.release();
+            labels.release();
+            lines.release();
+            kernel.release();
         }
     }
 

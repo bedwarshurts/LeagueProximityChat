@@ -29,6 +29,7 @@ public class ScreenPositionTracker {
     private static final double CONTINUITY_STEP_BASE = 2.0;
     private static final double CONTINUITY_STEP_PER_SECOND = 3.0;
     private static final double CONTINUITY_STEP_MAX = 6.0;
+    private static final double ICON_SAMPLE_HP_RADIUS = 6.0;
     private static final double OTHER_RING_MATCH_PX = 6.0;
     private static final double OTHER_RING_DRIFT_PER_SECOND = 0.03;
     private static final double OWN_RING_MATCH_FACTOR = 0.6;
@@ -187,6 +188,10 @@ public class ScreenPositionTracker {
                     lastKnownX, lastKnownY, mapSize);
         }
 
+        IconCircle yourRing = confirmedRing(path, hasProjection, rawHpX + calibration.offsetX(), rawHpY + calibration.offsetY(),
+                allyCircles, mapSize);
+        if (yourRing != null) iconMatcher.learnFrom(minimapMat, yourRing, allyCircles);
+
         Point truePoint = path != null ? path.point() : champMapCenter;
         double truePointScore = path != null ? PATH_LINE_SCORE : champRawScore;
         if (hasProjection && truePoint != null && !calibration.isConverged()) {
@@ -296,6 +301,21 @@ public class ScreenPositionTracker {
 
         frame.release();
         return result;
+    }
+
+    private IconCircle confirmedRing(PathLineDetector.PathStart path, boolean hasProjection, float hpX, float hpY,
+                                     List<IconCircle> allies, int mapSize) {
+        if (path != null) return path.ring();
+        if (!hasProjection || !calibration.isConverged()) return null;
+        IconCircle only = null;
+        for (IconCircle ring : allies) {
+            double d = Math.hypot(MapCoordinates.percentX(ring.center().x, mapSize) - hpX,
+                    MapCoordinates.percentY(ring.center().y, mapSize) - hpY);
+            if (d > ICON_SAMPLE_HP_RADIUS) continue;
+            if (only != null) return null;
+            only = ring;
+        }
+        return only;
     }
 
     private boolean continuityFix(Mat minimap, int mapSize) {

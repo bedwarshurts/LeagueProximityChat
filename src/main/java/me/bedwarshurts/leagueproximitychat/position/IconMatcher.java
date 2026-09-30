@@ -5,14 +5,19 @@ import me.bedwarshurts.leagueproximitychat.utils.ImageUtils;
 import me.bedwarshurts.leagueproximitychat.utils.MathUtils;
 import org.jetbrains.annotations.Nullable;
 import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.photo.Photo;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +50,9 @@ final class IconMatcher {
 
     private enum PickHealth { UNKNOWN, HEALTHY, WEAK_ALONE }
 
+    private record IconSample(int width, int height, byte[] pixels, boolean[] line) {
+    }
+
     private record ScaledTemplate(int size, Mat resized, Mat core, Mat enhancedCore) {
         void release() {
             core.release();
@@ -67,6 +75,12 @@ final class IconMatcher {
     private static final int MAX_WEAK_TEMPLATE_STREAK = 60;
 
     private static final int MATCH_BLUR_KERNEL = 3;
+
+    private static final int ICON_SAMPLES_MAX = 15;
+    private static final long ICON_SAMPLE_INTERVAL_MS = 400;
+    private static final double ICON_SAMPLE_MIN_RAW_SCORE = 0.40;
+    private static final double ICON_INPAINT_RADIUS = 2.0;
+    private static final int ICON_MIN_CLEAN_VIEWS = 3;
 
     private static final double PROXIMITY_BOOST_MAX = 0.50;
     private static final double LAST_KNOWN_BOOST_MAX = 0.25;
@@ -105,6 +119,9 @@ final class IconMatcher {
     private PickHealth lastPickHealth = PickHealth.UNKNOWN;
     private double lastPickRawScore = 0.0;
     private int lastStrongMatchCount = 0;
+    private final Deque<IconSample> iconSamples = new ArrayDeque<>();
+    private long lastIconSampleMs = 0;
+    private boolean iconFinished = false;
 
     IconMatcher(Mat championTemplate) {
         this.championTemplate = championTemplate;
@@ -154,8 +171,7 @@ final class IconMatcher {
             int strongMatches = 0;
             for (IconCircle ally : allyCircles) {
                 List<IconCircle> coveringIcons = overlappingNeighbors(ally, allyCircles, enemyCircles);
-                EvalResult eval = coveringIcons.isEmpty() ? null
-                        : evaluateUncoveredPart(minimap, ally, coveringIcons, lockedCoreTemplate);
+                EvalResult eval = evaluateUncoveredPart(minimap, ally, coveringIcons, lockedCoreTemplate);
                 boolean comparedUncoveredPart = eval != null;
                 if (eval == null) {
                     eval = evaluateTemplateAtAlly(minimap, ally.center(), lockedCoreTemplate, lockedCoreTemplateEnhanced, ICON_CENTER_JITTER_PX);
@@ -391,12 +407,17 @@ final class IconMatcher {
 
         if (bootstrapConfidence < BOOTSTRAP_CONFIRM_FRAMES) return;
 
-        Mat core = extractIconTemplate(minimap, nearest.center(), nearest.radius());
-        if (core == null) return;
+        Rect coreRect = iconCoreRect(minimap, nearest.center(), nearest.radius());
+        if (coreRect == null) return;
+        iconSamples.clear();
+        iconFinished = false;
+        addIconSample(minimap, coreRect, nearest);
+        Mat core = buildIconFromSamples(minimap.channels());
 
         double validationScore = championMatchScore(core);
         System.out.printf("[bootstrap] Learned-vs-DDragon validation score: %.2f%n", validationScore);
-        DebugImages.saveTemplate("debug_extracted_icon_template_lock.png", core, validationScore);
+        DebugImages.saveTemplate("debug_extracted_icon_template_lock.png", core,
+                String.format("s=%.2f n=%d", validationScore, iconSamples.size()));
         DebugImages.saveLockContext(minimap, nearest, validationScore);
 
         if (lockedCoreTemplate != null) lockedCoreTemplate.release();
@@ -550,6 +571,11 @@ final class IconMatcher {
     }
 
     private Mat extractIconTemplate(Mat minimap, Point center, int radius) {
+        Rect core = iconCoreRect(minimap, center, radius);
+        return core == null ? null : new Mat(minimap, core).clone();
+    }
+
+    private static Rect iconCoreRect(Mat minimap, Point center, int radius) {
         int boxHalf = Math.max(4, radius);
         int x = (int) Math.max(0, center.x - boxHalf);
         int y = (int) Math.max(0, center.y - boxHalf);
@@ -557,20 +583,123 @@ final class IconMatcher {
         int h = Math.min(minimap.height() - y, boxHalf * 2);
         if (w < 6 || h < 6) return null;
 
-        Mat region = new Mat(minimap, new Rect(x, y, w, h)).clone();
+        int cw = (int) (w * ICON_CORE_CROP);
+        int ch = (int) (h * ICON_CORE_CROP);
+        if (cw < 4 || ch < 4) return null;
+        return new Rect(x + (int) (w * ICON_CORE_MARGIN), y + (int) (h * ICON_CORE_MARGIN), cw, ch);
+    }
 
-        int cx = (int) (region.width() * ICON_CORE_MARGIN);
-        int cy = (int) (region.height() * ICON_CORE_MARGIN);
-        int cw = (int) (region.width() * ICON_CORE_CROP);
-        int ch = (int) (region.height() * ICON_CORE_CROP);
-        if (cw < 4 || ch < 4) {
-            region.release();
-            return null;
+    void learnFrom(Mat minimap, IconCircle yours, List<IconCircle> allies) {
+        RingPick pick = lastBestRing;
+        if (iconFinished || !isBootstrapped || lockedCoreTemplate == null || pick == null || pick.ring() != yours) return;
+        if (pick.overlapped() || pick.rawScore() < ICON_SAMPLE_MIN_RAW_SCORE) return;
+        if (System.currentTimeMillis() - lastIconSampleMs < ICON_SAMPLE_INTERVAL_MS) return;
+        if (!isAllyCircleIsolated(yours, allies) || MinimapRingDetector.overlappedByAllyRing(minimap, yours)) return;
+
+        int cw = lockedCoreTemplate.width();
+        int ch = lockedCoreTemplate.height();
+        Rect crop = new Rect((int) Math.round(pick.center().x - cw / 2.0), (int) Math.round(pick.center().y - ch / 2.0), cw, ch);
+        if (crop.x < 0 || crop.y < 0 || crop.x + cw > minimap.width() || crop.y + ch > minimap.height()) return;
+
+        int linePixels = addIconSample(minimap, crop, yours);
+        Mat icon = buildIconFromSamples(minimap.channels());
+        lockedCoreTemplate.release();
+        if (lockedCoreTemplateEnhanced != null) lockedCoreTemplateEnhanced.release();
+        lockedCoreTemplate = icon;
+        lockedCoreTemplateEnhanced = (ImageUtils.getStdDev(icon) < LOW_CONTRAST_STDDEV_THRESHOLD)
+                ? ImageUtils.applyEnhancement(icon)
+                : null;
+
+        if (DebugImages.enabled()) {
+            DebugImages.saveTemplate("debug_extracted_icon_template_lock.png", icon,
+                    String.format("s=%.2f n=%d", championMatchScore(icon), iconSamples.size()));
+        }
+        if (iconSamples.size() >= ICON_SAMPLES_MAX && leastCleanViews() >= ICON_MIN_CLEAN_VIEWS) {
+            iconFinished = true;
+            if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Your icon is finished - built from %d frames, every pixel seen without a line at least %d times.%n",
+                    iconSamples.size(), ICON_MIN_CLEAN_VIEWS);
+        } else if (DebugManager.isENABLED() && iconSamples.size() < ICON_SAMPLES_MAX) {
+            System.out.printf("[bootstrap] Your icon is now built from %d frame(s) - %d white line pixel(s) in this frame were left out.%n",
+                    iconSamples.size(), linePixels);
+        }
+    }
+
+    private int leastCleanViews() {
+        IconSample first = iconSamples.peekFirst();
+        if (first == null) return 0;
+        int least = Integer.MAX_VALUE;
+        for (int i = 0; i < first.line().length; i++) {
+            int clean = 0;
+            for (IconSample s : iconSamples) {
+                if (!s.line()[i]) clean++;
+            }
+            least = Math.min(least, clean);
+        }
+        return least;
+    }
+
+    private int addIconSample(Mat minimap, Rect crop, IconCircle ring) {
+        IconSample first = iconSamples.peekFirst();
+        if (first != null && (first.width() != crop.width || first.height() != crop.height)) iconSamples.clear();
+
+        Mat patch = new Mat(minimap, crop).clone();
+        byte[] pixels = new byte[crop.width * crop.height * minimap.channels()];
+        patch.get(0, 0, pixels);
+        patch.release();
+        boolean[] line = PathLineDetector.linePixels(minimap, ring.center(), ring.radius(), crop);
+
+        if (iconSamples.size() >= ICON_SAMPLES_MAX) iconSamples.pollFirst();
+        iconSamples.addLast(new IconSample(crop.width, crop.height, pixels, line));
+        lastIconSampleMs = System.currentTimeMillis();
+
+        int count = 0;
+        for (boolean covered : line) if (covered) count++;
+        return count;
+    }
+
+    private Mat buildIconFromSamples(int channels) {
+        IconSample first = iconSamples.peekFirst();
+        int w = first.width();
+        int h = first.height();
+        byte[] out = new byte[w * h * channels];
+        byte[] holes = new byte[w * h];
+        int[] values = new int[iconSamples.size()];
+        boolean anyHole = false;
+
+        for (int i = 0; i < w * h; i++) {
+            boolean seenClean = false;
+            for (IconSample s : iconSamples) {
+                if (!s.line()[i]) {
+                    seenClean = true;
+                    break;
+                }
+            }
+            if (!seenClean) {
+                holes[i] = (byte) 255;
+                anyHole = true;
+            }
+            for (int c = 0; c < channels; c++) {
+                int k = 0;
+                for (IconSample s : iconSamples) {
+                    if (seenClean && s.line()[i]) continue;
+                    values[k++] = s.pixels()[i * channels + c] & 0xFF;
+                }
+                Arrays.sort(values, 0, k);
+                out[i * channels + c] = (byte) values[k / 2];
+            }
         }
 
-        Mat core = new Mat(region, new Rect(cx, cy, cw, ch)).clone();
-        region.release();
-        return core;
+        Mat icon = new Mat(h, w, CvType.CV_8UC(channels));
+        icon.put(0, 0, out);
+        if (!anyHole || (channels != 1 && channels != 3)) return icon;
+
+        Mat holeMask = new Mat(h, w, CvType.CV_8UC1);
+        holeMask.put(0, 0, holes);
+        Mat filled = new Mat();
+        Photo.inpaint(icon, holeMask, filled, ICON_INPAINT_RADIUS, Photo.INPAINT_TELEA);
+        holeMask.release();
+        icon.release();
+        return filled;
     }
 
     private void resetScaleLock() {
@@ -590,6 +719,8 @@ final class IconMatcher {
         lockedBlipRadius = 0;
         bootstrapConfidence = 0;
         bootstrapLastPick = null;
+        iconSamples.clear();
+        iconFinished = false;
     }
 
     private EvalResult evaluateTemplateAtAlly(Mat minimap, Point ally, Mat template,
@@ -698,20 +829,37 @@ final class IconMatcher {
         int regionH = Math.min(minimap.height(), baseY + searchPad + ch) - regionY;
         if (regionW < cw || regionH < ch) return null;
 
+        Rect regionRect = new Rect(regionX, regionY, regionW, regionH);
+        boolean[] line = PathLineDetector.linePixels(minimap, self.center(), self.radius(), regionRect);
+        boolean anyLine = false;
+        for (boolean l : line) {
+            if (l) {
+                anyLine = true;
+                break;
+            }
+        }
+        if (coveringIcons.isEmpty() && !anyLine) return null;
+
         byte[] region = new byte[regionW * regionH * channels];
-        Mat regionMat = new Mat(minimap, new Rect(regionX, regionY, regionW, regionH)).clone();
+        Mat regionMat = new Mat(minimap, regionRect).clone();
+        Size blur = new Size(MATCH_BLUR_KERNEL, MATCH_BLUR_KERNEL);
+        if (MATCH_BLUR_KERNEL >= 3) Imgproc.GaussianBlur(regionMat, regionMat, blur, 0);
         regionMat.get(0, 0, region);
         regionMat.release();
 
         boolean[] regionUncovered = new boolean[regionW * regionH];
         for (int y = 0; y < regionH; y++) {
             for (int x = 0; x < regionW; x++) {
-                regionUncovered[y * regionW + x] = !isCovered(regionX + x + 0.5, regionY + y + 0.5, coveringIcons);
+                int i = y * regionW + x;
+                regionUncovered[i] = !line[i] && !isCovered(regionX + x + 0.5, regionY + y + 0.5, coveringIcons);
             }
         }
 
         byte[] tpl = new byte[cw * ch * channels];
-        template.get(0, 0, tpl);
+        Mat blurredTemplate = template.clone();
+        if (MATCH_BLUR_KERNEL >= 3) Imgproc.GaussianBlur(blurredTemplate, blurredTemplate, blur, 0);
+        blurredTemplate.get(0, 0, tpl);
+        blurredTemplate.release();
         byte[] patch = new byte[cw * ch * channels];
         boolean[] visible = new boolean[cw * ch];
         int minVisible = (int) (cw * ch * OCCLUSION_MIN_VISIBLE_FRACTION);
