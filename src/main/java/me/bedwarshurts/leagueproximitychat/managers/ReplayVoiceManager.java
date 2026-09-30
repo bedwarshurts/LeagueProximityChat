@@ -141,11 +141,7 @@ public final class ReplayVoiceManager {
 
     private static void identify(CoordinateServer server) {
         lastIdentifyMs = System.currentTimeMillis();
-        JSONObject session = RitoApiUtils.getGameflowSession();
-        JSONObject gameData = session != null ? session.optJSONObject("gameData") : null;
-        long gameId = gameData != null ? gameData.optLong("gameId", -1) : -1;
-
-        String found = MatchHistoryManager.launchedReplayMatch(RitoApiUtils.getLivePlayerList(), gameId);
+        String found = MatchHistoryManager.launchedReplayMatch(RitoApiUtils.getLivePlayerList());
         if (found == null) return;
         matchId = found;
         JSONObject voice = VoiceArchiveManager.summary(found);

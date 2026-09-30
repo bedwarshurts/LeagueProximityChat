@@ -366,7 +366,7 @@ public final class MatchHistoryManager {
         return ok;
     }
 
-    public static String launchedReplayMatch(LeagueGame replay, long replayGameId) {
+    public static String launchedReplayMatch(LeagueGame replay) {
         String pending;
         synchronized (lock) {
             pending = pendingWatchId != null && System.currentTimeMillis() - pendingWatchAt < PENDING_WATCH_MS
@@ -375,8 +375,6 @@ public final class MatchHistoryManager {
         JSONObject record = pending == null ? null : recordCopy(pending);
         if (record == null) return null;
 
-        long gameId = record.optLong("gameId", -1);
-        if (replayGameId > 0 && gameId > 0) return replayGameId == gameId ? pending : null;
         int players = replay == null ? 0 : replay.players().size();
         return players == 0 || rosterMatches(record, replay) * 2 >= players ? pending : null;
     }
