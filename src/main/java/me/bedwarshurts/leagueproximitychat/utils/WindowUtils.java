@@ -33,6 +33,10 @@ public final class WindowUtils {
         return false;
     }
 
+    public static boolean isWindowOpen(String exactWindowTitle) {
+        return User32.INSTANCE.FindWindow(null, exactWindowTitle) != null;
+    }
+
     public static void focusWindow(String exactWindowTitle) {
         HWND hwnd = User32.INSTANCE.FindWindow(null, exactWindowTitle);
         if (hwnd != null) {

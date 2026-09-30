@@ -4,6 +4,7 @@ const MH_QUEUE_NAMES = {0: 'Custom Game', 400: 'Normal Draft', 420: 'Ranked Solo
 
 const MH_REPLAY_STATES = {
     watch: {label: 'Watch Replay', enabled: true},
+    gameRunning: {label: 'Watch Replay', poll: true},
     download: {label: 'Download Replay', enabled: true},
     retryDownload: {label: 'Download Replay', enabled: true},
     downloading: {label: 'Downloading Replay…', poll: true},

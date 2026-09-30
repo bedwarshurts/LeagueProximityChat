@@ -1,9 +1,11 @@
 package me.bedwarshurts.leagueproximitychat.managers;
 
+import me.bedwarshurts.leagueproximitychat.app.AppConstants;
 import me.bedwarshurts.leagueproximitychat.data.LeagueGame;
 import me.bedwarshurts.leagueproximitychat.data.LeaguePlayer;
 import me.bedwarshurts.leagueproximitychat.utils.ReplayApiConfig;
 import me.bedwarshurts.leagueproximitychat.utils.RitoApiUtils;
+import me.bedwarshurts.leagueproximitychat.utils.WindowUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -342,6 +344,7 @@ public final class MatchHistoryManager {
         }
         if (metadata == null) return result.put("state", "error").toString();
         String state = metadata.optString("state", "error");
+        if (state.equals("watch") && isGameOpen()) state = "gameRunning";
 
         long progress = state.equals("downloading") ? metadata.optLong("downloadProgress", 0) : 0;
         return result.put("state", state)
@@ -356,7 +359,7 @@ public final class MatchHistoryManager {
 
     public static boolean watchReplay(String id) {
         long gameId = gameIdOf(id);
-        boolean ok = gameId > 0 && RitoApiUtils.watchReplay(gameId);
+        boolean ok = gameId > 0 && !isGameOpen() && RitoApiUtils.watchReplay(gameId);
         if (ok) {
             synchronized (lock) {
                 pendingWatchId = id;
@@ -377,6 +380,10 @@ public final class MatchHistoryManager {
 
         int players = replay == null ? 0 : replay.players().size();
         return players == 0 || rosterMatches(record, replay) * 2 >= players ? pending : null;
+    }
+
+    private static boolean isGameOpen() {
+        return WindowUtils.isWindowOpen(AppConstants.GAME_WINDOW_TITLE);
     }
 
     public static void forgetLaunchedReplay() {
