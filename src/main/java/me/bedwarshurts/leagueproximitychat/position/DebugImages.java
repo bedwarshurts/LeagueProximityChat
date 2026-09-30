@@ -38,6 +38,62 @@ final class DebugImages {
         Imgcodecs.imwrite(DebugManager.getDebugDir() + "/" + fileName, image);
     }
 
+    static void pathLine(Mat minimap, Mat whiteMask, List<PathLineDetector.Segment> segments, PathLineDetector.PathStart start) {
+        Mat img = minimap.clone();
+        try {
+            img.setTo(new Scalar(255, 0, 255), whiteMask);
+            for (PathLineDetector.Segment s : segments) {
+                Imgproc.line(img, s.a(), s.b(), new Scalar(0, 255, 255), 1);
+            }
+            if (start != null) {
+                Imgproc.circle(img, start.ring().center(), start.ring().radius(), new Scalar(0, 255, 0), 1);
+                Imgproc.drawMarker(img, start.point(), new Scalar(0, 0, 255), Imgproc.MARKER_CROSS, 9, 2);
+            }
+            write("debug_path_line.png", img);
+        } catch (Exception e) {
+            DebugManager.logFailure("[Debug] Could not write debug_path_line.png", e);
+        } finally {
+            img.release();
+        }
+    }
+
+    static void continuity(Mat minimap, int mapSize, float fromX, float fromY, double allowedPercent,
+                           IconMatcher.RingPick pick, boolean stacked, String rejection, List<Point> otherChampions) {
+        Scalar green = new Scalar(0, 255, 0);
+        Scalar red = new Scalar(0, 0, 255);
+        Mat img = minimap.clone();
+        try {
+            Point from = new Point(MapCoordinates.pixelX(fromX, mapSize), MapCoordinates.pixelY(fromY, mapSize));
+            Imgproc.circle(img, from, (int) Math.round(allowedPercent / 100.0 * mapSize), new Scalar(0, 255, 255), 1);
+            Imgproc.drawMarker(img, from, new Scalar(255, 255, 0), Imgproc.MARKER_CROSS, 9, 1);
+            if (otherChampions != null) {
+                for (Point other : otherChampions) {
+                    Imgproc.drawMarker(img, other, new Scalar(255, 0, 255), Imgproc.MARKER_TILTED_CROSS, 9, 1);
+                }
+            }
+
+            if (pick != null) {
+                for (IconCircle c : pick.covering()) {
+                    Imgproc.circle(img, c.center(), c.radius(), new Scalar(0, 165, 255), 1);
+                }
+                Imgproc.circle(img, pick.ring().center(), pick.ring().radius(), rejection == null ? green : red, 2);
+                if (rejection == null) Imgproc.circle(img, pick.center(), 4, green, -1);
+            }
+
+            String caption = rejection == null
+                    ? "continuity: taken" + (stacked ? " (another ring stacked on it)" : "")
+                    : "continuity: rejected - " + rejection;
+            Point org = new Point(4, 14);
+            Imgproc.putText(img, caption, new Point(org.x + 1, org.y + 1), Imgproc.FONT_HERSHEY_SIMPLEX, 0.4, new Scalar(0, 0, 0), 2);
+            Imgproc.putText(img, caption, org, Imgproc.FONT_HERSHEY_SIMPLEX, 0.4, rejection == null ? green : red, 1);
+            write("debug_continuity.png", img);
+        } catch (Exception e) {
+            DebugManager.logFailure("[Debug] Could not write debug_continuity.png", e);
+        } finally {
+            img.release();
+        }
+    }
+
     static void incident(String tag, Mat minimap, Mat screen) {
         long now = System.currentTimeMillis();
         Long last = lastIncidentMs.get(tag);

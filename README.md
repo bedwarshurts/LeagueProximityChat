@@ -73,8 +73,18 @@ On first launch a setup screen asks for the three LiveKit values. They are saved
 If the League game client is focused, the system takes a screenshot of your game every few miliseconds. Then tries to detect your position using 2 methods. If your champion's healthbar is found on the screen then the camera bounding box is used on the minimap to determine your in-game location,
 the location where the healthbar was found is accounted for.
 
-If the healthbar is not found then the system looks for the champion's icon on the minimap. At the start of the game, the system will try to find the icon once by comparing copies of many different resolutions (from rito's ddragon api) to the minimap. Once the system feels confident, it will lock onto that resolution
+If the healthbar is not found and the player is moving then the app will try to find a reliable(=extends beyond the champion icon in size) PATH LINE (white line) and determine its starting point, the starting point is always the center of the champion's icon.
+
+If the healthbar is not found and there is no reliable path line then the system looks for the champion's icon on the minimap. At the start of the game, the system will try to find the icon once by comparing copies of many different resolutions (from rito's ddragon api) to the minimap. Once the system feels confident, it will lock onto that resolution
 and only use that specific one for subsequent scans. Furthermore, after the system feels even more confident, it will extract the champion's icon straight from the minimap (screenshot) for even more accurate detections. 
+
+If there is no reliable pathline and there is no healthbar and there minimap icon is too occluded then the system will use something called continuity! Continuity is a last resort method for when the icon is completely hidden. It assumes that a partially covered ring right where the last location (from a reliable method) was is still the player its looking for. But only when several checks agree:
+* There is an ally ring
+* Last reliable position was found 6 seconds or less ago
+* The ring is within walking distance of the last position
+* The ring is not where another champion's ring last was (also checks if another ring is closer than the last reliable position)
+* The ring is covered by another icon
+
 
 New detected locations that are close to the previous ones are "boosted" in the detection system. There are many checks that use these 2 systems together to ensure that champion clones such as Shaco do not alter or cheat the system. There are also many checks that also look for false locks, if the healthbar is found correctly for example but the minimap icon template that got extracted matches some location in the other side of the map then the system will realise something is wrong, let go of the lock and start running the minimap algorithm from the beginning.
 

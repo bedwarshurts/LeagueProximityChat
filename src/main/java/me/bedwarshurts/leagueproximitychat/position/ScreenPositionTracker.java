@@ -24,6 +24,14 @@ public class ScreenPositionTracker {
     private static final double DRIFT_MIN_MATCH_SCORE = 0.65;
 
     private static final double MINIMAP_ONLY_MIN_RAW_SCORE = 0.45;
+    private static final double PATH_LINE_SCORE = 1.0;
+    private static final long CONTINUITY_WINDOW_MS = 6000;
+    private static final double CONTINUITY_STEP_BASE = 2.0;
+    private static final double CONTINUITY_STEP_PER_SECOND = 3.0;
+    private static final double CONTINUITY_STEP_MAX = 6.0;
+    private static final double OTHER_RING_MATCH_PX = 6.0;
+    private static final double OTHER_RING_DRIFT_PER_SECOND = 0.03;
+    private static final double OWN_RING_MATCH_FACTOR = 0.6;
     private static final double MINIMAP_JUMP_BASE = 5.0;
     private static final double MINIMAP_JUMP_PER_SECOND = 6.0;
     private static final double MINIMAP_JUMP_MAX = 25.0;
@@ -71,6 +79,9 @@ public class ScreenPositionTracker {
     private boolean positionDetected = false;
     private boolean minimapFailsafeActive = false;
     private long lastFixMs = 0;
+    private long lastReliableFixMs = 0;
+    private Point yourPointAtLastFix = null;
+    private List<Point> otherRingsAtLastFix = List.of();
     private float pendingJumpX = Float.NaN;
     private float pendingJumpY = Float.NaN;
     private int pendingJumpFrames = 0;
@@ -138,21 +149,30 @@ public class ScreenPositionTracker {
             DebugImages.incident("no-ally-circles", minimapMat, fullScreenMat);
         }
 
+        PathLineDetector.PathStart path = PathLineDetector.find(minimapMat, allyCircles);
+        float pathX = path != null ? MapCoordinates.percentX(path.point().x, mapSize) : Float.NaN;
+        float pathY = path != null ? MapCoordinates.percentY(path.point().y, mapSize) : Float.NaN;
+
         boolean hasProjection = healthBarCenter != null && cameraBox != null;
         float rawHpX = hasProjection
                 ? MapCoordinates.projectHealthBarX(healthBarCenter.x, cameraBox, mapSize, fullScreenMat.width()) : 0f;
         float rawHpY = hasProjection
                 ? MapCoordinates.projectHealthBarY(healthBarCenter.y, cameraBox, mapSize, fullScreenMat.height()) : 0f;
 
-        if (!iconMatcher.isBootstrapped() && hasProjection && !allyCircles.isEmpty()) {
-            iconMatcher.bootstrapFromHealthBar(minimapMat, allyCircles,
-                    rawHpX + calibration.offsetX(), rawHpY + calibration.offsetY());
+        if (!iconMatcher.isBootstrapped() && !allyCircles.isEmpty()) {
+            if (hasProjection) {
+                iconMatcher.bootstrapFromHealthBar(minimapMat, allyCircles,
+                        rawHpX + calibration.offsetX(), rawHpY + calibration.offsetY());
+            } else if (path != null) {
+                iconMatcher.bootstrapFromHealthBar(minimapMat, allyCircles, pathX, pathY);
+            }
         }
 
-        float anchorX = hasProjection ? rawHpX + calibration.offsetX() : lastKnownX;
-        float anchorY = hasProjection ? rawHpY + calibration.offsetY() : lastKnownY;
+        float anchorX = hasProjection ? rawHpX + calibration.offsetX() : path != null ? pathX : lastKnownX;
+        float anchorY = hasProjection ? rawHpY + calibration.offsetY() : path != null ? pathY : lastKnownY;
 
-        IconMatcher.TemplateMatch champMatch = iconMatcher.locate(minimapMat, allyCircles, enemyCircles, anchorX, anchorY, hasProjection);
+        IconMatcher.TemplateMatch champMatch = iconMatcher.locate(minimapMat, allyCircles, enemyCircles, anchorX, anchorY,
+                hasProjection || path != null);
 
         Point champMapCenter = (champMatch != null) ? champMatch.center() : null;
         double champScore = (champMatch != null) ? champMatch.score() : 0.0;
@@ -167,13 +187,15 @@ public class ScreenPositionTracker {
                     lastKnownX, lastKnownY, mapSize);
         }
 
-        if (hasProjection && champMapCenter != null && !calibration.isConverged()) {
-            calibration.update(rawHpX, rawHpY, champMapCenter, (float) champRawScore, mapSize,
-                    iconMatcher.lastStrongMatchCount());
+        Point truePoint = path != null ? path.point() : champMapCenter;
+        double truePointScore = path != null ? PATH_LINE_SCORE : champRawScore;
+        if (hasProjection && truePoint != null && !calibration.isConverged()) {
+            calibration.update(rawHpX, rawHpY, truePoint, (float) truePointScore, mapSize,
+                    path != null ? 0 : iconMatcher.lastStrongMatchCount());
         }
 
-        if (calibration.isConverged() && hasProjection && champMapCenter != null && champRawScore > DRIFT_MIN_MATCH_SCORE) {
-            calibration.monitorDrift(rawHpX, rawHpY, champMapCenter, mapSize);
+        if (calibration.isConverged() && hasProjection && truePoint != null && truePointScore > DRIFT_MIN_MATCH_SCORE) {
+            calibration.monitorDrift(rawHpX, rawHpY, truePoint, mapSize);
         }
 
         TrackResult result;
@@ -184,20 +206,30 @@ public class ScreenPositionTracker {
 
             boolean minimapOverride = false;
             boolean overrideCandidate = false;
-            if (champMapCenter != null && champRawScore > MINIMAP_OVERRIDE_SCORE) {
-                float matchX = MapCoordinates.percentX(champMapCenter.x, mapSize);
-                float matchY = MapCoordinates.percentY(champMapCenter.y, mapSize);
+            float matchX = Float.NaN;
+            float matchY = Float.NaN;
+            double matchScore = 0;
+            if (path != null) {
+                matchX = pathX;
+                matchY = pathY;
+                matchScore = PATH_LINE_SCORE;
+            } else if (champMapCenter != null && champRawScore > MINIMAP_OVERRIDE_SCORE) {
+                matchX = MapCoordinates.percentX(champMapCenter.x, mapSize);
+                matchY = MapCoordinates.percentY(champMapCenter.y, mapSize);
+                matchScore = champRawScore;
+            }
+            if (!Float.isNaN(matchX)) {
                 double disagreement = Math.hypot(hpX - matchX, hpY - matchY);
                 overrideCandidate = disagreement > MINIMAP_OVERRIDE_DIST;
-                if (overrideCandidate && acceptMinimapMatch(matchX, matchY, champRawScore, minimapMat, fullScreenMat)) {
+                if (overrideCandidate && acceptMinimapMatch(matchX, matchY, matchScore, path != null, minimapMat, fullScreenMat)) {
                     this.lastKnownX = matchX;
                     this.lastKnownY = matchY;
                     minimapOverride = true;
                     if (!minimapFailsafeActive) {
                         minimapFailsafeActive = true;
                         if (DebugManager.isENABLED())
-                            System.out.printf("[trackPlayerPosition] Health-bar projection (%.1f, %.1f) is %.1f%% away from a confident minimap match (%.1f, %.1f, raw=%.2f) - overriding with the minimap icon %n",
-                                hpX, hpY, disagreement, matchX, matchY, champRawScore);
+                            System.out.printf("[trackPlayerPosition] Health-bar projection (%.1f, %.1f) is %.1f%% away from the %s (%.1f, %.1f, score=%.2f) - overriding with it %n",
+                                hpX, hpY, disagreement, path != null ? "movement path line" : "confident minimap match", matchX, matchY, matchScore);
                     }
                 }
             }
@@ -219,18 +251,40 @@ public class ScreenPositionTracker {
 
             positionDetected = true;
             lastFixMs = System.currentTimeMillis();
+            lastReliableFixMs = lastFixMs;
+            rememberOtherRings(allyCircles, mapSize);
+            result = anchored(lastKnownX, lastKnownY, false);
+
+        } else if (path != null && acceptMinimapMatch(pathX, pathY, PATH_LINE_SCORE, true, minimapMat, fullScreenMat)) {
+            minimapFailsafeActive = false;
+            this.lastKnownX = pathX;
+            this.lastKnownY = pathY;
+            lastFixMs = System.currentTimeMillis();
+            lastReliableFixMs = lastFixMs;
+            rememberOtherRings(allyCircles, mapSize);
+
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] PATH LINE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+            positionDetected = true;
             result = anchored(lastKnownX, lastKnownY, false);
 
         } else if (champMapCenter != null && champRawScore >= MINIMAP_ONLY_MIN_RAW_SCORE
                 && acceptMinimapMatch(MapCoordinates.percentX(champMapCenter.x, mapSize),
-                MapCoordinates.percentY(champMapCenter.y, mapSize), champRawScore, minimapMat, fullScreenMat)) {
+                MapCoordinates.percentY(champMapCenter.y, mapSize), champRawScore, false, minimapMat, fullScreenMat)) {
             minimapFailsafeActive = false;
             this.lastKnownX = MapCoordinates.percentX(champMapCenter.x, mapSize);
             this.lastKnownY = MapCoordinates.percentY(champMapCenter.y, mapSize);
             lastFixMs = System.currentTimeMillis();
+            lastReliableFixMs = lastFixMs;
+            rememberOtherRings(allyCircles, mapSize);
 
             if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
             positionDetected = true;
+            result = anchored(lastKnownX, lastKnownY, false);
+
+        } else if (continuityFix(minimapMat, mapSize)) {
+            minimapFailsafeActive = false;
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] CONTINUITY (covered ring where you just were) -> X: %.2f%% | Y: %.2f%%%n",
+                    lastKnownX, lastKnownY);
             result = anchored(lastKnownX, lastKnownY, false);
 
         } else {
@@ -244,7 +298,82 @@ public class ScreenPositionTracker {
         return result;
     }
 
-    private boolean acceptMinimapMatch(float x, float y, double rawScore, Mat minimap, Mat screen) {
+    private boolean continuityFix(Mat minimap, int mapSize) {
+        IconMatcher.RingPick pick = iconMatcher.lastBestRing();
+        long now = System.currentTimeMillis();
+        double seconds = (now - lastFixMs) / 1000.0;
+        double allowed = Math.min(CONTINUITY_STEP_MAX, CONTINUITY_STEP_BASE + CONTINUITY_STEP_PER_SECOND * seconds);
+
+        String rejection = null;
+        boolean stacked = false;
+        float x = Float.NaN;
+        float y = Float.NaN;
+        if (pick == null) {
+            rejection = "no ring to consider";
+        } else {
+            x = MapCoordinates.percentX(pick.center().x, mapSize);
+            y = MapCoordinates.percentY(pick.center().y, mapSize);
+            double step = Math.hypot(x - lastKnownX, y - lastKnownY);
+            if (!positionDetected || now - lastReliableFixMs > CONTINUITY_WINDOW_MS) {
+                rejection = "no reliable position in the last " + CONTINUITY_WINDOW_MS / 1000 + " s";
+            } else if (step > allowed) {
+                rejection = String.format("too far (%.1f%% > %.1f%%)", step, allowed);
+            } else if (wasAnotherChampion(pick.center(), now, mapSize)) {
+                rejection = "that ring was another champion a moment ago";
+            } else if (!pick.overlapped()) {
+                stacked = MinimapRingDetector.overlappedByAllyRing(minimap, pick.ring());
+                if (!stacked) rejection = "not covered by another icon";
+            }
+        }
+
+        if (DebugImages.enabled()) {
+            DebugImages.continuity(minimap, mapSize, lastKnownX, lastKnownY, allowed, pick, stacked, rejection,
+                    otherRingsAtLastFix);
+        }
+        if (rejection != null) return false;
+
+        this.lastKnownX = x;
+        this.lastKnownY = y;
+        lastFixMs = now;
+        return true;
+    }
+
+    private void rememberOtherRings(List<IconCircle> allies, int mapSize) {
+        Point you = new Point(MapCoordinates.pixelX(lastKnownX, mapSize), MapCoordinates.pixelY(lastKnownY, mapSize));
+        IconCircle yours = null;
+        double nearest = Double.MAX_VALUE;
+        for (IconCircle ring : allies) {
+            double d = Math.hypot(ring.center().x - you.x, ring.center().y - you.y);
+            if (d < nearest) {
+                nearest = d;
+                yours = ring;
+            }
+        }
+        boolean identified = yours != null && nearest <= yours.radius() * OWN_RING_MATCH_FACTOR;
+
+        List<Point> others = new ArrayList<>();
+        for (IconCircle ring : allies) {
+            boolean mine = identified
+                    ? ring == yours
+                    : Math.hypot(ring.center().x - you.x, ring.center().y - you.y) <= ring.radius();
+            if (!mine) others.add(ring.center());
+        }
+        yourPointAtLastFix = you;
+        otherRingsAtLastFix = others;
+    }
+
+    private boolean wasAnotherChampion(Point candidate, long now, int mapSize) {
+        if (yourPointAtLastFix == null || otherRingsAtLastFix == null) return false;
+        double drift = OTHER_RING_MATCH_PX + OTHER_RING_DRIFT_PER_SECOND * mapSize * (now - lastReliableFixMs) / 1000.0;
+        double toYou = Math.hypot(candidate.x - yourPointAtLastFix.x, candidate.y - yourPointAtLastFix.y);
+        for (Point other : otherRingsAtLastFix) {
+            double toOther = Math.hypot(candidate.x - other.x, candidate.y - other.y);
+            if (toOther <= drift && toOther < toYou) return true;
+        }
+        return false;
+    }
+
+    private boolean acceptMinimapMatch(float x, float y, double rawScore, boolean knownToBeYou, Mat minimap, Mat screen) {
         double seconds = (System.currentTimeMillis() - lastFixMs) / 1000.0;
         double allowed = Math.min(MINIMAP_JUMP_MAX, MINIMAP_JUMP_BASE + MINIMAP_JUMP_PER_SECOND * seconds);
         double jump = Math.hypot(x - lastKnownX, y - lastKnownY);
@@ -253,7 +382,7 @@ public class ScreenPositionTracker {
             return true;
         }
 
-        boolean confident = rawScore > MINIMAP_OVERRIDE_SCORE && iconMatcher.isBootstrapped();
+        boolean confident = rawScore > MINIMAP_OVERRIDE_SCORE && (knownToBeYou || iconMatcher.isBootstrapped());
         if (confident && pendingJumpFrames > 0
                 && Math.hypot(x - pendingJumpX, y - pendingJumpY) <= MINIMAP_JUMP_SAME_SPOT) {
             pendingJumpFrames++;
