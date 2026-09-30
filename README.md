@@ -76,9 +76,9 @@ the location where the healthbar was found is accounted for.
 If the healthbar is not found and the player is moving then the app will try to find a reliable(=extends beyond the champion icon in size) PATH LINE (white line) and determine its starting point, the starting point is always the center of the champion's icon.
 
 If the healthbar is not found and there is no reliable path line then the system looks for the champion's icon on the minimap. At the start of the game, the system will try to find the icon once by comparing copies of many different resolutions (from rito's ddragon api) to the minimap. Once the system feels confident, it will lock onto that resolution
-and only use that specific one for subsequent scans. Furthermore, after the system feels even more confident, it will extract the champion's icon straight from the minimap (screenshot) for even more accurate detections. 
+and only use that specific one for subsequent scans. Furthermore, after the system feels even more confident, it will extract the champion's icon straight from the minimap (screenshot) for even more accurate detections. There are checks in place such as if the minimap icon is covered by another icon (player's icon always appears on bottom) to improve the detection as much as possible even if the icon is not fully visible.
 
-If there is no reliable pathline and there is no healthbar and there minimap icon is too occluded then the system will use something called continuity! Continuity is a last resort method for when the icon is completely hidden. It assumes that a partially covered ring right where the last location (from a reliable method) was is still the player its looking for. But only when several checks agree:
+If there is no reliable pathline and there is no healthbar and the minimap icon is too occluded then the system will use something called continuity! Continuity is a last resort method for when the icon is completely hidden. It assumes that a partially covered ring right where the last location (from a reliable method) was is still the player its looking for. But only when several checks agree:
 * There is an ally ring
 * Last reliable position was found 6 seconds or less ago
 * The ring is within walking distance of the last position
