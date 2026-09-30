@@ -9,13 +9,23 @@ import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 final class DebugImages {
+
+    private static final long INCIDENT_GAP_MS = 2000;
+    private static final int MAX_INCIDENT_FILES = 60;
+    private static final Map<String, Long> lastIncidentMs = new HashMap<>();
 
     private DebugImages() {
     }
@@ -26,6 +36,32 @@ final class DebugImages {
 
     static void write(String fileName, Mat image) {
         Imgcodecs.imwrite(DebugManager.getDebugDir() + "/" + fileName, image);
+    }
+
+    static void incident(String tag, Mat minimap, Mat screen) {
+        long now = System.currentTimeMillis();
+        Long last = lastIncidentMs.get(tag);
+        if (last != null && now - last < INCIDENT_GAP_MS) return;
+        lastIncidentMs.put(tag, now);
+
+        Mat small = new Mat();
+        try {
+            Path dir = Paths.get(DebugManager.getDebugDir(), "incidents");
+            Files.createDirectories(dir);
+            String name = new SimpleDateFormat("HHmmss-SSS").format(new Date(now)) + "-" + tag;
+            Imgcodecs.imwrite(dir.resolve(name + "-minimap.png").toString(), minimap);
+            Imgproc.resize(screen, small, new Size(), 0.5, 0.5, Imgproc.INTER_AREA);
+            Imgcodecs.imwrite(dir.resolve(name + "-screen.jpg").toString(), small);
+
+            try (Stream<Path> files = Files.list(dir)) {
+                List<Path> sorted = files.sorted(Comparator.comparing(Path::getFileName)).toList();
+                for (int i = 0; i < sorted.size() - MAX_INCIDENT_FILES; i++) Files.deleteIfExists(sorted.get(i));
+            }
+        } catch (Exception e) {
+            DebugManager.logFailure("[Debug] Could not save a " + tag + " snapshot", e);
+        } finally {
+            small.release();
+        }
     }
 
     static void enemyIndicators(Mat minimap) {

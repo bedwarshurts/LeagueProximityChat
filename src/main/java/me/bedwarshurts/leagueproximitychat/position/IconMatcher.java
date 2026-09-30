@@ -75,6 +75,8 @@ final class IconMatcher {
 
     private static final int SEARCH_SIZE_MAX = 120;
     private static final int SEARCH_SIZE_MIN = 20;
+    private static final double SEARCH_SIZE_MIN_PER_RADIUS = 1.6;
+    private static final double SEARCH_SIZE_MAX_PER_RADIUS = 2.3;
 
     private Mat championTemplate;
     private List<ScaledTemplate> scaledTemplates = null;
@@ -207,6 +209,7 @@ final class IconMatcher {
         Point globalBestCenter = null;
         Mat globalBestTemplate = null;
         int globalBestSize = 0;
+        int globalBestRadius = 0;
 
         Map<Point, CandidateMatch> globalCandidatesMap = new HashMap<>();
         List<Mat> crops = new ArrayList<>();
@@ -221,6 +224,8 @@ final class IconMatcher {
             if (DebugManager.isENABLED()) crops.add(coreTemplate.clone());
 
             for (IconCircle ally : allyCircles) {
+                if (scaled.size() < ally.radius() * SEARCH_SIZE_MIN_PER_RADIUS
+                        || scaled.size() > ally.radius() * SEARCH_SIZE_MAX_PER_RADIUS) continue;
                 EvalResult eval = evaluateTemplateAtAlly(minimap, ally.center(), coreTemplate, scaled.enhancedCore(), 4);
                 if (eval == null) continue;
 
@@ -236,6 +241,7 @@ final class IconMatcher {
                         if (globalBestTemplate != null) globalBestTemplate.release();
                         globalBestTemplate = coreTemplate.clone();
                         globalBestSize = scaled.size();
+                        globalBestRadius = ally.radius();
                     }
 
                     CandidateMatch current = globalCandidatesMap.get(ally.center());
@@ -263,7 +269,7 @@ final class IconMatcher {
             }
 
             if (DebugManager.isENABLED()) DebugImages.write("debug_locked_template.png", lockedCoreTemplate);
-            this.lockedBlipRadius = Math.max(1, globalBestSize / 2);
+            this.lockedBlipRadius = Math.max(1, globalBestRadius);
             this.isScaleLocked = true;
             this.lockedMatchFailures = 0;
 

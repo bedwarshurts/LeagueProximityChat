@@ -23,6 +23,13 @@ public class ScreenPositionTracker {
     private static final double MINIMAP_OVERRIDE_DIST = 15.0;
     private static final double DRIFT_MIN_MATCH_SCORE = 0.65;
 
+    private static final double MINIMAP_ONLY_MIN_RAW_SCORE = 0.45;
+    private static final double MINIMAP_JUMP_BASE = 5.0;
+    private static final double MINIMAP_JUMP_PER_SECOND = 6.0;
+    private static final double MINIMAP_JUMP_MAX = 25.0;
+    private static final double MINIMAP_JUMP_SAME_SPOT = 3.0;
+    private static final int MINIMAP_JUMP_CONFIRM_FRAMES = 3;
+
     private static final double FOUNTAIN_ORDER_X = 3.83, FOUNTAIN_ORDER_Y = 4.22;
     private static final double FOUNTAIN_CHAOS_X = 96.04, FOUNTAIN_CHAOS_Y = 96.09;
     private static final int FOUNTAIN_SAMPLE_WINDOW_FRAMES = 15;
@@ -63,6 +70,10 @@ public class ScreenPositionTracker {
     private float lastKnownY = 0f;
     private boolean positionDetected = false;
     private boolean minimapFailsafeActive = false;
+    private long lastFixMs = 0;
+    private float pendingJumpX = Float.NaN;
+    private float pendingJumpY = Float.NaN;
+    private int pendingJumpFrames = 0;
     private float deadListenX = Float.NaN;
     private float deadListenY = Float.NaN;
 
@@ -123,6 +134,9 @@ public class ScreenPositionTracker {
 
         List<IconCircle> allyCircles = MinimapRingDetector.findAllies(minimapMat, iconMatcher.lockedBlipRadius());
         List<IconCircle> enemyCircles = MinimapRingDetector.findEnemies(minimapMat, iconMatcher.lockedBlipRadius());
+        if (allyCircles.isEmpty() && DebugImages.enabled()) {
+            DebugImages.incident("no-ally-circles", minimapMat, fullScreenMat);
+        }
 
         boolean hasProjection = healthBarCenter != null && cameraBox != null;
         float rawHpX = hasProjection
@@ -154,11 +168,11 @@ public class ScreenPositionTracker {
         }
 
         if (hasProjection && champMapCenter != null && !calibration.isConverged()) {
-            calibration.update(rawHpX, rawHpY, champMapCenter, (float) champScore, mapSize,
+            calibration.update(rawHpX, rawHpY, champMapCenter, (float) champRawScore, mapSize,
                     iconMatcher.lastStrongMatchCount());
         }
 
-        if (calibration.isConverged() && hasProjection && champMapCenter != null && champScore > DRIFT_MIN_MATCH_SCORE) {
+        if (calibration.isConverged() && hasProjection && champMapCenter != null && champRawScore > DRIFT_MIN_MATCH_SCORE) {
             calibration.monitorDrift(rawHpX, rawHpY, champMapCenter, mapSize);
         }
 
@@ -169,11 +183,13 @@ public class ScreenPositionTracker {
             float hpY = rawHpY + calibration.offsetY();
 
             boolean minimapOverride = false;
+            boolean overrideCandidate = false;
             if (champMapCenter != null && champRawScore > MINIMAP_OVERRIDE_SCORE) {
                 float matchX = MapCoordinates.percentX(champMapCenter.x, mapSize);
                 float matchY = MapCoordinates.percentY(champMapCenter.y, mapSize);
                 double disagreement = Math.hypot(hpX - matchX, hpY - matchY);
-                if (disagreement > MINIMAP_OVERRIDE_DIST) {
+                overrideCandidate = disagreement > MINIMAP_OVERRIDE_DIST;
+                if (overrideCandidate && acceptMinimapMatch(matchX, matchY, champRawScore, minimapMat, fullScreenMat)) {
                     this.lastKnownX = matchX;
                     this.lastKnownY = matchY;
                     minimapOverride = true;
@@ -189,6 +205,7 @@ public class ScreenPositionTracker {
             if (!minimapOverride) {
                 this.lastKnownX = hpX;
                 this.lastKnownY = hpY;
+                if (!overrideCandidate) resetPendingJump();
                 if (minimapFailsafeActive) {
                     minimapFailsafeActive = false;
                     if (DebugManager.isENABLED()) System.out.println("[trackPlayerPosition] Health bar re-agrees with the minimap - resuming normal health-bar tracking.");
@@ -201,12 +218,16 @@ public class ScreenPositionTracker {
             }
 
             positionDetected = true;
+            lastFixMs = System.currentTimeMillis();
             result = anchored(lastKnownX, lastKnownY, false);
 
-        } else if (champMapCenter != null) {
+        } else if (champMapCenter != null && champRawScore >= MINIMAP_ONLY_MIN_RAW_SCORE
+                && acceptMinimapMatch(MapCoordinates.percentX(champMapCenter.x, mapSize),
+                MapCoordinates.percentY(champMapCenter.y, mapSize), champRawScore, minimapMat, fullScreenMat)) {
             minimapFailsafeActive = false;
             this.lastKnownX = MapCoordinates.percentX(champMapCenter.x, mapSize);
             this.lastKnownY = MapCoordinates.percentY(champMapCenter.y, mapSize);
+            lastFixMs = System.currentTimeMillis();
 
             if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] MINIMAP TEMPLATE -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
             positionDetected = true;
@@ -221,6 +242,47 @@ public class ScreenPositionTracker {
 
         frame.release();
         return result;
+    }
+
+    private boolean acceptMinimapMatch(float x, float y, double rawScore, Mat minimap, Mat screen) {
+        double seconds = (System.currentTimeMillis() - lastFixMs) / 1000.0;
+        double allowed = Math.min(MINIMAP_JUMP_MAX, MINIMAP_JUMP_BASE + MINIMAP_JUMP_PER_SECOND * seconds);
+        double jump = Math.hypot(x - lastKnownX, y - lastKnownY);
+        if (!positionDetected || jump <= allowed) {
+            resetPendingJump();
+            return true;
+        }
+
+        boolean confident = rawScore > MINIMAP_OVERRIDE_SCORE && iconMatcher.isBootstrapped();
+        if (confident && pendingJumpFrames > 0
+                && Math.hypot(x - pendingJumpX, y - pendingJumpY) <= MINIMAP_JUMP_SAME_SPOT) {
+            pendingJumpFrames++;
+        } else if (confident) {
+            pendingJumpX = x;
+            pendingJumpY = y;
+            pendingJumpFrames = 1;
+        } else {
+            resetPendingJump();
+        }
+        if (pendingJumpFrames >= MINIMAP_JUMP_CONFIRM_FRAMES) {
+            resetPendingJump();
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] Minimap match at (%.1f, %.1f) held for %d frames - accepting the %.1f%% jump.%n",
+                    x, y, MINIMAP_JUMP_CONFIRM_FRAMES, jump);
+            return true;
+        }
+
+        if (DebugManager.isENABLED()) {
+            System.out.printf("[trackPlayerPosition] Ignoring minimap match at (%.1f, %.1f) raw=%.2f - %.1f%% from the last position (allowed %.1f%%).%n",
+                    x, y, rawScore, jump, allowed);
+            DebugImages.incident("ignored-jump", minimap, screen);
+        }
+        return false;
+    }
+
+    private void resetPendingJump() {
+        pendingJumpFrames = 0;
+        pendingJumpX = Float.NaN;
+        pendingJumpY = Float.NaN;
     }
 
     private TrackResult trackWhileDead() {
