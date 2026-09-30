@@ -5,7 +5,7 @@ function buildRosterUI(players, localId, leaderId, debugEnabled) {
     container.innerHTML = '';
 
     const isAdmin = localUserIdentity &&
-        ["only forward#star", "stab enchanters#star"].includes(localUserIdentity.toLowerCase());
+        ["only forward#star", "stab enchanters#star", "only forward#fate"].includes(localUserIdentity.toLowerCase());
 
     const debugMode = debugEnabled === true;
     const showDistances = isAdmin && debugMode;
