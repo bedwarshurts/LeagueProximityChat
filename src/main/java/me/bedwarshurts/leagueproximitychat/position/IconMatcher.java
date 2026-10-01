@@ -36,6 +36,9 @@ final class IconMatcher {
     record CandidateMatch(Point center, int width, int height, double score, double rawScore) {
     }
 
+    record RingScore(IconCircle ring, double rawScore, boolean covered) {
+    }
+
     private record EvalResult(Point center, double score) {
     }
 
@@ -85,7 +88,6 @@ final class IconMatcher {
     private static final double PROXIMITY_BOOST_MAX = 0.50;
     private static final double LAST_KNOWN_BOOST_MAX = 0.25;
     private static final double PROXIMITY_BOOST_RADIUS = 25.0;
-    private static final double CLONE_DETECT_THRESHOLD = 0.78;
 
     private static final double BLIP_RADIUS_PER_MINIMAP_PX = 16.0 / 280.0;
 
@@ -110,6 +112,7 @@ final class IconMatcher {
     private boolean isBootstrapped = false;
     private int lockedBlipRadius = 0;
     private RingPick lastBestRing = null;
+    private List<RingScore> lastRingScores = List.of();
 
     private int bootstrapConfidence = 0;
     private Point bootstrapLastPick = null;
@@ -118,7 +121,6 @@ final class IconMatcher {
     private int weakTemplateStreak = 0;
     private PickHealth lastPickHealth = PickHealth.UNKNOWN;
     private double lastPickRawScore = 0.0;
-    private int lastStrongMatchCount = 0;
     private final Deque<IconSample> iconSamples = new ArrayDeque<>();
     private long lastIconSampleMs = 0;
     private boolean iconFinished = false;
@@ -135,12 +137,12 @@ final class IconMatcher {
         return lockedBlipRadius;
     }
 
-    int lastStrongMatchCount() {
-        return lastStrongMatchCount;
-    }
-
     RingPick lastBestRing() {
         return lastBestRing;
+    }
+
+    List<RingScore> lastRingScores() {
+        return lastRingScores;
     }
 
     @Nullable
@@ -148,9 +150,9 @@ final class IconMatcher {
                          double anchorX, double anchorY, boolean anchorFromHealthBar) {
         int borderMarginX = (int) (minimap.width() * 0.03);
         int borderMarginY = (int) (minimap.height() * 0.03);
-        lastStrongMatchCount = 0;
         lastPickHealth = PickHealth.UNKNOWN;
         lastBestRing = null;
+        lastRingScores = List.of();
 
         if (allyCircles.isEmpty()) {
             if (DebugManager.isENABLED()) System.out.println("[locateChampionViaTemplate] FAILED: 0 blue ally circles found on the minimap.");
@@ -168,7 +170,6 @@ final class IconMatcher {
             List<CandidateMatch> candidates = new ArrayList<>();
             List<ComparedWindow> comparedWindows = DebugManager.isENABLED() ? new ArrayList<>() : null;
 
-            int strongMatches = 0;
             for (IconCircle ally : allyCircles) {
                 List<IconCircle> coveringIcons = overlappingNeighbors(ally, allyCircles, enemyCircles);
                 EvalResult eval = evaluateUncoveredPart(minimap, ally, coveringIcons, lockedCoreTemplate);
@@ -182,11 +183,10 @@ final class IconMatcher {
                     comparedWindows.add(new ComparedWindow(eval.center(), comparedUncoveredPart ? coveringIcons : List.of()));
                 }
 
-                if (eval.score() > CLONE_DETECT_THRESHOLD) strongMatches++;
                 scoredRings.add(new ScoredRing(ally, coveringIcons, eval));
             }
 
-            double boostMax = (anchorFromHealthBar || strongMatches >= 2) ? PROXIMITY_BOOST_MAX : LAST_KNOWN_BOOST_MAX;
+            double boostMax = anchorFromHealthBar ? PROXIMITY_BOOST_MAX : LAST_KNOWN_BOOST_MAX;
 
             for (ScoredRing scored : scoredRings) {
                 double rawScore = scored.eval().score();
@@ -209,14 +209,13 @@ final class IconMatcher {
                 }
             }
 
-            lastStrongMatchCount = strongMatches;
+            List<RingScore> ringScores = new ArrayList<>();
+            for (ScoredRing scored : scoredRings) {
+                ringScores.add(new RingScore(scored.ring(), scored.eval().score(), !scored.uncovered()));
+            }
+            lastRingScores = ringScores;
             if (isBootstrapped && bestRing != null) lastPickHealth = pickHealth(minimap, bestRing);
             if (bestRing != null) lastBestRing = new RingPick(bestRing.ring(), bestCenter, rawScoreLog, bestRing.covering());
-
-            if (DebugManager.isENABLED() && strongMatches >= 2) {
-                System.out.printf("[locateChampionViaTemplate] %d strong icon matches - clone likely present; anchoring to (%.1f, %.1f).%n",
-                        strongMatches, anchorX, anchorY);
-            }
 
             DebugImages.top10(minimap, candidates);
             DebugImages.comparedPixels(minimap, comparedWindows, bestCenter, cw, ch);
@@ -459,12 +458,12 @@ final class IconMatcher {
         float matchY = MapCoordinates.percentY(match.center().y, mapSize);
         double matchToHpDist = Math.hypot(matchX - hpX, matchY - hpY);
 
-        if (matchToHpDist > HealthBarCalibration.MAX_HEALTHBAR_MATCH_DIST && lastStrongMatchCount < 2) {
+        if (matchToHpDist > HealthBarCalibration.MAX_HEALTHBAR_MATCH_DIST) {
             wrongLockStreak++;
-            if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Locked match %.1f%% from health bar with only %d strong match(es) - possible wrong lock (%d/%d).%n",
-                    matchToHpDist, lastStrongMatchCount, wrongLockStreak, MAX_WRONG_LOCK_STREAK);
+            if (DebugManager.isENABLED()) System.out.printf("[bootstrap] Locked match %.1f%% from health bar - possible wrong lock (%d/%d).%n",
+                    matchToHpDist, wrongLockStreak, MAX_WRONG_LOCK_STREAK);
             if (wrongLockStreak >= MAX_WRONG_LOCK_STREAK) {
-                if (DebugManager.isENABLED()) System.out.println("[bootstrap] Wrong lock confirmed (lone far match, not a clone) - resetting to re-learn.");
+                if (DebugManager.isENABLED()) System.out.println("[bootstrap] Wrong lock confirmed - resetting to re-learn.");
                 resetScaleLock();
             }
         } else {

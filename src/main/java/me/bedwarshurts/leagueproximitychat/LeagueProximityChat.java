@@ -44,6 +44,7 @@ public class LeagueProximityChat {
     private static boolean wasPaused = false;
     private static boolean isAwaitingBrowser = true;
     private static boolean isTrackerReady = false;
+    private static boolean hasMatchStarted = false;
 
     private static final SessionState session = new SessionState();
     private static volatile boolean hasSentRoster = false;
@@ -101,6 +102,32 @@ public class LeagueProximityChat {
 
     private static boolean hasGameStarted() {
         return RitoApiUtils.getGameTime() > GAME_START_MIN_TIME;
+    }
+
+    private static boolean matchStarted() {
+        if (!hasMatchStarted) hasMatchStarted = hasGameStarted();
+        return hasMatchStarted;
+    }
+
+    private static void connectToVoice(LeagueGame gameData, String localSummonerName) {
+        LeaguePlayer localPlayer = gameData.findPlayer(localSummonerName);
+        if (localPlayer == null) return;
+
+        String roomName = gameData.createRoomHash();
+        String identity = localPlayer.getRiotId();
+        String name = localPlayer.getRiotId() + " (" + localPlayer.getChampionName() + ")";
+
+        LivekitRoom room = new LivekitRoom(roomName, roomLeaderRiotId);
+        session.setActiveRoom(room);
+
+        String token = room.generateRoomToken(name, identity);
+        String payload = new JSONObject()
+                .put("type", "CONNECT_LIVEKIT")
+                .put("token", token)
+                .toString();
+        server.sendToActive(payload);
+
+        session.setConnectedToLiveKit(true);
     }
 
     private static JSONObject buildRosterPayload(LeagueGame gameData, LeaguePlayer localPlayer, String roomLeader) {
@@ -163,6 +190,7 @@ public class LeagueProximityChat {
         hasSentRoster = false;
         session.setConnectedToLiveKit(false);
         isTrackerReady = false;
+        hasMatchStarted = false;
         session.setConfigWarning(null);
         wasPaused = false;
         detectedChampion = null;
@@ -184,6 +212,7 @@ public class LeagueProximityChat {
                 hasSentRoster = false;
                 rosterGeneration.incrementAndGet();
                 isTrackerReady = false;
+                hasMatchStarted = false;
                 server.setUserRequestedConnection(false);
                 session.setActiveRoom(null);
             }
@@ -213,7 +242,7 @@ public class LeagueProximityChat {
         String localSummonerName = null;
         boolean isInGame = false;
 
-        if (!hasSentRoster || (server.isUserRequestedConnection() && !session.isConnectedToLiveKit())) {
+        if (!hasSentRoster || (server.isUserRequestedConnection() && !session.isConnectedToLiveKit() && ConfigManager.isConfigured())) {
 
             String currentLeader = RitoApiUtils.getLobbyLeader();
             if (currentLeader != null && !currentLeader.equals(roomLeaderRiotId)) {
@@ -249,44 +278,11 @@ public class LeagueProximityChat {
             }
         }
 
-        if (!server.isUserRequestedConnection()) {
-            DiscordRPCManager.requestIdleUpdate();
-            Thread.sleep(1000);
-            return;
+        if (server.isUserRequestedConnection() && isInGame && !session.isConnectedToLiveKit() && hasGameStarted()) {
+            connectToVoice(gameData, localSummonerName);
         }
 
-        if (isInGame && !session.isConnectedToLiveKit() && !hasGameStarted()) {
-            DiscordRPCManager.requestIdleUpdate();
-            Thread.sleep(1000);
-            return;
-        }
-
-        if (isInGame && !session.isConnectedToLiveKit()) {
-            if (!ConfigManager.isConfigured()) {
-                Thread.sleep(1000);
-                return;
-            }
-
-            LeaguePlayer localPlayer = gameData.findPlayer(localSummonerName);
-
-            if (localPlayer != null) {
-                String roomName = gameData.createRoomHash();
-                String identity = localPlayer.getRiotId();
-                String name = localPlayer.getRiotId() + " (" + localPlayer.getChampionName() + ")";
-
-                LivekitRoom room = new LivekitRoom(roomName, roomLeaderRiotId);
-                session.setActiveRoom(room);
-
-                String token = room.generateRoomToken(name, identity);
-                String payload = new JSONObject()
-                        .put("type", "CONNECT_LIVEKIT")
-                        .put("token", token)
-                        .toString();
-                server.sendToActive(payload);
-
-                session.setConnectedToLiveKit(true);
-            }
-        } else if (!isInGame && !session.isConnectedToLiveKit()) {
+        if (!hasSentRoster || !matchStarted()) {
             DiscordRPCManager.requestIdleUpdate();
             Thread.sleep(1000);
             return;
@@ -303,7 +299,8 @@ public class LeagueProximityChat {
             }
 
             detectedChampion = championTemplate.championName();
-            tracker = new ScreenPositionTracker(championTemplate.icon());
+            if (tracker != null) tracker.release();
+            tracker = new ScreenPositionTracker(championTemplate.icon(), championTemplate.championName());
             isTrackerReady = true;
             LeagueConfigReader.Warning configWarning = tracker.getConfigWarning();
             session.setConfigWarning(configWarning);

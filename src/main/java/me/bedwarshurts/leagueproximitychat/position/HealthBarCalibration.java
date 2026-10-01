@@ -48,7 +48,7 @@ final class HealthBarCalibration {
         return converged;
     }
 
-    void update(float rawHpX, float rawHpY, Point champMapCenter, float champScore, int mapSize, int strongMatchCount) {
+    void update(float rawHpX, float rawHpY, Point champMapCenter, float champScore, int mapSize) {
         if (champScore <= MIN_MATCH_SCORE) {
             if (DebugManager.isENABLED()) System.out.printf("[calibration] Paused - low template confidence (%.2f)%n", champScore);
             return;
@@ -62,13 +62,8 @@ final class HealthBarCalibration {
 
         float rawMatchDist = (float) Math.hypot(targetOffsetX, targetOffsetY);
         if (rawMatchDist > MAX_HEALTHBAR_MATCH_DIST) {
-            if (strongMatchCount >= 2) {
-                if (DebugManager.isENABLED()) System.out.printf("[calibration] Match %.1f%% from health-bar projection with %d strong matches - likely a clone, skipping frame.%n",
-                        rawMatchDist, strongMatchCount);
-            } else {
-                if (DebugManager.isENABLED()) System.out.printf("[calibration] Match %.1f%% from health-bar projection with only %d strong match - wrong lock suspected, skipping frame.%n",
-                        rawMatchDist, strongMatchCount);
-            }
+            if (DebugManager.isENABLED()) System.out.printf("[calibration] Match %.1f%% from health-bar projection - wrong lock suspected, skipping frame.%n",
+                    rawMatchDist);
             return;
         }
 

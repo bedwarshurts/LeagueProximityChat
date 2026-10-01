@@ -94,6 +94,30 @@ final class DebugImages {
         }
     }
 
+    static void cloneTracks(Mat minimap, Point first, int firstRadius, Point second, int secondRadius, int you,
+                            String title, String detail) {
+        Scalar green = new Scalar(0, 255, 0);
+        Scalar red = new Scalar(0, 0, 255);
+        Scalar yellow = new Scalar(0, 255, 255);
+        Mat img = minimap.clone();
+        try {
+            Imgproc.circle(img, first, firstRadius, you == 0 ? yellow : you == 1 ? green : red, 2);
+            Imgproc.circle(img, second, secondRadius, you == 0 ? yellow : you == 2 ? green : red, 2);
+            Scalar captionColour = you == 0 ? yellow : green;
+            String[] lines = {title, detail};
+            for (int i = 0; i < lines.length; i++) {
+                Point org = new Point(4, 14 + 14 * i);
+                Imgproc.putText(img, lines[i], new Point(org.x + 1, org.y + 1), Imgproc.FONT_HERSHEY_SIMPLEX, 0.4, new Scalar(0, 0, 0), 2);
+                Imgproc.putText(img, lines[i], org, Imgproc.FONT_HERSHEY_SIMPLEX, 0.4, captionColour, 1);
+            }
+            write("debug_clone.png", img);
+        } catch (Exception e) {
+            DebugManager.logFailure("[Debug] Could not write debug_clone.png", e);
+        } finally {
+            img.release();
+        }
+    }
+
     static void incident(String tag, Mat minimap, Mat screen) {
         long now = System.currentTimeMillis();
         Long last = lastIncidentMs.get(tag);

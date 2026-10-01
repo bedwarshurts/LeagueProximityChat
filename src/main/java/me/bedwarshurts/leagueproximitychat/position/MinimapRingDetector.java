@@ -37,6 +37,10 @@ final class MinimapRingDetector {
     private static final double BROKEN_RING_MIN_COVERAGE = 0.65;
     private static final double BROKEN_RING_KNOWN_FRACTION = 0.8;
     private static final double BROKEN_RING_REFIT_BAND_PX = 3.0;
+    private static final double DRAW_ORDER_INNER_MARGIN_PX = 4.0;
+    private static final int DRAW_ORDER_MIN_SAMPLES = 6;
+    private static final double DRAW_ORDER_TOP_MIN_SHOWN = 0.6;
+    private static final double DRAW_ORDER_BOTTOM_MAX_SHOWN = 0.3;
     private static final double[] RING_SAMPLE_COS = new double[RING_SAMPLES];
     private static final double[] RING_SAMPLE_SIN = new double[RING_SAMPLES];
 
@@ -143,6 +147,62 @@ final class MinimapRingDetector {
             }
         }
         return false;
+    }
+
+    static int drawnOnTop(Mat minimap, IconCircle a, IconCircle b) {
+        double sep = Math.hypot(a.center().x - b.center().x, a.center().y - b.center().y);
+        if (sep >= a.radius() + b.radius() - 2 || sep < Math.min(a.radius(), b.radius()) * ALLY_PEAK_DEDUP_FACTOR) return 0;
+
+        int x0 = (int) Math.max(0, Math.min(a.center().x - a.radius(), b.center().x - b.radius()) - 3);
+        int y0 = (int) Math.max(0, Math.min(a.center().y - a.radius(), b.center().y - b.radius()) - 3);
+        int x1 = (int) Math.min(minimap.width(), Math.max(a.center().x + a.radius(), b.center().x + b.radius()) + 4);
+        int y1 = (int) Math.min(minimap.height(), Math.max(a.center().y + a.radius(), b.center().y + b.radius()) + 4);
+        int w = x1 - x0;
+        int h = y1 - y0;
+        if (w <= 0 || h <= 0) return 0;
+
+        byte[] ring = new byte[w * h];
+        Mat roi = new Mat(minimap, new Rect(x0, y0, w, h));
+        Mat mask = new Mat();
+        try {
+            allyRingMask(roi, mask);
+            mask.get(0, 0, ring);
+        } finally {
+            roi.release();
+            mask.release();
+        }
+
+        double aShown = arcShownInside(ring, w, h, x0, y0, a, b);
+        double bShown = arcShownInside(ring, w, h, x0, y0, b, a);
+        if (aShown < 0 || bShown < 0) return 0;
+        if (aShown >= DRAW_ORDER_TOP_MIN_SHOWN && bShown <= DRAW_ORDER_BOTTOM_MAX_SHOWN) return 1;
+        if (bShown >= DRAW_ORDER_TOP_MIN_SHOWN && aShown <= DRAW_ORDER_BOTTOM_MAX_SHOWN) return -1;
+        return 0;
+    }
+
+    private static double arcShownInside(byte[] ring, int w, int h, int x0, int y0, IconCircle self, IconCircle over) {
+        double inside = Math.pow(Math.max(0, over.radius() - DRAW_ORDER_INNER_MARGIN_PX), 2);
+        int valid = 0;
+        int shown = 0;
+        for (int s = 0; s < RING_SAMPLES; s++) {
+            double px = self.center().x + self.radius() * RING_SAMPLE_COS[s];
+            double py = self.center().y + self.radius() * RING_SAMPLE_SIN[s];
+            double ox = px - over.center().x;
+            double oy = py - over.center().y;
+            if (ox * ox + oy * oy > inside) continue;
+            int ix = (int) Math.round(px) - x0;
+            int iy = (int) Math.round(py) - y0;
+            if (ix < 1 || iy < 1 || ix >= w - 1 || iy >= h - 1) continue;
+            valid++;
+            boolean hit = false;
+            for (int dy = -1; dy <= 1 && !hit; dy++) {
+                for (int dx = -1; dx <= 1 && !hit; dx++) {
+                    if (ring[(iy + dy) * w + ix + dx] != 0) hit = true;
+                }
+            }
+            if (hit) shown++;
+        }
+        return valid < DRAW_ORDER_MIN_SAMPLES ? -1 : shown / (double) valid;
     }
 
     static List<IconCircle> findEnemies(Mat minimap, int lockedBlipRadius) {

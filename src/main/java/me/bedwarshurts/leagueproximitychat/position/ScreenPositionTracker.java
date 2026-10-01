@@ -38,6 +38,7 @@ public class ScreenPositionTracker {
     private static final double MINIMAP_JUMP_MAX = 25.0;
     private static final double MINIMAP_JUMP_SAME_SPOT = 3.0;
     private static final int MINIMAP_JUMP_CONFIRM_FRAMES = 3;
+    private static final long CLONE_HIDDEN_GUARD_MS = 20_000;
 
     private static final double FOUNTAIN_ORDER_X = 3.83, FOUNTAIN_ORDER_Y = 4.22;
     private static final double FOUNTAIN_CHAOS_X = 96.04, FOUNTAIN_CHAOS_Y = 96.09;
@@ -71,6 +72,8 @@ public class ScreenPositionTracker {
     private final CameraBoxLocator cameraBoxes = new CameraBoxLocator();
     private final IconMatcher iconMatcher;
     private final HealthBarCalibration calibration = new HealthBarCalibration();
+    private final CloneTracker cloneTracker;
+    private List<IconCircle> ringsThisFrame = List.of();
 
     private Rect cachedGameCrop = null;
     private int cachedResolutionWidth = -1;
@@ -96,7 +99,7 @@ public class ScreenPositionTracker {
     private float anchorOffsetX = 0f;
     private float anchorOffsetY = 0f;
 
-    public ScreenPositionTracker(Mat championTemplate) {
+    public ScreenPositionTracker(Mat championTemplate, String championName) {
         LeagueConfigReader.LeagueSettings settings = LeagueConfigReader.loadSettings();
         this.userMinimapScale = settings.getMinimapScale();
         this.isColorblind = settings.isColorblind();
@@ -104,8 +107,11 @@ public class ScreenPositionTracker {
         this.healthBars = new HealthBarDetector(isColorblind);
         this.iconMatcher = new IconMatcher(championTemplate);
         this.minimapLocator = MinimapLocator.create();
+        this.cloneTracker = CloneTracker.forChampion(championName);
         if (DebugManager.isENABLED()) System.out.println("[constructor] Tracker initialized. Target Health Bar Color: "
                 + (this.isColorblind ? "YELLOW" : "GREEN"));
+        if (DebugManager.isENABLED() && cloneTracker != null) System.out.println("[constructor] " + championName
+                + " can make clones - clone tracking is on.");
     }
 
     public TrackResult trackPlayerPosition() {
@@ -117,6 +123,7 @@ public class ScreenPositionTracker {
         wasDeadLastFrame = isDead;
 
         if (isDead) {
+            if (cloneTracker != null) cloneTracker.reset();
             return trackWhileDead();
         }
         deadListenX = Float.NaN;
@@ -183,7 +190,13 @@ public class ScreenPositionTracker {
             updateFountainAnchor(champMapCenter, champRawScore, mapSize);
         }
 
-        if (hasProjection) {
+        List<IconCircle> rings = new ArrayList<>(allyCircles);
+        rings.addAll(enemyCircles);
+        ringsThisFrame = rings;
+        boolean cloneActive = updateCloneTracker(minimapMat, fullScreenMat, mapSize, allyCircles, enemyCircles, path,
+                healthBarCenter != null, hasProjection, rawHpX + calibration.offsetX(), rawHpY + calibration.offsetY(), cameraBox);
+
+        if (hasProjection && !cloneActive) {
             iconMatcher.checkLock(champMatch, rawHpX + calibration.offsetX(), rawHpY + calibration.offsetY(),
                     lastKnownX, lastKnownY, mapSize);
         }
@@ -192,11 +205,10 @@ public class ScreenPositionTracker {
                 allyCircles, mapSize);
         if (yourRing != null) iconMatcher.learnFrom(minimapMat, yourRing, allyCircles);
 
-        Point truePoint = path != null ? path.point() : champMapCenter;
+        Point truePoint = path != null ? path.point() : cloneActive ? null : champMapCenter;
         double truePointScore = path != null ? PATH_LINE_SCORE : champRawScore;
         if (hasProjection && truePoint != null && !calibration.isConverged()) {
-            calibration.update(rawHpX, rawHpY, truePoint, (float) truePointScore, mapSize,
-                    path != null ? 0 : iconMatcher.lastStrongMatchCount());
+            calibration.update(rawHpX, rawHpY, truePoint, (float) truePointScore, mapSize);
         }
 
         if (calibration.isConverged() && hasProjection && truePoint != null && truePointScore > DRIFT_MIN_MATCH_SCORE) {
@@ -218,7 +230,7 @@ public class ScreenPositionTracker {
                 matchX = pathX;
                 matchY = pathY;
                 matchScore = PATH_LINE_SCORE;
-            } else if (champMapCenter != null && champRawScore > MINIMAP_OVERRIDE_SCORE) {
+            } else if (!cloneActive && champMapCenter != null && champRawScore > MINIMAP_OVERRIDE_SCORE) {
                 matchX = MapCoordinates.percentX(champMapCenter.x, mapSize);
                 matchY = MapCoordinates.percentY(champMapCenter.y, mapSize);
                 matchScore = champRawScore;
@@ -272,6 +284,23 @@ public class ScreenPositionTracker {
             positionDetected = true;
             result = anchored(lastKnownX, lastKnownY, false);
 
+        } else if (cloneActive) {
+            minimapFailsafeActive = false;
+            Point you = cloneTracker.yourPoint();
+            if (you != null) {
+                this.lastKnownX = MapCoordinates.percentX(you.x, mapSize);
+                this.lastKnownY = MapCoordinates.percentY(you.y, mapSize);
+                lastFixMs = System.currentTimeMillis();
+                lastReliableFixMs = lastFixMs;
+                rememberOtherRings(allyCircles, mapSize);
+                positionDetected = true;
+                if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] CLONE TRACKING -> X: %.2f%% | Y: %.2f%%%n", lastKnownX, lastKnownY);
+            } else if (DebugManager.isENABLED()) {
+                System.out.printf("[trackPlayerPosition] CLONE - waiting for proof which icon is you, holding -> X: %.2f%% | Y: %.2f%%%n",
+                        lastKnownX, lastKnownY);
+            }
+            result = anchored(lastKnownX, lastKnownY, false);
+
         } else if (champMapCenter != null && champRawScore >= MINIMAP_ONLY_MIN_RAW_SCORE
                 && acceptMinimapMatch(MapCoordinates.percentX(champMapCenter.x, mapSize),
                 MapCoordinates.percentY(champMapCenter.y, mapSize), champRawScore, false, minimapMat, fullScreenMat)) {
@@ -318,11 +347,50 @@ public class ScreenPositionTracker {
         return only;
     }
 
+    private boolean updateCloneTracker(Mat minimap, Mat screen, int mapSize, List<IconCircle> allies, List<IconCircle> enemies,
+                                       PathLineDetector.PathStart path, boolean healthBarOnScreen, boolean projected,
+                                       float hpX, float hpY, CameraBox camera) {
+        if (cloneTracker == null || !iconMatcher.isBootstrapped()) return false;
+        long now = System.currentTimeMillis();
+        CameraBox view = camera != null ? camera
+                : cloneTracker.active() && !healthBarOnScreen ? cameraBoxes.locate(minimap, screen.width(), screen.height()) : null;
+        CloneTracker.Frame cloneFrame = new CloneTracker.Frame(minimap, mapSize, allies, enemies, iconMatcher.lastRingScores(),
+                path, healthBarOnScreen, projected, hpX, hpY, view);
+
+        if (cloneTracker.active()) {
+            cloneTracker.update(cloneFrame, now);
+        } else if (positionDetected && now - lastReliableFixMs <= CONTINUITY_WINDOW_MS) {
+            Point you = new Point(MapCoordinates.pixelX(lastKnownX, mapSize), MapCoordinates.pixelY(lastKnownY, mapSize));
+            cloneTracker.tryStart(cloneFrame, you, continuityStep(now) / 100.0 * mapSize,
+                    p -> wasAnotherChampion(p, now, mapSize), now);
+        }
+
+        Point end = cloneTracker.takeEndPoint();
+        if (end != null) {
+            this.lastKnownX = MapCoordinates.percentX(end.x, mapSize);
+            this.lastKnownY = MapCoordinates.percentY(end.y, mapSize);
+            lastFixMs = now;
+        }
+        return cloneTracker.active();
+    }
+
+    private double continuityStep(long now) {
+        double seconds = (now - lastFixMs) / 1000.0;
+        return Math.min(CONTINUITY_STEP_MAX, CONTINUITY_STEP_BASE + CONTINUITY_STEP_PER_SECOND * seconds);
+    }
+
+    private boolean lastSpotUnderAnIcon(int mapSize) {
+        Point you = new Point(MapCoordinates.pixelX(lastKnownX, mapSize), MapCoordinates.pixelY(lastKnownY, mapSize));
+        for (IconCircle ring : ringsThisFrame) {
+            if (Math.hypot(ring.center().x - you.x, ring.center().y - you.y) <= ring.radius()) return true;
+        }
+        return false;
+    }
+
     private boolean continuityFix(Mat minimap, int mapSize) {
         IconMatcher.RingPick pick = iconMatcher.lastBestRing();
         long now = System.currentTimeMillis();
-        double seconds = (now - lastFixMs) / 1000.0;
-        double allowed = Math.min(CONTINUITY_STEP_MAX, CONTINUITY_STEP_BASE + CONTINUITY_STEP_PER_SECOND * seconds);
+        double allowed = continuityStep(now);
 
         String rejection = null;
         boolean stacked = false;
@@ -400,6 +468,14 @@ public class ScreenPositionTracker {
         if (!positionDetected || jump <= allowed) {
             resetPendingJump();
             return true;
+        }
+
+        if (!knownToBeYou && cloneTracker != null && System.currentTimeMillis() - lastReliableFixMs < CLONE_HIDDEN_GUARD_MS
+                && lastSpotUnderAnIcon(minimap.width())) {
+            resetPendingJump();
+            if (DebugManager.isENABLED()) System.out.printf("[trackPlayerPosition] Ignoring minimap match at (%.1f, %.1f) - you may be hidden under the icon at your last position, and this one could be your clone.%n",
+                    x, y);
+            return false;
         }
 
         boolean confident = rawScore > MINIMAP_OVERRIDE_SCORE && (knownToBeYou || iconMatcher.isBootstrapped());
