@@ -6,6 +6,8 @@ public final class AppConstants {
 
     public static final String APP_WINDOW_TITLE = "League of Legends Proximity Chat";
 
+    public static final String CREDIT = "Made for Yowaimo by FateSealed(bedwarshurts)";
+
     public static final int WEB_PORT = 8000;
 
     public static final int WEBSOCKET_PORT = 8887;
