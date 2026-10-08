@@ -79,12 +79,6 @@ public final class LoadingWindow {
         });
     }
 
-    public static void hint(String text) {
-        SwingUtilities.invokeLater(() -> {
-            if (panel != null) panel.hint = text;
-        });
-    }
-
     public static void close() {
         SwingUtilities.invokeLater(() -> {
             if (frame == null) return;
@@ -108,7 +102,6 @@ public final class LoadingWindow {
 
         private final long startNanos = System.nanoTime();
         private String status = "Starting up…";
-        private String hint;
         private float target = -1f;
         private float shown = 0f;
 
@@ -177,11 +170,9 @@ public final class LoadingWindow {
                 paintSlider(g, track, barX, barY, barW, seconds);
             }
 
-            if (hint != null) {
-                g.setFont(HINT_FONT);
-                g.setColor(INK_DIM);
-                g.drawString(hint, barX, barY + 30);
-            }
+            g.setFont(HINT_FONT);
+            g.setColor(INK_DIM);
+            g.drawString(AppConstants.CREDIT, barX, barY + 30);
             g.dispose();
         }
 

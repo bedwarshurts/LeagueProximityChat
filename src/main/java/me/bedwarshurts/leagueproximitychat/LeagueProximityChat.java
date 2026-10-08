@@ -15,6 +15,7 @@ import me.bedwarshurts.leagueproximitychat.managers.OverlayManager;
 import me.bedwarshurts.leagueproximitychat.managers.PauseDetector;
 import me.bedwarshurts.leagueproximitychat.managers.PlayOfGameManager;
 import me.bedwarshurts.leagueproximitychat.managers.ReplayVoiceManager;
+import me.bedwarshurts.leagueproximitychat.managers.TabOverlay;
 import me.bedwarshurts.leagueproximitychat.managers.UiWindowManager;
 import me.bedwarshurts.leagueproximitychat.position.ScreenPositionTracker;
 import me.bedwarshurts.leagueproximitychat.position.TemplateLoader;
@@ -32,6 +33,9 @@ import java.io.IOException;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -58,6 +62,7 @@ public class LeagueProximityChat {
     private static ScreenPositionTracker tracker = null;
     private static CoordinateServer server = null;
     private static OverlayManager overlay = null;
+    private static TabOverlay tabOverlay = null;
     private static UiWindowManager uiWindow = null;
 
     private static int gameEndFailureStreak = 0;
@@ -170,6 +175,17 @@ public class LeagueProximityChat {
                 .put("debug", DebugManager.isENABLED());
     }
 
+    private static List<TabOverlay.Player> overlayPlayers(LeagueGame gameData, LeaguePlayer localPlayer) {
+        List<TabOverlay.Player> players = new ArrayList<>();
+        for (LeaguePlayer p : gameData.players()) {
+            if (p.getRiotId() == null || p.getRiotId().isEmpty()) continue;
+            String name = p.getRiotIdGameName() != null && !p.getRiotIdGameName().isEmpty() ? p.getRiotIdGameName() : p.getRiotId();
+            players.add(new TabOverlay.Player(p.getRiotId(), name, RitoApiUtils.sanitizeChampionName(p.getChampionName()),
+                    Objects.equals(p.getTeam(), localPlayer.getTeam()), p == localPlayer));
+        }
+        return players;
+    }
+
     private static void resetForNextGame() {
         if (server != null) PlayOfGameManager.flushPending(server);
         String matchId = MatchHistoryManager.finishMatch();
@@ -190,6 +206,7 @@ public class LeagueProximityChat {
         hasSentRoster = false;
         session.setConnectedToLiveKit(false);
         isTrackerReady = false;
+        if (tabOverlay != null) tabOverlay.clearMatch();
         hasMatchStarted = false;
         session.setConfigWarning(null);
         wasPaused = false;
@@ -212,6 +229,7 @@ public class LeagueProximityChat {
                 hasSentRoster = false;
                 rosterGeneration.incrementAndGet();
                 isTrackerReady = false;
+                if (tabOverlay != null) tabOverlay.clearMatch();
                 hasMatchStarted = false;
                 server.setUserRequestedConnection(false);
                 session.setActiveRoom(null);
@@ -266,6 +284,7 @@ public class LeagueProximityChat {
                     try {
                         JSONObject payload = buildRosterPayload(rosterGame, localPlayer, leader);
                         if (rosterGeneration.get() == generation && server.hasActiveConnection()) {
+                            if (tabOverlay != null) tabOverlay.setMatch(overlayPlayers(rosterGame, localPlayer));
                             String matchId = MatchHistoryManager.beginMatch();
                             server.sendToActive(payload.put("matchId", matchId).toString());
                             hasSentRoster = true;
@@ -400,6 +419,10 @@ public class LeagueProximityChat {
 
         server = new CoordinateServer(new InetSocketAddress("127.0.0.1", AppConstants.WEBSOCKET_PORT), session);
         server.start();
+
+        tabOverlay = new TabOverlay(server::sendToActive);
+        server.setVoiceStateListener(tabOverlay::applyVoiceState);
+        tabOverlay.start();
 
         ScheduledExecutorService gameEndPoller = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "game-end-poller");

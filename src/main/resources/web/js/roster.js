@@ -182,17 +182,13 @@ function buildRosterUI(players, localId, leaderId, debugEnabled) {
             const volSlider = document.createElement('input');
             volSlider.type = 'range';
             volSlider.className = 'volume-slider';
+            volSlider.id = `vol-${player.identity}`;
             volSlider.min = '0';
             volSlider.max = '2';
             volSlider.step = '0.05';
             volSlider.value = playerVolumes[player.identity] ?? 1;
             volSlider.title = `Volume: ${Math.round(volSlider.value * 100)}%`;
-            volSlider.oninput = () => {
-                playerVolumes[player.identity] = Number(volSlider.value);
-                localStorage.setItem('playerVolumes', JSON.stringify(playerVolumes));
-                volSlider.title = `Volume: ${Math.round(volSlider.value * 100)}%`;
-                updateRemoteAudio(player.identity);
-            };
+            volSlider.oninput = () => setPlayerVolume(player.identity, volSlider.value);
             controlsContainer.appendChild(volSlider);
         }
 
@@ -242,6 +238,9 @@ function handleModerationAction(identity, name) {
 }
 
 function updatePlayerStatus(identity, statusText, cssClass) {
+    if (statusText === "Connected") voiceConnected.add(identity); else voiceConnected.delete(identity);
+    reportVoiceStateToJava();
+
     const statusSpan = document.getElementById(`status-${identity}`);
     if (statusSpan) {
         statusSpan.innerText = statusText;

@@ -45,6 +45,7 @@ try {
     speakerDeviceLabel = localStorage.getItem(SPEAKER_LABEL_KEY) || '';
 } catch (e) {}
 const locallyMuted = new Set();
+const voiceConnected = new Set();
 const playerVolumes = (() => {
     try { return JSON.parse(localStorage.getItem('playerVolumes')) || {}; } catch (e) { return {}; }
 })();

@@ -39,7 +39,6 @@ public class UiWindowManager {
 
     private static final long EXIT_TIMEOUT_MS = 5000;
     private static final int PAGE_LOAD_TIMEOUT_MS = 20000;
-    private static final String CREDIT = "Made for Yowaimo by FateSealed(bedwarshurts)";
 
     private static EnumProgress lastSetupState;
 
@@ -49,7 +48,6 @@ public class UiWindowManager {
     private TrayIcon trayIcon;
 
     public boolean launch() {
-        LoadingWindow.hint(CREDIT);
         try {
             CefAppBuilder builder = new CefAppBuilder();
             File installDir = resolveInstallDir();

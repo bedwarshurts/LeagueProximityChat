@@ -38,6 +38,7 @@ function updateVoiceButtonsUI() {
     const deafenBtn = document.getElementById('deafen-btn');
     deafenBtn.innerText = isDeafened ? '🎧 Undeafen' : '🎧 Deafen';
     deafenBtn.classList.toggle('active', isDeafened);
+    reportVoiceStateToJava();
 }
 
 async function applyMicState() {
@@ -117,6 +118,7 @@ function toggleLocalMute(identity) {
             updateRemoteAudio(identity);
         }
     }
+    reportVoiceStateToJava();
 }
 
 function setKrispStatus(text) {

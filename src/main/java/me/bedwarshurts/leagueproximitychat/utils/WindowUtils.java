@@ -19,6 +19,8 @@ public final class WindowUtils {
         boolean ClientToScreen(HWND hWnd, POINT lpPoint);
 
         Pointer SetThreadDpiAwarenessContext(Pointer dpiContext);
+
+        boolean SetWindowDisplayAffinity(HWND hWnd, int dwAffinity);
     }
 
     public static boolean isWindowFocused(String windowTitleTarget) {

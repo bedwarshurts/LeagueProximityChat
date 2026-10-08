@@ -17,12 +17,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.InetSocketAddress;
+import java.util.function.Consumer;
 
 public class CoordinateServer extends WebSocketServer {
 
     private final SessionState session;
     private volatile WebSocket activeConnection = null;
     @Getter @Setter private volatile boolean userRequestedConnection = false;
+    @Setter private volatile Consumer<JSONObject> voiceStateListener = null;
 
     public CoordinateServer(InetSocketAddress address, SessionState session) {
         super(address);
@@ -85,6 +87,11 @@ public class CoordinateServer extends WebSocketServer {
         }
         if ("SCREEN_RECORDING".equals(type)) {
             ClipRecorder.setScreenRecordingActive(json.optBoolean("active", false));
+            return;
+        }
+        if ("VOICE_STATE".equals(type)) {
+            Consumer<JSONObject> listener = voiceStateListener;
+            if (listener != null) listener.accept(json);
             return;
         }
 

@@ -65,6 +65,7 @@ function resetToIdleState() {
     positionGateActive = false;
     krispProcessor = null;
     locallyMuted.clear();
+    voiceConnected.clear();
     setGamePaused(false);
     if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
 

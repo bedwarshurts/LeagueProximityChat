@@ -34,6 +34,19 @@ public final class ScreenCapture {
         }
     }
 
+    public Mat captureWindowClientRegion(String exactWindowTitle, Rectangle region) {
+        Pointer previousDpiContext = usePhysicalPixels();
+        try {
+            Rectangle bounds = WindowUtils.getGameWindowBounds(exactWindowTitle);
+            if (bounds == null || bounds.width <= 0 || bounds.height <= 0) return null;
+            Rectangle clipped = region.intersection(new Rectangle(0, 0, bounds.width, bounds.height));
+            if (clipped.isEmpty() || !clipped.equals(region)) return null;
+            return capture(new Rectangle(bounds.x + clipped.x, bounds.y + clipped.y, clipped.width, clipped.height));
+        } finally {
+            restoreDpiContext(previousDpiContext);
+        }
+    }
+
     private Mat capture(Rectangle bounds) {
         HDC screenDc = User32.INSTANCE.GetDC(null);
         if (screenDc == null) return null;

@@ -1,3 +1,37 @@
+let voiceStateTimer = null;
+
+function reportVoiceStateToJava() {
+    if (voiceStateTimer) return;
+    voiceStateTimer = setTimeout(() => {
+        voiceStateTimer = null;
+        if (!trackerSocket || trackerSocket.readyState !== WebSocket.OPEN) return;
+        const players = Object.keys(rosterTeams).map(identity => ({
+            identity: identity,
+            volume: playerVolumes[identity] ?? 1,
+            muted: locallyMuted.has(identity),
+            inVoice: connected && voiceConnected.has(identity)
+        }));
+        trackerSocket.send(JSON.stringify({
+            type: 'VOICE_STATE',
+            players: players,
+            self: {micMuted: micMuted, deafened: isDeafened}
+        }));
+    }, 50);
+}
+
+function setPlayerVolume(identity, volume) {
+    const value = Math.min(2, Math.max(0, Number(volume) || 0));
+    playerVolumes[identity] = value;
+    try { localStorage.setItem('playerVolumes', JSON.stringify(playerVolumes)); } catch (e) {}
+    const slider = document.getElementById(`vol-${identity}`);
+    if (slider) {
+        slider.value = value;
+        slider.title = `Volume: ${Math.round(value * 100)}%`;
+    }
+    updateRemoteAudio(identity);
+    reportVoiceStateToJava();
+}
+
 function reportPlayerStateToJava(type, participant) {
     if (trackerSocket && trackerSocket.readyState === WebSocket.OPEN) {
         trackerSocket.send(JSON.stringify({
@@ -24,6 +58,11 @@ const trackerMessageHandlers = {
     MATCH_ROSTER: data => {
         beginVoiceArchive(data.matchId || null);
         buildRosterUI(data.players, data.localIdentity, data.roomLeader, data.debug);
+        reportVoiceStateToJava();
+    },
+    SET_PLAYER_VOLUME: data => setPlayerVolume(data.identity, data.volume),
+    SET_PLAYER_MUTED: data => {
+        if (locallyMuted.has(data.identity) !== Boolean(data.muted)) toggleLocalMute(data.identity);
     },
     REPLAY_STARTED: data => onReplayStarted(data),
     REPLAY_STATE: data => onReplayState(data),
@@ -118,6 +157,7 @@ function connectToLocalJavaTracker() {
         document.getElementById('ws-status').className = 'status success';
         document.getElementById('ws-status').innerText = 'Position Tracker: Connected';
         if (potgVideo.active) reportScreenRecording(true);
+        reportVoiceStateToJava();
     };
 
     trackerSocket.onmessage = (event) => {
