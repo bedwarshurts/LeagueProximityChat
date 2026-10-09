@@ -40,6 +40,16 @@ public final class ScoreboardLocator {
     private static final double GAP_MIN_WIDTH = 1.0;
     private static final double DEFAULT_GAP_PER_RADIUS = 1.97;
     private static final int GAP_BUSY_LEVEL = 80;
+    private static final double LOOK_LEFT_PER_RADIUS = 3.15;
+    private static final double LOOK_RIGHT_PER_RADIUS = 1.1;
+    private static final double LOOK_HALF_HEIGHT_PER_RADIUS = 1.05;
+    private static final double LOOK_SLACK_PER_RADIUS = 0.2;
+    private static final double LOOK_SPLIT_PER_RADIUS = 1.0;
+    private static final double LOOK_SAME = 0.6;
+    private static final double LOOK_MOVE_GAIN = 0.25;
+    private static final int LOOK_MAX_ROWS = 8;
+    private static final double AREA_LEFT_PER_RADIUS = 3.6;
+    private static final double AREA_SIDE_PER_RADIUS = 1.6;
 
     public record Portrait(double x, double y, double radius) {
     }
@@ -236,6 +246,127 @@ public final class ScoreboardLocator {
             result.release();
             cropped.release();
         }
+    }
+
+    public static Rect area(List<Portrait> portraits, double radius) {
+        double minX = portraits.stream().mapToDouble(Portrait::x).min().orElse(0);
+        double maxX = portraits.stream().mapToDouble(Portrait::x).max().orElse(0);
+        double minY = portraits.stream().mapToDouble(Portrait::y).min().orElse(0);
+        double maxY = portraits.stream().mapToDouble(Portrait::y).max().orElse(0);
+        int x0 = (int) Math.floor(minX - AREA_LEFT_PER_RADIUS * radius);
+        int y0 = (int) Math.floor(minY - AREA_SIDE_PER_RADIUS * radius);
+        int x1 = (int) Math.ceil(maxX + AREA_SIDE_PER_RADIUS * radius);
+        int y1 = (int) Math.ceil(maxY + AREA_SIDE_PER_RADIUS * radius);
+        return new Rect(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    public static Mat look(Mat frame, Portrait portrait) {
+        Rect rect = lookRect(portrait);
+        if (rect.x < 0 || rect.y < 0 || rect.x + rect.width > frame.cols() || rect.y + rect.height > frame.rows()) return null;
+        Mat view = new Mat(frame, rect);
+        Mat look = view.clone();
+        view.release();
+        return look;
+    }
+
+    public static int[] reorder(Mat frame, List<Portrait> rows, List<Mat> looks) {
+        int n = rows.size();
+        if (n < 2 || n > LOOK_MAX_ROWS || looks.size() != n) return null;
+        double[][] same = new double[n][n];
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) same[i][j] = sameLook(frame, rows.get(i), looks.get(j));
+        }
+        int[] best = bestOrder(same);
+        int[] from = new int[n];
+        for (int i = 0; i < n; i++) from[i] = i;
+        boolean[] seen = new boolean[n];
+        boolean moved = false;
+        for (int start = 0; start < n; start++) {
+            if (seen[start] || best[start] == start) continue;
+            List<Integer> cycle = new ArrayList<>();
+            double gain = 0;
+            boolean sure = true;
+            for (int i = start; !seen[i]; i = best[i]) {
+                seen[i] = true;
+                cycle.add(i);
+                gain += same[i][best[i]] - same[i][i];
+                if (same[i][best[i]] < LOOK_SAME) sure = false;
+            }
+            if (!sure || gain < LOOK_MOVE_GAIN) continue;
+            for (int i : cycle) from[i] = best[i];
+            moved = true;
+        }
+        return moved ? from : null;
+    }
+
+    private static double sameLook(Mat frame, Portrait portrait, Mat look) {
+        if (look == null || look.empty()) return -1;
+        int grow = (int) Math.round(LOOK_SLACK_PER_RADIUS * portrait.radius());
+        int split = (int) Math.round((LOOK_LEFT_PER_RADIUS - LOOK_SPLIT_PER_RADIUS) * portrait.radius());
+        Rect at = lookRect(portrait);
+        Rect search = new Rect(at.x - grow, at.y - grow, look.cols() + grow * 2, look.rows() + grow * 2);
+        if (search.x < 0 || search.y < 0 || search.x + search.width > frame.cols() || search.y + search.height > frame.rows()
+                || split <= 0 || split >= look.cols()) return -1;
+        Mat view = new Mat(frame, search);
+        Mat side = new Mat();
+        Mat portraitPart = new Mat();
+        try {
+            matchPart(view.colRange(0, split + grow * 2), look.colRange(0, split), side);
+            matchPart(view.colRange(split, view.cols()), look.colRange(split, look.cols()), portraitPart);
+            Core.min(side, portraitPart, side);
+            return Core.minMaxLoc(side).maxVal;
+        } finally {
+            view.release();
+            side.release();
+            portraitPart.release();
+        }
+    }
+
+    private static void matchPart(Mat region, Mat part, Mat result) {
+        Imgproc.matchTemplate(region, part, result, Imgproc.TM_CCOEFF_NORMED);
+        region.release();
+        part.release();
+    }
+
+    private static Rect lookRect(Portrait portrait) {
+        double r = portrait.radius();
+        int x0 = (int) Math.round(portrait.x() - LOOK_LEFT_PER_RADIUS * r);
+        int y0 = (int) Math.round(portrait.y() - LOOK_HALF_HEIGHT_PER_RADIUS * r);
+        int x1 = (int) Math.round(portrait.x() + LOOK_RIGHT_PER_RADIUS * r);
+        int y1 = (int) Math.round(portrait.y() + LOOK_HALF_HEIGHT_PER_RADIUS * r);
+        return new Rect(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    private static int[] bestOrder(double[][] same) {
+        int n = same.length;
+        int[] best = new int[n];
+        for (int i = 0; i < n; i++) best[i] = i;
+        double[] bestSum = {sum(same, best)};
+        permute(same, new int[n], new boolean[n], 0, 0, best, bestSum);
+        return best;
+    }
+
+    private static void permute(double[][] same, int[] order, boolean[] used, int row, double total, int[] best, double[] bestSum) {
+        if (row == order.length) {
+            if (total > bestSum[0]) {
+                bestSum[0] = total;
+                System.arraycopy(order, 0, best, 0, order.length);
+            }
+            return;
+        }
+        for (int j = 0; j < order.length; j++) {
+            if (used[j]) continue;
+            used[j] = true;
+            order[row] = j;
+            permute(same, order, used, row + 1, total + same[row][j], best, bestSum);
+            used[j] = false;
+        }
+    }
+
+    private static double sum(double[][] same, int[] order) {
+        double total = 0;
+        for (int i = 0; i < order.length; i++) total += same[i][order[i]];
+        return total;
     }
 
     private static List<Circle> houghCircles(Mat region, int frameHeight) {
