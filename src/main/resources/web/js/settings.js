@@ -10,6 +10,7 @@ async function fetchLivekitSettings() {
     document.getElementById('setup-lowperf').checked = lowPerformanceMode;
     saveAllHighlights = Boolean(s.saveAllHighlights);
     document.getElementById('setup-autosave').checked = saveAllHighlights;
+    document.getElementById('setup-overlay').checked = s.scoreboardOverlay !== false;
     document.getElementById('setup-debug').checked = Boolean(s.debugMode);
     const versionEl = document.getElementById('setup-version');
     versionEl.replaceChildren();
@@ -220,6 +221,7 @@ document.getElementById('setup-save').addEventListener('click', async () => {
     const lowPerf = document.getElementById('setup-lowperf').checked;
     const autoSave = document.getElementById('setup-autosave').checked;
     const debugOn = document.getElementById('setup-debug').checked;
+    const overlayOn = document.getElementById('setup-overlay').checked;
     const errorEl = document.getElementById('setup-error');
 
     if (!url || !apiKey || !apiSecret) {
@@ -233,7 +235,13 @@ document.getElementById('setup-save').addEventListener('click', async () => {
         const resp = await fetch('/settings', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url, apiKey, apiSecret, lowPerformanceMode: lowPerf, debugMode: debugOn, saveAllHighlights: autoSave})
+            body: JSON.stringify({
+                url, apiKey, apiSecret,
+                lowPerformanceMode: lowPerf,
+                debugMode: debugOn,
+                saveAllHighlights: autoSave,
+                scoreboardOverlay: overlayOn
+            })
         });
         const out = await resp.json();
         if (!out.ok) throw new Error('rejected');

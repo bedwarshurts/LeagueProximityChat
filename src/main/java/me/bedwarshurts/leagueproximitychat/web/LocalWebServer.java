@@ -111,6 +111,7 @@ public final class LocalWebServer {
                         .put("lowPerformanceMode", ConfigManager.isLowPerformanceMode())
                         .put("debugMode", ConfigManager.isDebugMode())
                         .put("saveAllHighlights", ConfigManager.isSaveAllHighlights())
+                        .put("scoreboardOverlay", ConfigManager.isScoreboardOverlay())
                         .put("version", AppInfo.version())
                         .put("build", AppInfo.buildLabel())
                         .toString().getBytes(StandardCharsets.UTF_8);
@@ -130,7 +131,8 @@ public final class LocalWebServer {
                         json.optString("apiSecret", ""),
                         json.optBoolean("lowPerformanceMode", false),
                         json.optBoolean("debugMode", false),
-                        json.optBoolean("saveAllHighlights", false));
+                        json.optBoolean("saveAllHighlights", false),
+                        json.optBoolean("scoreboardOverlay", true));
 
                 byte[] body = new JSONObject().put("ok", ok).toString().getBytes(StandardCharsets.UTF_8);
                 send(exchange, ok ? 200 : 400, JSON, null, body);

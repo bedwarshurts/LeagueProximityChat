@@ -21,6 +21,7 @@ public final class ConfigManager {
     @Getter private static volatile boolean lowPerformanceMode = false;
     @Getter private static volatile boolean debugMode = false;
     @Getter private static volatile boolean saveAllHighlights = true;
+    @Getter private static volatile boolean scoreboardOverlay = true;
 
     static {
         load();
@@ -50,13 +51,14 @@ public final class ConfigManager {
             lowPerformanceMode = Boolean.parseBoolean(props.getProperty("app.lowPerformanceMode", "false"));
             debugMode = Boolean.parseBoolean(props.getProperty("app.debugMode", "false"));
             saveAllHighlights = Boolean.parseBoolean(props.getProperty("app.saveAllHighlights", "true"));
+            scoreboardOverlay = Boolean.parseBoolean(props.getProperty("app.scoreboardOverlay", "true"));
         } catch (IOException e) {
             System.err.println("[Config] Failed to read " + CONFIG_FILE + ": " + e.getMessage());
         }
     }
 
     public static synchronized boolean save(String url, String key, String secret,
-                                            boolean lowPerformance, boolean debug, boolean saveHighlights) {
+                                            boolean lowPerformance, boolean debug, boolean saveHighlights, boolean overlay) {
         String normalizedUrl = normalizeUrl(url);
         if (normalizedUrl.isBlank() || key.isBlank() || secret.isBlank()) {
             return false;
@@ -71,6 +73,7 @@ public final class ConfigManager {
             props.setProperty("app.lowPerformanceMode", String.valueOf(lowPerformance));
             props.setProperty("app.debugMode", String.valueOf(debug));
             props.setProperty("app.saveAllHighlights", String.valueOf(saveHighlights));
+            props.setProperty("app.scoreboardOverlay", String.valueOf(overlay));
             try (OutputStream out = Files.newOutputStream(CONFIG_FILE)) {
                 props.store(out, "League Proximity Chat - Settings");
             }
@@ -81,6 +84,7 @@ public final class ConfigManager {
             lowPerformanceMode = lowPerformance;
             debugMode = debug;
             saveAllHighlights = saveHighlights;
+            scoreboardOverlay = overlay;
             System.out.println("[Config] Settings saved to " + CONFIG_FILE
                     + (lowPerformance ? " (low performance mode ON - clip recording disabled)" : ""));
             return true;

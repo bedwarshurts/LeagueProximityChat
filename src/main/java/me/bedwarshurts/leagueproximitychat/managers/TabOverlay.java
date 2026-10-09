@@ -232,7 +232,7 @@ public class TabOverlay {
         while (true) {
             try {
                 long now = System.currentTimeMillis();
-                boolean held = !players.isEmpty() && tabHeld() && gameInFront();
+                boolean held = ConfigManager.isScoreboardOverlay() && !players.isEmpty() && tabHeld() && gameInFront();
                 if (held && !shown) {
                     shown = true;
                     tabDownMs = now;
